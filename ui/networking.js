@@ -19,50 +19,86 @@ class FarmNetwork {
     this.onTradeMessage = null
 
     // Cleanup on app close
-    Pear.teardown(() => this.swarm.destroy())
+    Pear.teardown(() => this.destroy())
 
     this._setupConnectionHandler()
   }
 
+  async destroy () {
+    try {
+      await this.swarm.destroy()
+    } catch (err) {
+      // Swarm already closed
+    }
+  }
+
   async createFarm () {
     this.topic = crypto.randomBytes(32)
-    const discovery = this.swarm.join(this.topic, { client: true, server: true })
-    await discovery.flushed()
+    try {
+      const discovery = this.swarm.join(this.topic, { client: true, server: true })
+      await discovery.flushed()
+    } catch (err) {
+      throw new Error('Failed to create farm network: ' + err.message)
+    }
     return b4a.toString(this.topic, 'hex')
   }
 
   async joinFarm (topicHex) {
     this.topic = b4a.from(topicHex, 'hex')
-    const discovery = this.swarm.join(this.topic, { client: true, server: true })
-    await discovery.flushed()
+    try {
+      const discovery = this.swarm.join(this.topic, { client: true, server: true })
+      await discovery.flushed()
+    } catch (err) {
+      throw new Error('Failed to join farm network: ' + err.message)
+    }
   }
 
   _setupConnectionHandler () {
     this.swarm.on('connection', (conn) => {
       const peerKey = b4a.toString(conn.remotePublicKey, 'hex')
-      console.log('Peer connected:', peerKey.slice(0, 8))
 
       // Replicate cores
-      this.store.replicate(conn)
+      try {
+        this.store.replicate(conn)
+      } catch (err) {
+        // Replication setup failed
+      }
 
       // Set up Protomux channels
-      const channels = setupProtomux(conn, {
-        onFarmSync: (buf) => {
-          const msg = JSON.parse(b4a.toString(buf))
-          if (this.onFarmState) this.onFarmState(peerKey, msg)
-        },
-        onChat: (buf) => {
-          const msg = JSON.parse(b4a.toString(buf))
-          if (this.onChatMessage) this.onChatMessage(peerKey, msg)
-        },
-        onTrade: (buf) => {
-          const msg = JSON.parse(b4a.toString(buf))
-          if (this.onTradeMessage) this.onTradeMessage(peerKey, msg)
-        },
-        onVisit: (buf) => {
-          // Visit handling for future use
-        }
-      })
+      let channels
+      try {
+        channels = setupProtomux(conn, {
+          onFarmSync: (buf) => {
+            try {
+              const msg = JSON.parse(b4a.toString(buf))
+              if (this.onFarmState) this.onFarmState(peerKey, msg)
+            } catch (err) {
+              // Malformed farm sync message
+            }
+          },
+          onChat: (buf) => {
+            try {
+              const msg = JSON.parse(b4a.toString(buf))
+              if (this.onChatMessage) this.onChatMessage(peerKey, msg)
+            } catch (err) {
+              // Malformed chat message
+            }
+          },
+          onTrade: (buf) => {
+            try {
+              const msg = JSON.parse(b4a.toString(buf))
+              if (this.onTradeMessage) this.onTradeMessage(peerKey, msg)
+            } catch (err) {
+              // Malformed trade message
+            }
+          },
+          onVisit: (buf) => {
+            // Visit handling for future use
+          }
+        })
+      } catch (err) {
+        return
+      }
 
       this.peers.set(peerKey, { conn, channels, name: null })
 
@@ -70,37 +106,56 @@ class FarmNetwork {
 
       conn.on('close', () => {
         this.peers.delete(peerKey)
-        console.log('Peer disconnected:', peerKey.slice(0, 8))
         if (this.onPeerLeave) this.onPeerLeave(peerKey)
+      })
+
+      conn.on('error', () => {
+        this.peers.delete(peerKey)
       })
     })
   }
 
   broadcastFarmState (farmState) {
     const data = JSON.stringify({ type: 'full-state', data: farmState.serialize() })
-    for (const [, peer] of this.peers) {
-      peer.channels.farmSync.send(data)
+    for (const [key, peer] of this.peers) {
+      try {
+        peer.channels.farmSync.send(data)
+      } catch (err) {
+        // Peer may have disconnected
+      }
     }
   }
 
   sendFarmStateToPeer (peerKey, farmState) {
     const peer = this.peers.get(peerKey)
     if (!peer) return
-    const data = JSON.stringify({ type: 'full-state', data: farmState.serialize() })
-    peer.channels.farmSync.send(data)
+    try {
+      const data = JSON.stringify({ type: 'full-state', data: farmState.serialize() })
+      peer.channels.farmSync.send(data)
+    } catch (err) {
+      // Peer may have disconnected
+    }
   }
 
   sendFarmAction (action, row, col) {
     const data = JSON.stringify({ type: 'action', action, row, col })
     for (const [, peer] of this.peers) {
-      peer.channels.farmSync.send(data)
+      try {
+        peer.channels.farmSync.send(data)
+      } catch (err) {
+        // Peer may have disconnected
+      }
     }
   }
 
   sendChatMessage (sender, text) {
     const data = JSON.stringify({ sender, text, timestamp: Date.now() })
     for (const [, peer] of this.peers) {
-      peer.channels.chat.send(data)
+      try {
+        peer.channels.chat.send(data)
+      } catch (err) {
+        // Peer may have disconnected
+      }
     }
   }
 }

@@ -41,7 +41,18 @@ body {
   -webkit-app-region: drag;
 }
 
-#farm-info { display: flex; gap: 16px; font-size: 0.85rem; -webkit-app-region: no-drag; }
+#farm-info { display: flex; gap: 16px; font-size: 0.85rem; align-items: center; -webkit-app-region: no-drag; }
+#copy-topic-btn {
+  padding: 4px 12px;
+  border: 2px solid #FFD700;
+  border-radius: 6px;
+  background: #3a6b2a;
+  color: #FFD700;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+#copy-topic-btn:hover { background: #4a8b3a; }
 #tools { display: flex; gap: 4px; -webkit-app-region: no-drag; }
 .tool-btn {
   padding: 6px 12px;

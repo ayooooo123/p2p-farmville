@@ -64,19 +64,25 @@ function initFarmInteraction (canvas, ctx, farmState) {
       case 'water':
         result = farmState.water(row, col)
         break
-      case 'harvest':
+      case 'harvest': {
+        const plot = farmState.plots[row][col]
+        const cropDef = plot.crop ? CROPS[plot.crop] : null
         result = farmState.harvest(row, col)
+        if (result && result.ok && cropDef) {
+          const pos = toIso(col, row)
+          spawnHarvestParticles(pos.x, pos.y, cropDef.sellPrice)
+        }
         break
+      }
       case 'remove':
         result = farmState.remove(row, col)
         break
     }
 
-    if (result && !result.ok) {
-      console.log(result.error)
-    }
+    if (result && !result.ok) return
 
     updateCoinDisplay(farmState)
+    saveFarm()
   })
 }
 

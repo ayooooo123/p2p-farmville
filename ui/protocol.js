@@ -7,8 +7,8 @@ function setupProtomux (stream, handlers) {
   // Farm sync channel
   const farmSyncChannel = mux.createChannel({
     protocol: CHANNELS.FARM_SYNC,
-    onopen () { console.log('Farm sync channel open') },
-    onclose () { console.log('Farm sync channel closed') }
+    onopen () {},
+    onclose () {}
   })
   const farmSyncMsg = farmSyncChannel.addMessage({
     onmessage (buf) { handlers.onFarmSync(buf) }
@@ -18,8 +18,8 @@ function setupProtomux (stream, handlers) {
   // Chat channel
   const chatChannel = mux.createChannel({
     protocol: CHANNELS.CHAT,
-    onopen () { console.log('Chat channel open') },
-    onclose () { console.log('Chat channel closed') }
+    onopen () {},
+    onclose () {}
   })
   const chatMsg = chatChannel.addMessage({
     onmessage (buf) { handlers.onChat(buf) }
@@ -29,8 +29,8 @@ function setupProtomux (stream, handlers) {
   // Trade channel
   const tradeChannel = mux.createChannel({
     protocol: CHANNELS.TRADE,
-    onopen () { console.log('Trade channel open') },
-    onclose () { console.log('Trade channel closed') }
+    onopen () {},
+    onclose () {}
   })
   const tradeMsg = tradeChannel.addMessage({
     onmessage (buf) { handlers.onTrade(buf) }
@@ -40,8 +40,8 @@ function setupProtomux (stream, handlers) {
   // Visit channel
   const visitChannel = mux.createChannel({
     protocol: CHANNELS.VISIT,
-    onopen () { console.log('Visit channel open') },
-    onclose () { console.log('Visit channel closed') }
+    onopen () {},
+    onclose () {}
   })
   const visitMsg = visitChannel.addMessage({
     onmessage (buf) { handlers.onVisit(buf) }

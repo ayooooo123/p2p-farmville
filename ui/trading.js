@@ -229,10 +229,7 @@ class TradeManager {
 
   showNotification (text) {
     const el = document.getElementById('trade-notification')
-    if (!el) {
-      console.log('[Trade]', text)
-      return
-    }
+    if (!el) return
     el.textContent = text
     el.style.display = 'block'
     setTimeout(() => { el.style.display = 'none' }, 3000)
