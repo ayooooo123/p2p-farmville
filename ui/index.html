@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>P2P Farmville</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <div id="setup">
+      <h1>P2P Farmville</h1>
+      <div id="farm-name-section">
+        <input id="farm-name" type="text" placeholder="Farm Name" maxlength="20">
+      </div>
+      <div id="connection-section">
+        <button id="create-farm">Create Farm</button>
+        <div class="separator">or</div>
+        <form id="join-form">
+          <input id="join-topic" type="text" placeholder="Farm Topic Key (hex)" required>
+          <button type="submit">Visit Farm</button>
+        </form>
+      </div>
+    </div>
+    <div id="game" style="display:none">
+      <div id="toolbar">
+        <div id="farm-info">
+          <span id="player-name-display"></span>
+          <span id="coin-display">0 coins</span>
+          <span id="topic-display"></span>
+        </div>
+        <div id="tools">
+          <button class="tool-btn active" data-tool="plant">Plant</button>
+          <button class="tool-btn" data-tool="water">Water</button>
+          <button class="tool-btn" data-tool="harvest">Harvest</button>
+          <button class="tool-btn" data-tool="remove">Remove</button>
+        </div>
+        <div id="seed-selector">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <canvas id="farm-canvas" width="1024" height="600"></canvas>
+      <div id="chat-panel">
+        <div id="chat-messages"></div>
+        <form id="chat-form">
+          <input id="chat-input" type="text" placeholder="Say something...">
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+    <div id="loading" style="display:none">
+      <p>Connecting to farm...</p>
+    </div>
+  </div>
+  <script src="constants.js"></script>
+  <script src="game-state.js"></script>
+  <script src="renderer.js"></script>
+  <script src="farm.js"></script>
+  <script src="player.js"></script>
+  <script src="protocol.js"></script>
+  <script src="networking.js"></script>
+  <script src="chat.js"></script>
+  <script src="trading.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

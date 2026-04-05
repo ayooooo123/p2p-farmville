@@ -1,0 +1,30 @@
+{
+  "name": "p2p-farmville",
+  "main": "index.html",
+  "pear": {
+    "gui": {
+      "width": 1024,
+      "height": 768,
+      "resizable": true
+    },
+    "stage": {
+      "ignore": [
+        "node_modules",
+        ".git",
+        "docs",
+        "test"
+      ]
+    }
+  },
+  "dependencies": {
+    "b4a": "^1.8.0",
+    "corestore": "^7.9.2",
+    "hypercore-crypto": "^3.6.1",
+    "hyperswarm": "^4.17.0",
+    "protomux": "^3.10.1"
+  },
+  "devDependencies": {
+    "brittle": "^3.19.1",
+    "pear-interface": "^1.1.0"
+  }
+}
