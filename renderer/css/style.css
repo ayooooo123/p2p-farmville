@@ -86,6 +86,12 @@ body {
   transition: width 0.3s ease, background 0.3s ease;
 }
 
+#vehicle-status {
+  color: #dda0dd;
+  font-size: 13px;
+  margin-left: auto;
+}
+
 /* ── Toolbar ────────────────────────────────────────────────────────────────── */
 #toolbar {
   display: flex;
@@ -147,6 +153,15 @@ body {
 .tool-btn-market:hover {
   border-color: rgba(255, 215, 0, 0.6);
   background: rgba(255, 215, 0, 0.15);
+}
+
+.tool-btn-inv {
+  border-color: rgba(100, 149, 237, 0.3);
+}
+
+.tool-btn-inv:hover {
+  border-color: rgba(100, 149, 237, 0.6);
+  background: rgba(100, 149, 237, 0.15);
 }
 
 /* ── Seed Selector Strip ────────────────────────────────────────────────────── */
@@ -215,9 +230,9 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.9);
-  width: 640px;
-  max-width: 90vw;
-  max-height: 80vh;
+  width: 700px;
+  max-width: 92vw;
+  max-height: 85vh;
   z-index: 50;
   background: rgba(15, 20, 15, 0.95);
   backdrop-filter: blur(12px);
@@ -269,13 +284,45 @@ body {
   color: #fff;
 }
 
+/* ── Market Tabs ────────────────────────────────────────────────────────────── */
+#market-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.market-tab-btn {
+  padding: 6px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.market-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.market-tab-btn.active {
+  background: rgba(76, 175, 80, 0.25);
+  border-color: #4caf50;
+  color: #4caf50;
+}
+
 #market-seed-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 8px;
   padding: 14px;
   overflow-y: auto;
-  max-height: calc(80vh - 60px);
+  max-height: calc(85vh - 110px);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
@@ -349,6 +396,361 @@ body {
   background: rgba(0, 0, 0, 0.4);
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+.market-buy-btn {
+  margin-top: 6px;
+  padding: 4px 12px;
+  border: 1px solid #4caf50;
+  border-radius: 6px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  align-self: flex-start;
+}
+
+.market-buy-btn:hover {
+  background: rgba(76, 175, 80, 0.4);
+  color: #fff;
+}
+
+.market-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 30px;
+  color: #888;
+  font-size: 14px;
+}
+
+/* ── Placement Indicator ────────────────────────────────────────────────────── */
+#placement-indicator {
+  position: fixed;
+  bottom: 220px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 24px;
+  background: rgba(30, 144, 255, 0.85);
+  border: 2px solid #1e90ff;
+  border-radius: 10px;
+  z-index: 25;
+  pointer-events: none;
+}
+
+#placement-text {
+  font-size: 15px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.placement-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ── Object Tooltip ─────────────────────────────────────────────────────────── */
+#object-tooltip {
+  position: fixed;
+  z-index: 30;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  pointer-events: none;
+  max-width: 250px;
+}
+
+#tooltip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+#tooltip-info {
+  font-size: 11px;
+  color: #aaa;
+}
+
+/* ── Inventory Panel ────────────────────────────────────────────────────────── */
+#inventory-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  width: 500px;
+  max-width: 90vw;
+  max-height: 70vh;
+  z-index: 50;
+  background: rgba(15, 15, 25, 0.95);
+  backdrop-filter: blur(12px);
+  border: 2px solid rgba(100, 149, 237, 0.4);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#inventory-panel.visible {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#inventory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(100, 149, 237, 0.15);
+  border-bottom: 1px solid rgba(100, 149, 237, 0.3);
+}
+
+#inventory-header h2 {
+  font-size: 18px;
+  color: #6495ed;
+}
+
+#inventory-header-info {
+  font-size: 13px;
+  color: #aaa;
+}
+
+#inventory-close-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#inventory-close-btn:hover {
+  background: rgba(255, 80, 80, 0.3);
+  color: #fff;
+}
+
+#inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  padding: 14px;
+  overflow-y: auto;
+  max-height: calc(70vh - 60px);
+}
+
+.inventory-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.inv-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.inv-item-qty {
+  font-size: 12px;
+  color: #7cfc00;
+}
+
+.inv-item-type {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.inv-sell-btn {
+  margin-top: 4px;
+  padding: 3px 8px;
+  border: 1px solid #ffd700;
+  border-radius: 4px;
+  background: rgba(255, 215, 0, 0.15);
+  color: #ffd700;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+
+.inv-sell-btn:hover {
+  background: rgba(255, 215, 0, 0.3);
+  color: #fff;
+}
+
+.inventory-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 30px;
+  color: #666;
+  font-size: 14px;
+}
+
+/* ── Crafting Panel ─────────────────────────────────────────────────────────── */
+#crafting-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  width: 450px;
+  max-width: 90vw;
+  max-height: 70vh;
+  z-index: 50;
+  background: rgba(20, 15, 10, 0.95);
+  backdrop-filter: blur(12px);
+  border: 2px solid rgba(218, 165, 32, 0.4);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#crafting-panel.visible {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#crafting-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(218, 165, 32, 0.15);
+  border-bottom: 1px solid rgba(218, 165, 32, 0.3);
+}
+
+#crafting-header h2 {
+  font-size: 18px;
+  color: #daa520;
+}
+
+#crafting-close-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#crafting-close-btn:hover {
+  background: rgba(255, 80, 80, 0.3);
+  color: #fff;
+}
+
+#crafting-recipes {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: calc(50vh - 60px);
+}
+
+.craft-recipe-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.craft-recipe-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.craft-recipe-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.craft-recipe-detail {
+  font-size: 11px;
+  color: #aaa;
+}
+
+.craft-recipe-value {
+  font-size: 11px;
+  color: #ffd700;
+}
+
+.craft-btn {
+  padding: 5px 14px;
+  border: 1px solid #daa520;
+  border-radius: 6px;
+  background: rgba(218, 165, 32, 0.2);
+  color: #daa520;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.craft-btn:hover {
+  background: rgba(218, 165, 32, 0.4);
+  color: #fff;
+}
+
+#crafting-queue {
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  color: #aaa;
+}
+
+.craft-queue-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.craft-queue-progress {
+  width: 80px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.craft-queue-fill {
+  height: 100%;
+  background: #daa520;
+  border-radius: 3px;
+  transition: width 0.5s ease;
 }
 
 /* ── Level-up Notification ──────────────────────────────────────────────────── */

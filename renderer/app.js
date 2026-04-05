@@ -1,6 +1,13 @@
+import * as THREE from './js/three.module.min.js'
 import { initScene, animate as renderScene } from './js/scene.js'
 import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth } from './js/crops.js'
 import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, updateSeedStrip } from './js/market.js'
+import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
+import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
+import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildingEffects, updateCraftingQueue, startCrafting } from './js/buildings.js'
+import { DECO_DEFINITIONS, createDecoMesh, createDecoData } from './js/decorations.js'
+import { VEHICLE_DEFINITIONS, createVehicleMesh, getVehicleSpeedMultiplier } from './js/vehicles.js'
+import { initInventory, addItem, removeItem, hasItem, getItemQty, sellItem, getInventory, renderInventoryPanel, setCapacityBonus, getItemCount, getMaxCapacity } from './js/inventory.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -32,6 +39,18 @@ const gameState = {
 }
 window._gameState = gameState
 
+// ── Farm state (placed objects) ──────────────────────────────────────────────
+const farmState = {
+  trees: [],
+  animals: [],
+  buildings: [],
+  decorations: [],
+  ownedVehicles: []
+}
+
+let placementMode = null // { category, key, def, ghostMesh }
+let activeCraftingBuilding = null
+
 // ── DOM elements ─────────────────────────────────────────────────────────────
 const canvas = document.getElementById('game-canvas')
 const setupScreen = document.getElementById('setup-screen')
@@ -48,22 +67,39 @@ const seedStrip = document.getElementById('seed-strip')
 const levelUpNotif = document.getElementById('level-up-notification')
 const levelUpDetail = document.getElementById('level-up-detail')
 const actionFeedback = document.getElementById('action-feedback')
+const vehicleStatusEl = document.getElementById('vehicle-status')
+const inventoryPanel = document.getElementById('inventory-panel')
+const craftingPanel = document.getElementById('crafting-panel')
+const placementIndicator = document.getElementById('placement-indicator')
+const placementText = document.getElementById('placement-text')
+const tooltipEl = document.getElementById('object-tooltip')
+const tooltipTitle = document.getElementById('tooltip-title')
+const tooltipInfo = document.getElementById('tooltip-info')
 
 let sceneData = null
 let terrainData = null
 let lastTime = 0
 const mouse = { x: 0, y: 0 }
+const mousePx = { x: 0, y: 0 }
 
 // ── Initialize Three.js scene ────────────────────────────────────────────────
 sceneData = initScene(canvas)
 terrainData = sceneData.terrainData
 
+// ── Initialize Inventory ─────────────────────────────────────────────────────
+initInventory(() => {
+  if (inventoryPanel && inventoryPanel.classList.contains('visible')) {
+    renderInventoryUI()
+  }
+})
+
 // ── Initialize Market ────────────────────────────────────────────────────────
 initMarket((seedKey) => {
   gameState.selectedSeed = seedKey
-  // Auto-switch to plant tool when selecting from market
   selectTool('plant')
   hideMarket()
+}, (purchase) => {
+  handleMarketBuy(purchase)
 })
 
 // ── Start worker via IPC bridge ──────────────────────────────────────────────
@@ -108,14 +144,13 @@ function updateHUD () {
 
 // ── Tool system ──────────────────────────────────────────────────────────────
 function selectTool (toolName) {
+  cancelPlacement()
   gameState.selectedTool = toolName
 
-  // Update toolbar button visuals
   toolbar.querySelectorAll('.tool-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tool === toolName)
   })
 
-  // Show/hide seed strip
   if (toolName === 'plant') {
     seedStrip.style.display = 'flex'
     updateSeedStrip(gameState.level, seedStrip, (seedKey) => {
@@ -125,7 +160,6 @@ function selectTool (toolName) {
     seedStrip.style.display = 'none'
   }
 
-  // Update cursor
   const cursors = {
     plow: 'crosshair',
     plant: 'cell',
@@ -148,7 +182,7 @@ function deselectTool () {
 // Toolbar click handlers
 toolbar.addEventListener('click', (e) => {
   const btn = e.target.closest('.tool-btn')
-  if (!btn || btn.id === 'market-open-btn') return
+  if (!btn || btn.id === 'market-open-btn' || btn.id === 'inventory-btn') return
 
   const tool = btn.dataset.tool
   if (gameState.selectedTool === tool) {
@@ -170,7 +204,6 @@ function useEnergy (amount) {
 
 function regenEnergy (dt) {
   gameState.lastEnergyRegen += dt
-  // Regen 1 energy every 10 seconds (fast for gameplay)
   if (gameState.lastEnergyRegen >= 10000 && gameState.energy < gameState.maxEnergy) {
     gameState.energy = Math.min(gameState.energy + 1, gameState.maxEnergy)
     gameState.lastEnergyRegen = 0
@@ -181,7 +214,6 @@ function regenEnergy (dt) {
 function addXP (amount) {
   gameState.totalXp += amount
 
-  // Check for level up
   while (gameState.level < LEVEL_THRESHOLDS.length - 1 &&
          gameState.totalXp >= LEVEL_THRESHOLDS[gameState.level + 1]) {
     gameState.level++
@@ -211,6 +243,450 @@ function showFeedback (text, color) {
     actionFeedback.classList.remove('show')
     setTimeout(() => { actionFeedback.style.display = 'none' }, 300)
   }, 1500)
+}
+
+// ── Vehicle status ───────────────────────────────────────────────────────────
+function updateVehicleStatus () {
+  if (!vehicleStatusEl) return
+  if (farmState.ownedVehicles.length === 0) {
+    vehicleStatusEl.style.display = 'none'
+    return
+  }
+  const names = farmState.ownedVehicles.map(v => {
+    const def = VEHICLE_DEFINITIONS[v]
+    return def ? def.name : v
+  })
+  vehicleStatusEl.textContent = 'Vehicles: ' + names.join(', ')
+  vehicleStatusEl.style.display = 'block'
+}
+
+// ── Market buy handler ───────────────────────────────────────────────────────
+function handleMarketBuy ({ category, key, def }) {
+  if (gameState.coins < def.cost) {
+    showFeedback('Not enough coins! (need ' + def.cost + ')', '#ff4444')
+    return
+  }
+
+  if (category === 'vehicle') {
+    if (farmState.ownedVehicles.includes(key)) {
+      showFeedback('Already owned!', '#ffa500')
+      return
+    }
+    gameState.coins -= def.cost
+    farmState.ownedVehicles.push(key)
+    updateVehicleStatus()
+    addXP(10)
+    showFeedback('Bought ' + def.name + '!', '#32cd32')
+    hideMarket()
+    updateHUD()
+    return
+  }
+
+  // Trees, Animals, Buildings, Decorations -> enter placement mode
+  enterPlacementMode(category, key, def)
+  hideMarket()
+}
+
+// ── Placement mode ───────────────────────────────────────────────────────────
+function enterPlacementMode (category, key, def) {
+  cancelPlacement()
+  deselectTool()
+
+  let ghostMesh
+  switch (category) {
+    case 'tree': ghostMesh = createTreeMesh(key, false, 1); break
+    case 'animal': ghostMesh = createAnimalMesh(key); break
+    case 'building': ghostMesh = createBuildingMesh(key); break
+    case 'decoration': ghostMesh = createDecoMesh(key); break
+  }
+
+  if (ghostMesh) {
+    ghostMesh.traverse(child => {
+      if (child.isMesh) {
+        child.material = child.material.clone()
+        child.material.transparent = true
+        child.material.opacity = 0.5
+      }
+    })
+    ghostMesh.position.set(0, 0, 0)
+    sceneData.scene.add(ghostMesh)
+  }
+
+  placementMode = { category, key, def, ghostMesh }
+
+  if (placementIndicator) placementIndicator.style.display = 'flex'
+  if (placementText) placementText.textContent = 'Placing: ' + def.name
+
+  canvas.style.cursor = 'crosshair'
+}
+
+function cancelPlacement () {
+  if (!placementMode) return
+
+  if (placementMode.ghostMesh) {
+    sceneData.scene.remove(placementMode.ghostMesh)
+  }
+
+  placementMode = null
+
+  if (placementIndicator) placementIndicator.style.display = 'none'
+  canvas.style.cursor = 'default'
+}
+
+function updateGhostPosition () {
+  if (!placementMode || !placementMode.ghostMesh) return
+
+  // Raycast to ground plane (y=0)
+  const raycaster = new THREE.Raycaster()
+  const ndc = new THREE.Vector2(mouse.x, mouse.y)
+  raycaster.setFromCamera(ndc, sceneData.camera)
+
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+  const intersection = new THREE.Vector3()
+  raycaster.ray.intersectPlane(groundPlane, intersection)
+
+  if (intersection) {
+    // Snap to grid (2-unit grid)
+    const snappedX = Math.round(intersection.x / 2) * 2
+    const snappedZ = Math.round(intersection.z / 2) * 2
+    placementMode.ghostMesh.position.set(snappedX, 0, snappedZ)
+  }
+}
+
+function confirmPlacement () {
+  if (!placementMode) return
+
+  const pos = placementMode.ghostMesh.position
+  const x = pos.x
+  const z = pos.z
+
+  // Check if position is within farm bounds
+  if (Math.abs(x) > 38 || Math.abs(z) > 38) {
+    showFeedback('Too far from farm!', '#ff4444')
+    return
+  }
+
+  // Deduct cost
+  if (gameState.coins < placementMode.def.cost) {
+    showFeedback('Not enough coins! (need ' + placementMode.def.cost + ')', '#ff4444')
+    return
+  }
+  gameState.coins -= placementMode.def.cost
+
+  // Remove ghost mesh
+  sceneData.scene.remove(placementMode.ghostMesh)
+
+  // Create real object
+  const { category, key, def } = placementMode
+
+  switch (category) {
+    case 'tree': {
+      const data = createTreeData(key, x, z)
+      const mesh = createTreeMesh(key, false, data.growthScale)
+      mesh.position.set(x, 0, z)
+      sceneData.scene.add(mesh)
+      data.mesh = mesh
+      farmState.trees.push(data)
+      addXP(def.xp || 3)
+      break
+    }
+    case 'animal': {
+      const data = createAnimalData(key, x, z)
+      const mesh = createAnimalMesh(key)
+      mesh.position.set(x, 0, z)
+      sceneData.scene.add(mesh)
+      data.mesh = mesh
+      farmState.animals.push(data)
+      addXP(def.xp || 3)
+      break
+    }
+    case 'building': {
+      const data = createBuildingData(key, x, z)
+      const mesh = createBuildingMesh(key)
+      mesh.position.set(x, 0, z)
+      sceneData.scene.add(mesh)
+      data.mesh = mesh
+      farmState.buildings.push(data)
+      // Update building effects
+      const effects = getBuildingEffects(farmState.buildings)
+      setCapacityBonus(effects.storageBonus)
+      addXP(10)
+      break
+    }
+    case 'decoration': {
+      const data = createDecoData(key, x, z)
+      const mesh = createDecoMesh(key)
+      mesh.position.set(x, 0, z)
+      sceneData.scene.add(mesh)
+      data.mesh = mesh
+      farmState.decorations.push(data)
+      addXP(def.bonus || 1)
+      break
+    }
+  }
+
+  showFeedback('Placed ' + def.name + '! -' + def.cost + ' coins', '#32cd32')
+
+  // Clear placement mode
+  placementMode = null
+  if (placementIndicator) placementIndicator.style.display = 'none'
+  canvas.style.cursor = 'default'
+  updateHUD()
+}
+
+// ── Object interaction ───────────────────────────────────────────────────────
+function handleObjectClick (px, py) {
+  // Raycast against all placed object meshes
+  const raycaster = new THREE.Raycaster()
+  const ndc = new THREE.Vector2(mouse.x, mouse.y)
+  raycaster.setFromCamera(ndc, sceneData.camera)
+
+  // Collect all meshes from placed objects
+  const allMeshes = []
+  const objectMap = new Map()
+
+  for (const tree of farmState.trees) {
+    if (tree.mesh) {
+      tree.mesh.traverse(child => {
+        if (child.isMesh) {
+          allMeshes.push(child)
+          objectMap.set(child.id, { type: 'tree', data: tree })
+        }
+      })
+    }
+  }
+  for (const animal of farmState.animals) {
+    if (animal.mesh) {
+      animal.mesh.traverse(child => {
+        if (child.isMesh) {
+          allMeshes.push(child)
+          objectMap.set(child.id, { type: 'animal', data: animal })
+        }
+      })
+    }
+  }
+  for (const building of farmState.buildings) {
+    if (building.mesh) {
+      building.mesh.traverse(child => {
+        if (child.isMesh) {
+          allMeshes.push(child)
+          objectMap.set(child.id, { type: 'building', data: building })
+        }
+      })
+    }
+  }
+
+  const intersects = raycaster.intersectObjects(allMeshes, false)
+  if (intersects.length === 0) return false
+
+  const hit = intersects[0]
+  const obj = objectMap.get(hit.object.id)
+  if (!obj) return false
+
+  switch (obj.type) {
+    case 'tree': handleTreeInteract(obj.data); break
+    case 'animal': handleAnimalInteract(obj.data); break
+    case 'building': handleBuildingInteract(obj.data); break
+  }
+
+  return true
+}
+
+function handleTreeInteract (tree) {
+  const def = TREE_DEFINITIONS[tree.type]
+  if (!def) return
+
+  if (isTreeReady(tree)) {
+    if (!useEnergy(ENERGY_COST)) return
+    const reward = harvestTree(tree)
+    if (reward) {
+      gameState.coins += reward.coins
+      addXP(reward.xp)
+      // Add product to inventory
+      addItem(tree.type + '_fruit', 1, { name: reward.product, type: 'fruit', sellPrice: reward.coins })
+      showFeedback('Harvested ' + reward.product + '! +' + reward.coins + ' coins', '#ffd700')
+      // Rebuild mesh without fruits
+      if (tree.mesh) sceneData.scene.remove(tree.mesh)
+      tree.mesh = createTreeMesh(tree.type, false, tree.growthScale)
+      tree.mesh.position.set(tree.x, 0, tree.z)
+      sceneData.scene.add(tree.mesh)
+    }
+  } else if (tree.growthScale < 1) {
+    showFeedback(def.name + ' is still growing...', '#7df9ff')
+  } else {
+    const elapsed = Date.now() - (tree.lastHarvest || tree.plantedAt)
+    const remaining = Math.max(0, def.harvestTime - elapsed)
+    const secs = Math.ceil(remaining / 1000)
+    showFeedback(def.name + ' fruit in ' + secs + 's', '#7df9ff')
+  }
+  updateHUD()
+}
+
+function handleAnimalInteract (animal) {
+  const def = ANIMAL_DEFINITIONS[animal.type]
+  if (!def) return
+
+  if (animal.productReady) {
+    // Collect product
+    if (!useEnergy(ENERGY_COST)) return
+    const reward = collectAnimalProduct(animal)
+    if (reward) {
+      gameState.coins += reward.coins
+      addXP(reward.xp)
+      addItem(animal.type + '_product', 1, { name: reward.product, type: 'animal product', sellPrice: reward.coins })
+      showFeedback('Collected ' + reward.product + '! +' + reward.coins + ' coins', '#ffd700')
+    }
+  } else if (!animal.fed) {
+    // Feed animal
+    if (gameState.coins < def.feedCost) {
+      showFeedback('Not enough coins to feed! (need ' + def.feedCost + ')', '#ff4444')
+      return
+    }
+    if (!useEnergy(ENERGY_COST)) return
+    const result = feedAnimal(animal)
+    if (result) {
+      gameState.coins -= result.feedCost
+      showFeedback('Fed ' + def.name + '! -' + result.feedCost + ' coins', '#32cd32')
+    }
+  } else {
+    // Waiting for product
+    const elapsed = Date.now() - animal.lastFed
+    const remaining = Math.max(0, def.harvestTime - elapsed)
+    const secs = Math.ceil(remaining / 1000)
+    showFeedback(def.name + ': ' + def.product + ' in ' + secs + 's', '#7df9ff')
+  }
+  updateHUD()
+}
+
+function handleBuildingInteract (building) {
+  const def = BUILDING_DEFINITIONS[building.type]
+  if (!def) return
+
+  if (def.type === 'crafting') {
+    openCraftingPanel(building)
+  } else if (def.type === 'storage') {
+    showFeedback(def.name + ': +' + (def.capacity || 0) + ' storage capacity', '#6495ed')
+  } else {
+    showFeedback(def.name + ': ' + (def.effect || 'Active'), '#dda0dd')
+  }
+}
+
+// ── Crafting panel ───────────────────────────────────────────────────────────
+function openCraftingPanel (building) {
+  const def = BUILDING_DEFINITIONS[building.type]
+  if (!def || !def.recipes) return
+
+  activeCraftingBuilding = building
+
+  const titleEl = document.getElementById('crafting-title')
+  if (titleEl) titleEl.textContent = def.name + ' - Crafting'
+
+  const recipesEl = document.getElementById('crafting-recipes')
+  if (recipesEl) {
+    recipesEl.innerHTML = ''
+    def.recipes.forEach((recipe, idx) => {
+      const card = document.createElement('div')
+      card.className = 'craft-recipe-card'
+
+      const hasInput = hasItem(recipe.input, recipe.inputQty)
+
+      card.innerHTML = `
+        <div class="craft-recipe-info">
+          <div class="craft-recipe-name">${recipe.output.replace(/_/g, ' ')}</div>
+          <div class="craft-recipe-detail">${recipe.inputQty}x ${recipe.input} -> ${recipe.outputQty}x ${recipe.output.replace(/_/g, ' ')}</div>
+          <div class="craft-recipe-value">Sells for ${recipe.value} coins | ${Math.round(recipe.time / 1000)}s</div>
+        </div>
+        <button class="craft-btn" ${!hasInput ? 'disabled style="opacity:0.4"' : ''}>Craft</button>
+      `
+
+      const btn = card.querySelector('.craft-btn')
+      if (btn && hasInput) {
+        btn.addEventListener('click', () => {
+          if (!removeItem(recipe.input, recipe.inputQty)) {
+            showFeedback('Missing materials!', '#ff4444')
+            return
+          }
+          startCrafting(building, idx)
+          showFeedback('Crafting ' + recipe.output.replace(/_/g, ' ') + '...', '#daa520')
+          openCraftingPanel(building) // refresh
+        })
+      }
+
+      recipesEl.appendChild(card)
+    })
+  }
+
+  // Render crafting queue
+  renderCraftingQueue(building)
+
+  if (craftingPanel) {
+    craftingPanel.classList.add('visible')
+  }
+}
+
+function renderCraftingQueue (building) {
+  const queueEl = document.getElementById('crafting-queue')
+  if (!queueEl) return
+
+  if (!building.craftQueue || building.craftQueue.length === 0) {
+    queueEl.innerHTML = '<div style="color:#666;font-size:12px;">No items in queue</div>'
+    return
+  }
+
+  queueEl.innerHTML = ''
+  for (const item of building.craftQueue) {
+    const elapsed = Date.now() - item.startedAt
+    const progress = Math.min(1, elapsed / item.recipe.time)
+    const div = document.createElement('div')
+    div.className = 'craft-queue-item'
+    div.innerHTML = `
+      <span>${item.recipe.output.replace(/_/g, ' ')}</span>
+      <div class="craft-queue-progress"><div class="craft-queue-fill" style="width:${progress * 100}%"></div></div>
+    `
+    queueEl.appendChild(div)
+  }
+}
+
+function closeCraftingPanel () {
+  activeCraftingBuilding = null
+  if (craftingPanel) craftingPanel.classList.remove('visible')
+}
+
+// ── Inventory panel ──────────────────────────────────────────────────────────
+function toggleInventory () {
+  if (!inventoryPanel) return
+  if (inventoryPanel.classList.contains('visible')) {
+    inventoryPanel.classList.remove('visible')
+  } else {
+    renderInventoryUI()
+    inventoryPanel.classList.add('visible')
+  }
+}
+
+function renderInventoryUI () {
+  renderInventoryPanel(inventoryPanel, (itemId, qty) => {
+    const result = sellItem(itemId, qty)
+    if (result) {
+      gameState.coins += result.coins
+      showFeedback('Sold for ' + result.coins + ' coins!', '#ffd700')
+      updateHUD()
+      renderInventoryUI()
+    }
+  })
+}
+
+// ── Tooltip ──────────────────────────────────────────────────────────────────
+function showTooltip (title, info, px, py) {
+  if (!tooltipEl) return
+  tooltipTitle.textContent = title
+  tooltipInfo.textContent = info
+  tooltipEl.style.left = (px + 15) + 'px'
+  tooltipEl.style.top = (py + 15) + 'px'
+  tooltipEl.style.display = 'block'
+}
+
+function hideTooltip () {
+  if (tooltipEl) tooltipEl.style.display = 'none'
 }
 
 // ── Plot click actions ───────────────────────────────────────────────────────
@@ -275,7 +751,6 @@ function handlePlant (plot) {
 
   gameState.coins -= cropDef.seedCost
 
-  // Create crop data
   plot.crop = {
     type: seedKey,
     plantedAt: Date.now(),
@@ -285,7 +760,6 @@ function handlePlant (plot) {
     growthAccum: 0
   }
 
-  // Create crop mesh
   const cropMesh = createCropMesh(seedKey, 0)
   cropMesh.position.set(plot.x, 0.08, plot.z)
   sceneData.scene.add(cropMesh)
@@ -338,6 +812,9 @@ function handleHarvest (plot) {
   gameState.coins += cropDef.sellPrice
   addXP(cropDef.xp)
 
+  // Add harvested crop to inventory
+  addItem(plot.crop.type, 1, { name: cropDef.name, type: 'crop', sellPrice: cropDef.sellPrice })
+
   // Remove crop mesh
   if (plot.cropMesh) {
     sceneData.scene.remove(plot.cropMesh)
@@ -358,7 +835,6 @@ function handleRemove (plot) {
   const cropDef = CROP_DEFINITIONS[plot.crop.type]
   const name = cropDef ? cropDef.name : 'crop'
 
-  // Remove crop mesh
   if (plot.cropMesh) {
     sceneData.scene.remove(plot.cropMesh)
     plot.cropMesh = null
@@ -368,26 +844,137 @@ function handleRemove (plot) {
   showFeedback('Removed ' + name + ' (no refund)', '#ff6347')
 }
 
-// ── Mouse click -> raycast to plot ───────────────────────────────────────────
+// ── Mouse tracking ───────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
+  mousePx.x = e.clientX
+  mousePx.y = e.clientY
+
+  // Update ghost mesh position during placement
+  if (placementMode) {
+    updateGhostPosition()
+  }
+
+  // Tooltip on hover over placed objects (when no tool/placement active)
+  if (!placementMode && !gameState.selectedTool && gameState.running) {
+    updateHoverTooltip()
+  } else {
+    hideTooltip()
+  }
+})
+
+function updateHoverTooltip () {
+  const raycaster = new THREE.Raycaster()
+  const ndc = new THREE.Vector2(mouse.x, mouse.y)
+  raycaster.setFromCamera(ndc, sceneData.camera)
+
+  const allMeshes = []
+  const objectMap = new Map()
+
+  for (const tree of farmState.trees) {
+    if (tree.mesh) {
+      tree.mesh.traverse(child => {
+        if (child.isMesh) { allMeshes.push(child); objectMap.set(child.id, { type: 'tree', data: tree }) }
+      })
+    }
+  }
+  for (const animal of farmState.animals) {
+    if (animal.mesh) {
+      animal.mesh.traverse(child => {
+        if (child.isMesh) { allMeshes.push(child); objectMap.set(child.id, { type: 'animal', data: animal }) }
+      })
+    }
+  }
+  for (const building of farmState.buildings) {
+    if (building.mesh) {
+      building.mesh.traverse(child => {
+        if (child.isMesh) { allMeshes.push(child); objectMap.set(child.id, { type: 'building', data: building }) }
+      })
+    }
+  }
+
+  const intersects = raycaster.intersectObjects(allMeshes, false)
+  if (intersects.length === 0) { hideTooltip(); return }
+
+  const obj = objectMap.get(intersects[0].object.id)
+  if (!obj) { hideTooltip(); return }
+
+  let title = ''
+  let info = ''
+  switch (obj.type) {
+    case 'tree': {
+      const def = TREE_DEFINITIONS[obj.data.type]
+      title = def ? def.name : obj.data.type
+      info = isTreeReady(obj.data) ? 'Click to harvest!' : 'Growing...'
+      break
+    }
+    case 'animal': {
+      const def = ANIMAL_DEFINITIONS[obj.data.type]
+      title = def ? def.name : obj.data.type
+      if (obj.data.productReady) info = 'Click to collect ' + (def ? def.product : 'product') + '!'
+      else if (obj.data.fed) info = 'Producing...'
+      else info = 'Click to feed'
+      break
+    }
+    case 'building': {
+      const def = BUILDING_DEFINITIONS[obj.data.type]
+      title = def ? def.name : obj.data.type
+      info = def ? (def.type === 'crafting' ? 'Click to craft' : def.effect) : ''
+      break
+    }
+  }
+  showTooltip(title, info, mousePx.x, mousePx.y)
+}
+
+// ── Mouse click -> raycast to plot or object ─────────────────────────────────
 canvas.addEventListener('click', (e) => {
   if (!gameState.running || !terrainData) return
 
-  // Convert mouse to normalized device coordinates
   mouse.x = (e.clientX / window.innerWidth) * 2 - 1
   mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
 
-  const plot = terrainData.getPlotFromRaycast(mouse, sceneData.camera)
-  handlePlotClick(plot)
+  // If in placement mode, confirm placement
+  if (placementMode) {
+    confirmPlacement()
+    return
+  }
+
+  // If a tool is selected, try plot actions
+  if (gameState.selectedTool) {
+    const plot = terrainData.getPlotFromRaycast(mouse, sceneData.camera)
+    handlePlotClick(plot)
+    return
+  }
+
+  // Otherwise, try to interact with placed objects
+  handleObjectClick(mousePx.x, mousePx.y)
 })
 
-// Right-click or ESC to deselect tool
+// Right-click or ESC to deselect tool / cancel placement
 canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault()
-  deselectTool()
+  if (placementMode) {
+    cancelPlacement()
+  } else {
+    deselectTool()
+  }
 })
 
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') deselectTool()
+  if (e.key === 'Escape') {
+    if (placementMode) cancelPlacement()
+    else if (craftingPanel && craftingPanel.classList.contains('visible')) closeCraftingPanel()
+    else if (inventoryPanel && inventoryPanel.classList.contains('visible')) inventoryPanel.classList.remove('visible')
+    else deselectTool()
+    return
+  }
+
+  // I key for inventory
+  if (e.key === 'i' || e.key === 'I') {
+    if (gameState.running) toggleInventory()
+    return
+  }
 
   // Number keys for quick tool select
   const toolKeys = { '1': 'plow', '2': 'plant', '3': 'water', '4': 'harvest', '5': 'remove' }
@@ -396,23 +983,49 @@ window.addEventListener('keydown', (e) => {
   }
 })
 
+// Inventory button
+const invBtn = document.getElementById('inventory-btn')
+if (invBtn) {
+  invBtn.addEventListener('click', () => {
+    if (gameState.running) toggleInventory()
+  })
+}
+
+// Inventory close button
+const invCloseBtn = document.getElementById('inventory-close-btn')
+if (invCloseBtn) {
+  invCloseBtn.addEventListener('click', () => {
+    if (inventoryPanel) inventoryPanel.classList.remove('visible')
+  })
+}
+
+// Crafting close button
+const craftCloseBtn = document.getElementById('crafting-close-btn')
+if (craftCloseBtn) {
+  craftCloseBtn.addEventListener('click', () => {
+    closeCraftingPanel()
+  })
+}
+
 // ── Crop growth update ───────────────────────────────────────────────────────
 function updateCrops (dtMs) {
   if (!terrainData) return
+
+  // Apply building effects
+  const effects = getBuildingEffects(farmState.buildings)
+  const growthMul = effects.cropGrowthMultiplier
 
   const allPlots = terrainData.getAllPlots()
   for (const plot of allPlots) {
     if (!plot.crop || plot.state !== terrainData.PLOT_STATES.PLANTED) continue
 
-    const stageChanged = updateCropGrowth(plot.crop, dtMs)
+    const stageChanged = updateCropGrowth(plot.crop, dtMs * growthMul)
 
     if (stageChanged) {
-      // Remove old mesh
       if (plot.cropMesh) {
         sceneData.scene.remove(plot.cropMesh)
       }
 
-      // Create new mesh for current stage
       if (plot.crop.withered) {
         plot.cropMesh = createWitheredMesh(plot.crop.type)
       } else {
@@ -421,6 +1034,53 @@ function updateCrops (dtMs) {
       plot.cropMesh.position.set(plot.x, 0.08, plot.z)
       sceneData.scene.add(plot.cropMesh)
     }
+  }
+}
+
+// ── Tree growth update ───────────────────────────────────────────────────────
+function updateTrees (dtMs) {
+  const effects = getBuildingEffects(farmState.buildings)
+  const growthMul = effects.treeGrowthMultiplier
+
+  for (const tree of farmState.trees) {
+    const changed = updateTreeGrowth(tree, dtMs * growthMul)
+    if (changed && tree.mesh) {
+      sceneData.scene.remove(tree.mesh)
+      tree.mesh = createTreeMesh(tree.type, tree.mature, tree.growthScale)
+      tree.mesh.position.set(tree.x, 0, tree.z)
+      sceneData.scene.add(tree.mesh)
+    }
+  }
+}
+
+// ── Animal update ────────────────────────────────────────────────────────────
+function updateAnimals (dtMs) {
+  for (const animal of farmState.animals) {
+    updateAnimalState(animal, dtMs)
+  }
+}
+
+// ── Building crafting update ─────────────────────────────────────────────────
+function updateBuildings (dtMs) {
+  for (const building of farmState.buildings) {
+    const completed = updateCraftingQueue(building, dtMs)
+    for (const item of completed) {
+      // Add crafted item to inventory
+      const recipe = item.recipe
+      addItem(recipe.output, recipe.outputQty, {
+        name: recipe.output.replace(/_/g, ' '),
+        type: 'crafted',
+        sellPrice: recipe.value
+      })
+      gameState.coins += recipe.value
+      addXP(5)
+      showFeedback('Crafted ' + recipe.output.replace(/_/g, ' ') + '! +' + recipe.value + ' coins', '#daa520')
+    }
+  }
+
+  // Refresh crafting panel if open
+  if (activeCraftingBuilding && craftingPanel && craftingPanel.classList.contains('visible')) {
+    renderCraftingQueue(activeCraftingBuilding)
   }
 }
 
@@ -436,7 +1096,6 @@ function gameLoop (time) {
   const dt = lastTime ? (time - lastTime) / 1000 : 0
   lastTime = time
 
-  // Cap delta time to avoid large jumps
   const clampedDt = Math.min(dt, 0.1)
   const dtMs = clampedDt * 1000
 
@@ -444,8 +1103,11 @@ function gameLoop (time) {
   window.PlayerController.updatePlayer(clampedDt)
   window.PlayerController.updateCamera(sceneData.camera)
 
-  // Update crops growth (time-based)
+  // Update systems
   updateCrops(dtMs)
+  updateTrees(dtMs)
+  updateAnimals(dtMs)
+  updateBuildings(dtMs)
 
   // Energy regen
   regenEnergy(dtMs)
@@ -470,7 +1132,6 @@ function startGame () {
   gameState.running = true
   gameState.lastEnergyRegen = 0
 
-  // Hide setup, show HUD + chat
   setupScreen.style.display = 'none'
   hud.style.display = 'block'
   chatPanel.style.display = 'flex'
@@ -480,6 +1141,7 @@ function startGame () {
 
   // Update HUD
   updateHUD()
+  updateVehicleStatus()
 
   // Notify worker
   if (window.IPCBridge && window.IPCBridge.available) {
@@ -495,7 +1157,7 @@ farmNameInput.addEventListener('keydown', (e) => {
   farmNameInput.style.borderColor = '#4caf50'
 })
 
-// Chat form (placeholder - will connect to P2P in Phase 5)
+// Chat form
 document.getElementById('chat-form').addEventListener('submit', (e) => {
   e.preventDefault()
   const input = document.getElementById('chat-input')

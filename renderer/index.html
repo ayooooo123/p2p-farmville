@@ -18,6 +18,7 @@
           <div id="energy-display">Energy: 30/30</div>
           <div id="energy-bar"><div id="energy-bar-fill"></div></div>
         </div>
+        <div id="vehicle-status" style="display: none;"></div>
       </div>
 
       <!-- Toolbar -->
@@ -38,6 +39,9 @@
           <span class="tool-icon">✖</span><span class="tool-label">Remove</span>
         </button>
         <div class="toolbar-spacer"></div>
+        <button id="inventory-btn" class="tool-btn tool-btn-inv" title="Inventory (I)">
+          <span class="tool-icon">📦</span><span class="tool-label">Items</span>
+        </button>
         <button id="market-open-btn" class="tool-btn tool-btn-market" title="Open Market">
           <span class="tool-icon">🏪</span><span class="tool-label">Market</span>
         </button>
@@ -45,6 +49,12 @@
 
       <!-- Seed Selector Strip (visible when plant tool selected) -->
       <div id="seed-strip" style="display: none;"></div>
+
+      <!-- Placement mode indicator -->
+      <div id="placement-indicator" style="display: none;">
+        <span id="placement-text">Placing: ---</span>
+        <span class="placement-hint">Click to place | ESC to cancel</span>
+      </div>
 
       <!-- Level-up notification -->
       <div id="level-up-notification" style="display: none;">
@@ -54,15 +64,41 @@
 
       <!-- Action feedback -->
       <div id="action-feedback" style="display: none;"></div>
+
+      <!-- Object info tooltip -->
+      <div id="object-tooltip" style="display: none;">
+        <div id="tooltip-title"></div>
+        <div id="tooltip-info"></div>
+      </div>
     </div>
 
     <!-- Market Panel -->
     <div id="market-panel">
       <div id="market-header">
-        <h2>Seed Market</h2>
+        <h2>Market</h2>
         <button id="market-close-btn">X</button>
       </div>
       <div id="market-seed-grid"></div>
+    </div>
+
+    <!-- Inventory Panel -->
+    <div id="inventory-panel" style="display: none;">
+      <div id="inventory-header">
+        <h2>Inventory</h2>
+        <span id="inventory-header-info">0/50 items</span>
+        <button id="inventory-close-btn">X</button>
+      </div>
+      <div id="inventory-grid"></div>
+    </div>
+
+    <!-- Crafting Panel -->
+    <div id="crafting-panel" style="display: none;">
+      <div id="crafting-header">
+        <h2 id="crafting-title">Crafting</h2>
+        <button id="crafting-close-btn">X</button>
+      </div>
+      <div id="crafting-recipes"></div>
+      <div id="crafting-queue"></div>
     </div>
 
     <!-- Setup Screen -->
