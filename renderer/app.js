@@ -9,6 +9,10 @@ import { DECO_DEFINITIONS, createDecoMesh, createDecoData } from './js/decoratio
 import { VEHICLE_DEFINITIONS, createVehicleMesh, getVehicleSpeedMultiplier } from './js/vehicles.js'
 import { initInventory, addItem, removeItem, hasItem, getItemQty, sellItem, getInventory, renderInventoryPanel, setCapacityBonus, getItemCount, getMaxCapacity } from './js/inventory.js'
 import * as NeighborRenderer from './js/neighbor-renderer.js'
+import { initMastery, recordHarvest, getMasteryData, getMasteryStars, getMasteryStarHTML, renderMasteryPanel, getMasteryLevel } from './js/mastery.js'
+import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel, isSetComplete, getCompletedSetsCount, getTotalItemsFound, COLLECTION_DEFINITIONS } from './js/collections.js'
+import { initAchievements, updateStats, getAchievementState, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
+import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -36,7 +40,23 @@ const gameState = {
   running: false,
   selectedTool: null,
   selectedSeed: null,
-  lastEnergyRegen: 0
+  lastEnergyRegen: 0,
+  // Phase 6: Progression tracking
+  totalHarvests: 0,
+  totalPlanted: 0,
+  totalPlowed: 0,
+  totalWatered: 0,
+  totalCoinsEarned: 0,
+  itemsSold: 0,
+  itemsCrafted: 0,
+  sessionsPlayed: 0,
+  giftsSent: 0,
+  tradesCompleted: 0,
+  chatMessages: 0,
+  coopCompleted: 0,
+  farmsVisited: 0,
+  animalsFed: 0,
+  animalProductsCollected: 0
 }
 window._gameState = gameState
 
@@ -124,6 +144,37 @@ initMarket((seedKey) => {
 }, (purchase) => {
   handleMarketBuy(purchase)
 })
+
+// ── Initialize Phase 6: Progression Systems ─────────────────────────────────
+initMastery({}, (cropKey, newLevel) => {
+  const def = CROP_DEFINITIONS[cropKey]
+  const name = def ? def.name : cropKey
+  showMasteryNotification(name, newLevel)
+})
+
+initCollections({}, (item, setKey, set) => {
+  showCollectionNotification(item, set)
+})
+
+initAchievements({}, (achievement) => {
+  showAchievementNotification(achievement)
+  if (achievement.reward) {
+    if (achievement.reward.coins) {
+      gameState.coins += achievement.reward.coins
+      gameState.totalCoinsEarned += achievement.reward.coins
+    }
+    if (achievement.reward.xp) addXP(achievement.reward.xp)
+  }
+})
+
+initExpansion(null, 0) // scene set later in startGame
+
+// Phase 6 DOM elements
+const masteryPanel = document.getElementById('mastery-panel')
+const collectionsPanel = document.getElementById('collections-panel')
+const achievementsPanel = document.getElementById('achievements-panel')
+const expansionPanel = document.getElementById('expansion-panel')
+const progressNotifArea = document.getElementById('progress-notification-area')
 
 // ── Start worker via IPC bridge ──────────────────────────────────────────────
 if (window.IPCBridge && window.IPCBridge.available) {
@@ -302,6 +353,110 @@ function showFeedback (text, color) {
     actionFeedback.classList.remove('show')
     setTimeout(() => { actionFeedback.style.display = 'none' }, 300)
   }, 1500)
+}
+
+// ── Phase 6: Notification helpers ───────────────────────────────────────────
+function showProgressNotification (html, duration) {
+  if (!progressNotifArea) return
+  const notif = document.createElement('div')
+  notif.className = 'progress-notif show'
+  notif.innerHTML = html
+  progressNotifArea.appendChild(notif)
+  setTimeout(() => {
+    notif.classList.remove('show')
+    setTimeout(() => notif.remove(), 400)
+  }, duration || 3000)
+}
+
+function showMasteryNotification (cropName, level) {
+  showProgressNotification(
+    '<div class="notif-mastery">' +
+      '<span class="notif-icon" style="color:' + level.color + '">' + level.icon + '</span> ' +
+      '<span><b>' + cropName + '</b> reached <b style="color:' + level.color + '">' + level.name + '</b> mastery!</span>' +
+    '</div>', 4000
+  )
+}
+
+function showCollectionNotification (item, set) {
+  const rarityColors = { common: '#aaa', uncommon: '#4caf50', rare: '#2196f3', epic: '#e040fb' }
+  showProgressNotification(
+    '<div class="notif-collection">' +
+      '<span class="notif-sparkle">&#10024;</span> ' +
+      '<span>Found <b style="color:' + (rarityColors[item.rarity] || '#fff') + '">' + item.icon + ' ' + item.name + '</b></span>' +
+      '<span class="notif-set-name"> from ' + set.name + '</span>' +
+    '</div>', 3500
+  )
+}
+
+function showAchievementNotification (achievement) {
+  showProgressNotification(
+    '<div class="notif-achievement">' +
+      '<span class="notif-icon">&#127942;</span> ' +
+      '<span>Achievement Unlocked: <b>' + achievement.name + '</b></span>' +
+      (achievement.reward.coins ? '<span class="notif-reward">+' + achievement.reward.coins + ' coins</span>' : '') +
+    '</div>', 4500
+  )
+}
+
+// ── Phase 6: Check achievements after actions ───────────────────────────────
+function checkAchievements () {
+  const masteryData = getMasteryData()
+  let masteredCrops = 0
+  let goldMastery = 0
+  let allBronze = true
+  const plantedCropKeys = Object.keys(masteryData)
+
+  for (const key of plantedCropKeys) {
+    const level = getMasteryLevel(key)
+    if (level.stars >= 1) masteredCrops++
+    if (level.stars >= 3) goldMastery++
+    if (level.stars < 1) allBronze = false
+  }
+  if (plantedCropKeys.length === 0) allBronze = false
+
+  updateStats({
+    totalHarvests: gameState.totalHarvests,
+    totalPlanted: gameState.totalPlanted,
+    totalPlowed: gameState.totalPlowed,
+    totalWatered: gameState.totalWatered,
+    totalCoinsEarned: gameState.totalCoinsEarned,
+    itemsSold: gameState.itemsSold,
+    itemsCrafted: gameState.itemsCrafted,
+    sessionsPlayed: gameState.sessionsPlayed,
+    giftsSent: gameState.giftsSent,
+    tradesCompleted: gameState.tradesCompleted,
+    chatMessages: gameState.chatMessages,
+    coopCompleted: gameState.coopCompleted,
+    farmsVisited: gameState.farmsVisited,
+    animalsFed: gameState.animalsFed,
+    animalProductsCollected: gameState.animalProductsCollected,
+    level: gameState.level,
+    neighborsFound: p2pState.neighbors.length,
+    buildingsPlaced: farmState.buildings.length,
+    treesPlanted: farmState.trees.length,
+    decorationsPlaced: farmState.decorations.length,
+    animalsBought: farmState.animals.length,
+    masteredCrops,
+    goldMastery,
+    allBronze,
+    completedCollections: getCompletedSetsCount(),
+    expansionTier: getCurrentTier()
+  })
+}
+
+// ── Phase 6: Panel toggle helpers ───────────────────────────────────────────
+function togglePanel (panel) {
+  if (!panel) return
+  const isVisible = panel.classList.contains('visible')
+  // Close all Phase 6 panels first
+  ;[masteryPanel, collectionsPanel, achievementsPanel, expansionPanel].forEach(p => {
+    if (p) p.classList.remove('visible')
+  })
+  if (!isVisible) panel.classList.add('visible')
+}
+
+function closePanelIfOpen (panel) {
+  if (panel) panel.classList.remove('visible')
 }
 
 // ── Vehicle status ───────────────────────────────────────────────────────────
@@ -561,6 +716,7 @@ function handleTreeInteract (tree) {
     const reward = harvestTree(tree)
     if (reward) {
       gameState.coins += reward.coins
+      gameState.totalCoinsEarned += reward.coins
       addXP(reward.xp)
       // Add product to inventory
       addItem(tree.type + '_fruit', 1, { name: reward.product, type: 'fruit', sellPrice: reward.coins })
@@ -592,9 +748,12 @@ function handleAnimalInteract (animal) {
     const reward = collectAnimalProduct(animal)
     if (reward) {
       gameState.coins += reward.coins
+      gameState.totalCoinsEarned += reward.coins
+      gameState.animalProductsCollected++
       addXP(reward.xp)
       addItem(animal.type + '_product', 1, { name: reward.product, type: 'animal product', sellPrice: reward.coins })
       showFeedback('Collected ' + reward.product + '! +' + reward.coins + ' coins', '#ffd700')
+      checkAchievements()
     }
   } else if (!animal.fed) {
     // Feed animal
@@ -605,6 +764,7 @@ function handleAnimalInteract (animal) {
     if (!useEnergy(ENERGY_COST)) return
     const result = feedAnimal(animal)
     if (result) {
+      gameState.animalsFed++
       gameState.coins -= result.feedCost
       showFeedback('Fed ' + def.name + '! -' + result.feedCost + ' coins', '#32cd32')
     }
@@ -728,9 +888,12 @@ function renderInventoryUI () {
     const result = sellItem(itemId, qty)
     if (result) {
       gameState.coins += result.coins
+      gameState.totalCoinsEarned += result.coins
+      gameState.itemsSold++
       showFeedback('Sold for ' + result.coins + ' coins!', '#ffd700')
       updateHUD()
       renderInventoryUI()
+      checkAchievements()
     }
   })
 }
@@ -786,8 +949,10 @@ function handlePlow (plot) {
 
   gameState.coins -= PLOW_COST
   addXP(PLOW_XP)
+  gameState.totalPlowed++
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
   showFeedback('Plowed! -' + PLOW_COST + ' coins', '#daa520')
+  checkAchievements()
   syncFarmStateNow()
 }
 
@@ -827,7 +992,9 @@ function handlePlant (plot) {
   plot.cropMesh = cropMesh
 
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLANTED)
+  gameState.totalPlanted++
   showFeedback('Planted ' + cropDef.name + '! -' + cropDef.seedCost + ' coins', '#32cd32')
+  checkAchievements()
   syncFarmStateNow()
 }
 
@@ -847,7 +1014,9 @@ function handleWater (plot) {
   if (!useEnergy(ENERGY_COST)) return
 
   plot.crop.watered = true
+  gameState.totalWatered++
   showFeedback('Watered! Growth speed 2x', '#4169e1')
+  checkAchievements()
 }
 
 function handleHarvest (plot) {
@@ -871,11 +1040,21 @@ function handleHarvest (plot) {
   if (!useEnergy(ENERGY_COST)) return
 
   // Harvest rewards
+  const cropType = plot.crop.type
   gameState.coins += cropDef.sellPrice
-  addXP(cropDef.xp)
+  gameState.totalCoinsEarned += cropDef.sellPrice
+  gameState.totalHarvests++
+
+  // Mastery: record harvest and get XP bonus
+  const masteryResult = recordHarvest(cropType)
+  const masteryBonus = masteryResult ? masteryResult.xpBonus : 0
+  addXP(cropDef.xp + masteryBonus)
+
+  // Collection: roll for rare drop (5% chance)
+  const drop = rollForDrop(0.05)
 
   // Add harvested crop to inventory
-  addItem(plot.crop.type, 1, { name: cropDef.name, type: 'crop', sellPrice: cropDef.sellPrice })
+  addItem(cropType, 1, { name: cropDef.name, type: 'crop', sellPrice: cropDef.sellPrice })
 
   // Remove crop mesh
   if (plot.cropMesh) {
@@ -884,7 +1063,12 @@ function handleHarvest (plot) {
   }
   plot.crop = null
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
-  showFeedback('Harvested ' + cropDef.name + '! +' + cropDef.sellPrice + ' coins, +' + cropDef.xp + ' XP', '#ffd700')
+
+  let feedbackText = 'Harvested ' + cropDef.name + '! +' + cropDef.sellPrice + ' coins, +' + (cropDef.xp + masteryBonus) + ' XP'
+  if (masteryBonus > 0) feedbackText += ' (+' + masteryBonus + ' mastery)'
+  showFeedback(feedbackText, '#ffd700')
+
+  checkAchievements()
   syncFarmStateNow()
 }
 
@@ -1029,6 +1213,10 @@ window.addEventListener('keydown', (e) => {
     if (placementMode) cancelPlacement()
     else if (craftingPanel && craftingPanel.classList.contains('visible')) closeCraftingPanel()
     else if (inventoryPanel && inventoryPanel.classList.contains('visible')) inventoryPanel.classList.remove('visible')
+    else if (masteryPanel && masteryPanel.classList.contains('visible')) closePanelIfOpen(masteryPanel)
+    else if (collectionsPanel && collectionsPanel.classList.contains('visible')) closePanelIfOpen(collectionsPanel)
+    else if (achievementsPanel && achievementsPanel.classList.contains('visible')) closePanelIfOpen(achievementsPanel)
+    else if (expansionPanel && expansionPanel.classList.contains('visible')) closePanelIfOpen(expansionPanel)
     else deselectTool()
     return
   }
@@ -1036,6 +1224,24 @@ window.addEventListener('keydown', (e) => {
   // I key for inventory
   if (e.key === 'i' || e.key === 'I') {
     if (gameState.running) toggleInventory()
+    return
+  }
+
+  // Phase 6: panel hotkeys
+  if (e.key === 'm' || e.key === 'M') {
+    if (gameState.running) openMasteryPanel()
+    return
+  }
+  if (e.key === 'j' || e.key === 'J') {
+    if (gameState.running) openCollectionsPanel()
+    return
+  }
+  if (e.key === 'k' || e.key === 'K') {
+    if (gameState.running) openAchievementsPanel()
+    return
+  }
+  if (e.key === 'x' || e.key === 'X') {
+    if (gameState.running) openExpansionPanel()
     return
   }
 
@@ -1136,8 +1342,11 @@ function updateBuildings (dtMs) {
         sellPrice: recipe.value
       })
       gameState.coins += recipe.value
+      gameState.totalCoinsEarned += recipe.value
+      gameState.itemsCrafted++
       addXP(5)
       showFeedback('Crafted ' + recipe.output.replace(/_/g, ' ') + '! +' + recipe.value + ' coins', '#daa520')
+      checkAchievements()
     }
   }
 
