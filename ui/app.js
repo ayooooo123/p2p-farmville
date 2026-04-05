@@ -12,6 +12,7 @@ let gameCanvas = null
 let gameCtx = null
 let gameLoopId = null
 let tickIntervalId = null
+let trading = null
 let isVisitor = false
 let lastSavedState = null
 
@@ -121,6 +122,10 @@ function setupNetworkEvents () {
     if (chat) chat.addMessage('System', 'A peer disconnected')
   }
 
+  network.onTradeMessage = (peerKey, msg) => {
+    if (trading) trading.handleMessage(peerKey, msg)
+  }
+
   network.onFarmState = async (peerKey, msg) => {
     if (isVisitor && msg.type === 'full-state') {
       farmState = FarmState.deserialize(msg.data)
@@ -186,6 +191,9 @@ document.getElementById('create-farm').addEventListener('click', async () => {
 
     // Init chat
     chat = new FarmChat(network)
+
+    // Init trading
+    trading = new TradeManager(network, farmState)
   } catch (err) {
     console.error('Failed to create farm:', err)
     showSetup()
@@ -223,6 +231,9 @@ document.getElementById('join-form').addEventListener('submit', async (e) => {
 
     // Init chat
     chat = new FarmChat(network)
+
+    // Init trading
+    trading = new TradeManager(network, farmState)
   } catch (err) {
     console.error('Failed to join farm:', err)
     isVisitor = false

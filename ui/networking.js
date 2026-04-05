@@ -16,6 +16,7 @@ class FarmNetwork {
     this.onPeerLeave = null
     this.onFarmState = null
     this.onChatMessage = null
+    this.onTradeMessage = null
 
     // Cleanup on app close
     Pear.teardown(() => this.swarm.destroy())
@@ -55,7 +56,8 @@ class FarmNetwork {
           if (this.onChatMessage) this.onChatMessage(peerKey, msg)
         },
         onTrade: (buf) => {
-          // Trade handling for future use
+          const msg = JSON.parse(b4a.toString(buf))
+          if (this.onTradeMessage) this.onTradeMessage(peerKey, msg)
         },
         onVisit: (buf) => {
           // Visit handling for future use

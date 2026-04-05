@@ -106,3 +106,81 @@ body {
   height: 100vh;
   font-size: 1.2rem;
 }
+
+/* Trade modals */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: #1a3a0e;
+  border: 2px solid #4CAF50;
+  border-radius: 12px;
+  padding: 20px 28px;
+  min-width: 300px;
+  max-width: 400px;
+}
+.modal h3 { margin-bottom: 12px; font-size: 1.1rem; }
+.modal label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+.modal select, .modal input[type="number"] {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #5a9b4a;
+  background: #2d5a1b;
+  color: #fff;
+  font-size: 0.85rem;
+}
+.modal select { flex: 1; }
+.modal-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.modal-buttons button {
+  flex: 1;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #fff;
+}
+.modal-buttons button[type="submit"],
+#trade-accept-btn { background: #4CAF50; }
+.modal-buttons button[type="submit"]:hover,
+#trade-accept-btn:hover { background: #45a049; }
+#trade-offer-cancel,
+#trade-reject-btn { background: #8b3a3a; }
+#trade-offer-cancel:hover,
+#trade-reject-btn:hover { background: #a04545; }
+#trade-incoming-text {
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+/* Trade notification */
+#trade-notification {
+  position: fixed;
+  bottom: 140px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a3a0e;
+  border: 1px solid #4CAF50;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 0.85rem;
+  z-index: 101;
+  white-space: nowrap;
+}
