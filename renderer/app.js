@@ -8,6 +8,7 @@ import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildi
 import { DECO_DEFINITIONS, createDecoMesh, createDecoData } from './js/decorations.js'
 import { VEHICLE_DEFINITIONS, createVehicleMesh, getVehicleSpeedMultiplier } from './js/vehicles.js'
 import { initInventory, addItem, removeItem, hasItem, getItemQty, sellItem, getInventory, renderInventoryPanel, setCapacityBonus, getItemCount, getMaxCapacity } from './js/inventory.js'
+import * as NeighborRenderer from './js/neighbor-renderer.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -51,6 +52,18 @@ const farmState = {
 let placementMode = null // { category, key, def, ghostMesh }
 let activeCraftingBuilding = null
 
+// ── P2P state ───────────────────────────────────────────────────────────────
+const p2pState = {
+  initialized: false,
+  playerKey: '',
+  peerCount: 0,
+  neighbors: [],
+  visiting: false,
+  visitingNeighborName: '',
+  lastFarmSyncTime: 0,
+  farmSyncInterval: 10000 // sync farm state every 10s
+}
+
 // ── DOM elements ─────────────────────────────────────────────────────────────
 const canvas = document.getElementById('game-canvas')
 const setupScreen = document.getElementById('setup-screen')
@@ -75,6 +88,16 @@ const placementText = document.getElementById('placement-text')
 const tooltipEl = document.getElementById('object-tooltip')
 const tooltipTitle = document.getElementById('tooltip-title')
 const tooltipInfo = document.getElementById('tooltip-info')
+
+// P2P DOM elements
+const peerCountEl = document.getElementById('peer-count')
+const visitingIndicator = document.getElementById('visiting-indicator')
+const visitingText = document.getElementById('visiting-text')
+const returnHomeBtn = document.getElementById('return-home-btn')
+const visitorToolbar = document.getElementById('visitor-toolbar')
+const neighborPanel = document.getElementById('neighbor-panel')
+const neighborList = document.getElementById('neighbor-list')
+const neighborCountEl = document.getElementById('neighbor-count')
 
 let sceneData = null
 let terrainData = null
@@ -109,7 +132,9 @@ if (window.IPCBridge && window.IPCBridge.available) {
   })
 
   window.IPCBridge.onWorkerMessage((msg) => {
-    console.log('[app] Worker message:', msg)
+    if (msg.type !== 'neighbors' && msg.type !== 'connected') {
+      console.log('[app] Worker message:', msg.type)
+    }
   })
 
   window.IPCBridge.onWorkerStdout((data) => {
@@ -119,9 +144,43 @@ if (window.IPCBridge && window.IPCBridge.available) {
   window.IPCBridge.onWorkerStderr((data) => {
     console.error('[worker stderr]', data)
   })
+
+  // P2P event listeners
+  window.IPCBridge.onPeerCount((count) => {
+    p2pState.peerCount = count
+    updatePeerCountUI()
+  })
+
+  window.IPCBridge.onNeighbors((neighbors) => {
+    p2pState.neighbors = neighbors
+    updateNeighborPanel()
+    NeighborRenderer.updateNeighbors(neighbors)
+  })
+
+  window.IPCBridge.onChatMessage((msg) => {
+    appendChatMessageUI(msg.from, msg.message, msg.timestamp)
+  })
+
+  window.IPCBridge.onNeighborFarmUpdate((update) => {
+    console.log('[app] Neighbor farm update from:', update.playerKey?.slice(0, 12))
+    // NeighborRenderer handles this via the neighbors list
+  })
+
+  window.IPCBridge.onInitialized((info) => {
+    p2pState.initialized = true
+    p2pState.playerKey = info.playerKey
+    console.log('[app] P2P initialized, key:', info.playerKey?.slice(0, 12) + '...')
+  })
+
+  window.IPCBridge.onError((error) => {
+    console.error('[app] Worker error:', error)
+  })
 } else {
   console.warn('[app] IPC bridge not available - running without worker')
 }
+
+// ── Initialize NeighborRenderer ─────────────────────────────────────────────
+NeighborRenderer.init(sceneData.scene)
 
 // ── HUD update ───────────────────────────────────────────────────────────────
 function updateHUD () {
@@ -426,6 +485,7 @@ function confirmPlacement () {
   }
 
   showFeedback('Placed ' + def.name + '! -' + def.cost + ' coins', '#32cd32')
+  syncFarmStateNow()
 
   // Clear placement mode
   placementMode = null
@@ -728,6 +788,7 @@ function handlePlow (plot) {
   addXP(PLOW_XP)
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
   showFeedback('Plowed! -' + PLOW_COST + ' coins', '#daa520')
+  syncFarmStateNow()
 }
 
 function handlePlant (plot) {
@@ -767,6 +828,7 @@ function handlePlant (plot) {
 
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLANTED)
   showFeedback('Planted ' + cropDef.name + '! -' + cropDef.seedCost + ' coins', '#32cd32')
+  syncFarmStateNow()
 }
 
 function handleWater (plot) {
@@ -823,6 +885,7 @@ function handleHarvest (plot) {
   plot.crop = null
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
   showFeedback('Harvested ' + cropDef.name + '! +' + cropDef.sellPrice + ' coins, +' + cropDef.xp + ' XP', '#ffd700')
+  syncFarmStateNow()
 }
 
 function handleRemove (plot) {
@@ -1084,6 +1147,165 @@ function updateBuildings (dtMs) {
   }
 }
 
+// ── P2P UI functions ────────────────────────────────────────────────────────
+function updatePeerCountUI () {
+  if (!peerCountEl) return
+  const count = p2pState.peerCount
+  peerCountEl.textContent = count + (count === 1 ? ' peer' : ' peers')
+  peerCountEl.style.display = count > 0 ? 'block' : 'none'
+}
+
+function updateNeighborPanel () {
+  if (!neighborPanel || !neighborList || !neighborCountEl) return
+
+  const neighbors = p2pState.neighbors
+  neighborCountEl.textContent = neighbors.length
+
+  if (neighbors.length === 0) {
+    neighborPanel.style.display = 'none'
+    return
+  }
+
+  neighborPanel.style.display = 'flex'
+  neighborList.innerHTML = ''
+
+  for (const neighbor of neighbors) {
+    const entry = document.createElement('div')
+    entry.className = 'neighbor-entry'
+
+    const nameEl = document.createElement('span')
+    nameEl.className = 'neighbor-name'
+    nameEl.textContent = neighbor.name || 'Unknown'
+    entry.appendChild(nameEl)
+
+    const visitBtn = document.createElement('button')
+    visitBtn.className = 'neighbor-visit-btn'
+    visitBtn.textContent = 'Visit'
+    visitBtn.addEventListener('click', () => {
+      visitNeighbor(neighbor)
+    })
+    entry.appendChild(visitBtn)
+
+    neighborList.appendChild(entry)
+  }
+}
+
+function visitNeighbor (neighbor) {
+  // Find the rendered position for this neighbor
+  const positions = NeighborRenderer.getRenderedNeighborPositions()
+  const target = positions.find(p => p.key === neighbor.key)
+  if (target) {
+    window.PlayerController.setVisitingNeighbor(neighbor.key, neighbor.name)
+  }
+}
+
+function appendChatMessageUI (from, message) {
+  const messagesEl = document.getElementById('chat-messages')
+  if (!messagesEl) return
+
+  const div = document.createElement('div')
+  div.className = 'msg'
+
+  const nameSpan = document.createElement('span')
+  nameSpan.style.color = from === gameState.farmName ? '#7df9ff' : '#4caf50'
+  nameSpan.style.fontWeight = 'bold'
+  nameSpan.textContent = from + ': '
+  div.appendChild(nameSpan)
+
+  div.appendChild(document.createTextNode(message))
+  messagesEl.appendChild(div)
+  messagesEl.scrollTop = messagesEl.scrollHeight
+}
+
+function updateVisitingUI () {
+  const visitInfo = window.PlayerController.getVisitingInfo()
+
+  if (visitInfo.visiting) {
+    const pos = window.PlayerController.getPlayerPos()
+    const neighborAt = NeighborRenderer.getNeighborAtPosition(pos.x)
+
+    if (neighborAt) {
+      const neighbor = p2pState.neighbors.find(n => n.key === neighborAt.key)
+      if (neighbor) {
+        window.PlayerController.setVisitingNeighbor(neighbor.key, neighbor.name)
+      }
+    }
+
+    const name = visitInfo.neighborName || 'Neighbor'
+    if (visitingIndicator) {
+      visitingIndicator.style.display = 'flex'
+      if (visitingText) visitingText.textContent = 'Visiting: ' + name
+    }
+    if (visitorToolbar) visitorToolbar.style.display = 'flex'
+    if (toolbar) toolbar.style.display = 'none'
+    canvas.style.cursor = 'pointer'
+  } else {
+    if (visitingIndicator) visitingIndicator.style.display = 'none'
+    if (visitorToolbar) visitorToolbar.style.display = 'none'
+    if (toolbar && gameState.running) toolbar.style.display = 'flex'
+  }
+}
+
+// ── Farm state serialization for P2P sync ───────────────────────────────────
+function serializeFarmState () {
+  const plotData = []
+  if (terrainData) {
+    const allPlots = terrainData.getAllPlots()
+    for (const plot of allPlots) {
+      if (plot.state !== 'grass') {
+        plotData.push({
+          row: plot.row, col: plot.col,
+          x: plot.x, z: plot.z,
+          state: plot.state,
+          crop: plot.crop ? {
+            type: plot.crop.type, stage: plot.crop.stage,
+            watered: plot.crop.watered, withered: plot.crop.withered
+          } : null
+        })
+      }
+    }
+  }
+
+  return {
+    playerName: gameState.farmName,
+    coins: gameState.coins,
+    level: gameState.level,
+    plots: plotData,
+    trees: farmState.trees.map(t => ({
+      type: t.type, x: t.x, z: t.z,
+      growthScale: t.growthScale, mature: t.mature
+    })),
+    animals: farmState.animals.map(a => ({
+      type: a.type, x: a.x, z: a.z,
+      fed: a.fed, productReady: a.productReady
+    })),
+    buildings: farmState.buildings.map(b => ({
+      type: b.type, x: b.x, z: b.z,
+      wallColor: b.wallColor, roofColor: b.roofColor,
+      width: b.width, height: b.height, depth: b.depth
+    })),
+    decorations: farmState.decorations.map(d => ({
+      type: d.type, x: d.x, z: d.z, color: d.color
+    }))
+  }
+}
+
+function syncFarmState () {
+  if (!window.IPCBridge || !window.IPCBridge.available || !p2pState.initialized) return
+
+  const now = Date.now()
+  if (now - p2pState.lastFarmSyncTime < p2pState.farmSyncInterval) return
+
+  p2pState.lastFarmSyncTime = now
+  window.IPCBridge.sendFarmUpdate(serializeFarmState())
+}
+
+function syncFarmStateNow () {
+  if (!window.IPCBridge || !window.IPCBridge.available || !p2pState.initialized) return
+  p2pState.lastFarmSyncTime = Date.now()
+  window.IPCBridge.sendFarmUpdate(serializeFarmState())
+}
+
 // ── Game loop ────────────────────────────────────────────────────────────────
 function gameLoop (time) {
   requestAnimationFrame(gameLoop)
@@ -1111,6 +1333,12 @@ function gameLoop (time) {
 
   // Energy regen
   regenEnergy(dtMs)
+
+  // P2P: sync farm state periodically
+  syncFarmState()
+
+  // P2P: update visiting state UI
+  updateVisitingUI()
 
   // Update HUD periodically
   updateHUD()
@@ -1143,10 +1371,19 @@ function startGame () {
   updateHUD()
   updateVehicleStatus()
 
-  // Notify worker
+  // Initialize P2P
   if (window.IPCBridge && window.IPCBridge.available) {
-    window.IPCBridge.sendToWorker({ type: 'farm:init', farmName: name })
+    window.IPCBridge.initP2P(name)
   }
+
+  // Setup visiting mode callbacks
+  window.PlayerController.onVisitChange((info) => {
+    p2pState.visiting = info.visiting
+    if (!info.visiting) {
+      // Returned to own farm
+      console.log('[app] Returned to own farm')
+    }
+  })
 
   console.log('[app] Game started - Farm:', name)
 }
@@ -1157,21 +1394,46 @@ farmNameInput.addEventListener('keydown', (e) => {
   farmNameInput.style.borderColor = '#4caf50'
 })
 
-// Chat form
+// Chat form - sends via P2P if available
 document.getElementById('chat-form').addEventListener('submit', (e) => {
   e.preventDefault()
   const input = document.getElementById('chat-input')
   const msg = input.value.trim()
   if (!msg) return
 
-  const messagesEl = document.getElementById('chat-messages')
-  const div = document.createElement('div')
-  div.className = 'msg'
-  div.textContent = gameState.farmName + ': ' + msg
-  messagesEl.appendChild(div)
-  messagesEl.scrollTop = messagesEl.scrollHeight
+  if (window.IPCBridge && window.IPCBridge.available && p2pState.initialized) {
+    // Send via P2P worker (worker echoes back to us)
+    window.IPCBridge.sendChatMessage(msg)
+  } else {
+    // Offline: just show locally
+    appendChatMessageUI(gameState.farmName, msg)
+  }
   input.value = ''
 })
+
+// Return home button
+if (returnHomeBtn) {
+  returnHomeBtn.addEventListener('click', () => {
+    window.PlayerController.returnToFarm()
+  })
+}
+
+// ESC also returns home when visiting
+const origKeydown = window.addEventListener
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && window.PlayerController.isVisiting()) {
+    window.PlayerController.returnToFarm()
+  }
+})
+
+// Trigger immediate farm sync after crop actions
+function hookFarmSync (fn) {
+  return function (...args) {
+    const result = fn.apply(this, args)
+    syncFarmStateNow()
+    return result
+  }
+}
 
 // Kick off render loop
 requestAnimationFrame(gameLoop)

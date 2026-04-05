@@ -18,6 +18,7 @@
           <div id="energy-display">Energy: 30/30</div>
           <div id="energy-bar"><div id="energy-bar-fill"></div></div>
         </div>
+        <div id="peer-count" style="display: none;">0 peers</div>
         <div id="vehicle-status" style="display: none;"></div>
       </div>
 
@@ -99,6 +100,34 @@
       </div>
       <div id="crafting-recipes"></div>
       <div id="crafting-queue"></div>
+    </div>
+
+    <!-- Visiting Indicator -->
+    <div id="visiting-indicator" style="display: none;">
+      <span id="visiting-text">Visiting: ---</span>
+      <button id="return-home-btn">Return Home (ESC)</button>
+    </div>
+
+    <!-- Visitor Action Toolbar -->
+    <div id="visitor-toolbar" style="display: none;">
+      <button class="visitor-btn" data-action="fertilize" title="Fertilize a crop">
+        <span class="tool-icon">🌿</span><span class="tool-label">Fertilize</span>
+      </button>
+      <button class="visitor-btn" data-action="water" title="Water a crop">
+        <span class="tool-icon">💧</span><span class="tool-label">Water</span>
+      </button>
+      <button class="visitor-btn" data-action="feed" title="Feed an animal">
+        <span class="tool-icon">🍎</span><span class="tool-label">Feed</span>
+      </button>
+    </div>
+
+    <!-- Neighbor Panel -->
+    <div id="neighbor-panel" style="display: none;">
+      <div id="neighbor-panel-header">
+        <h3>Neighbors</h3>
+        <span id="neighbor-count">0</span>
+      </div>
+      <div id="neighbor-list"></div>
     </div>
 
     <!-- Setup Screen -->

@@ -880,6 +880,189 @@ body {
   background: #66bb6a;
 }
 
+/* ── Peer Count ──────────────────────────────────���─────────────────────────── */
+#peer-count {
+  color: #66bb6a;
+  font-size: 13px;
+  padding: 2px 10px;
+  background: rgba(76, 175, 80, 0.15);
+  border-radius: 10px;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+/* ── Visiting Indicator ─────────────────────────────────��──────────────────── */
+#visiting-indicator {
+  position: fixed;
+  top: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  background: rgba(255, 152, 0, 0.9);
+  border: 2px solid #ff9800;
+  border-radius: 12px;
+  z-index: 25;
+  box-shadow: 0 4px 16px rgba(255, 152, 0, 0.3);
+}
+
+#visiting-text {
+  font-size: 15px;
+  font-weight: bold;
+  color: #fff;
+}
+
+#return-home-btn {
+  padding: 5px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+#return-home-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* ── Visitor Action Toolbar ────────────────────────────────────────────────── */
+#visitor-toolbar {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(255, 152, 0, 0.85);
+  backdrop-filter: blur(4px);
+  border: 2px solid #ff9800;
+  border-radius: 12px;
+  z-index: 20;
+}
+
+.visitor-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.visitor-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.visitor-btn.active {
+  background: rgba(255, 255, 255, 0.4);
+  border-color: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+/* ── Neighbor Panel ───────────────────────────────────────���────────────────── */
+#neighbor-panel {
+  position: fixed;
+  top: 50px;
+  left: 10px;
+  width: 220px;
+  max-height: 300px;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border-radius: 10px;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#neighbor-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(76, 175, 80, 0.15);
+  border-bottom: 1px solid rgba(76, 175, 80, 0.2);
+}
+
+#neighbor-panel-header h3 {
+  font-size: 13px;
+  color: #4caf50;
+  margin: 0;
+}
+
+#neighbor-count {
+  font-size: 12px;
+  color: #888;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+#neighbor-list {
+  overflow-y: auto;
+  max-height: 240px;
+  padding: 4px;
+}
+
+.neighbor-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  margin: 2px 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.15s;
+}
+
+.neighbor-entry:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.neighbor-name {
+  font-size: 12px;
+  color: #ddd;
+  font-weight: 600;
+}
+
+.neighbor-visit-btn {
+  padding: 3px 10px;
+  border: 1px solid rgba(76, 175, 80, 0.4);
+  border-radius: 4px;
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.neighbor-visit-btn:hover {
+  background: rgba(76, 175, 80, 0.3);
+  color: #fff;
+}
+
+.neighbor-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #666;
+}
+
 /* ── Chat Panel ─────────────────────────────────────────────────────────────── */
 #chat-panel {
   position: fixed;

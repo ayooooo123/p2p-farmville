@@ -6,9 +6,19 @@ const FARM_HALF_D = 40
 const CAMERA_OFFSET = { x: 0, y: 20, z: 25 }
 const CAMERA_LOOK_AHEAD = 5
 
+// Extended world bounds for visiting neighbors
+const WORLD_HALF_W = 200 // can walk far left/right to visit neighbors
+const WORLD_HALF_D = 50 // slightly beyond farm depth
+
 let playerMesh = null
 const keys = { w: false, a: false, s: false, d: false }
 const playerPos = { x: 0, z: 0 }
+
+// Visiting state
+let visiting = false
+let visitingNeighborKey = null
+let visitingNeighborName = ''
+let onVisitChangeCallback = null
 
 function initPlayer (scene) {
   // Simple player: capsule-like shape (cylinder + spheres)
@@ -77,9 +87,9 @@ function updatePlayer (dt) {
   playerPos.x += dx * PLAYER_SPEED * dt
   playerPos.z += dz * PLAYER_SPEED * dt
 
-  // Clamp to farm bounds
-  playerPos.x = Math.max(-FARM_HALF_W + 1, Math.min(FARM_HALF_W - 1, playerPos.x))
-  playerPos.z = Math.max(-FARM_HALF_D + 1, Math.min(FARM_HALF_D - 1, playerPos.z))
+  // Clamp to world bounds (extended for visiting)
+  playerPos.x = Math.max(-WORLD_HALF_W, Math.min(WORLD_HALF_W, playerPos.x))
+  playerPos.z = Math.max(-WORLD_HALF_D, Math.min(WORLD_HALF_D, playerPos.z))
 
   playerMesh.position.x = playerPos.x
   playerMesh.position.z = playerPos.z
@@ -88,6 +98,9 @@ function updatePlayer (dt) {
   if (dx !== 0 || dz !== 0) {
     playerMesh.rotation.y = Math.atan2(dx, dz)
   }
+
+  // Check if player has crossed farm boundary
+  checkVisitingState()
 }
 
 function updateCamera (camera) {
@@ -104,4 +117,76 @@ function getPlayerPos () {
   return { ...playerPos }
 }
 
-window.PlayerController = { initPlayer, updatePlayer, updateCamera, getPlayerPos }
+// ── Visiting mode ───────────────────────────────────────────────────────────
+
+function checkVisitingState () {
+  const isOutsideFarm = Math.abs(playerPos.x) > FARM_HALF_W + 2 ||
+                         Math.abs(playerPos.z) > FARM_HALF_D + 2
+
+  if (isOutsideFarm && !visiting) {
+    visiting = true
+    if (onVisitChangeCallback) {
+      onVisitChangeCallback({ visiting: true, position: { ...playerPos } })
+    }
+  } else if (!isOutsideFarm && visiting) {
+    visiting = false
+    visitingNeighborKey = null
+    visitingNeighborName = ''
+    if (onVisitChangeCallback) {
+      onVisitChangeCallback({ visiting: false, position: { ...playerPos } })
+    }
+  }
+}
+
+function isVisiting () {
+  return visiting
+}
+
+function getVisitingInfo () {
+  return {
+    visiting,
+    neighborKey: visitingNeighborKey,
+    neighborName: visitingNeighborName
+  }
+}
+
+function setVisitingNeighbor (key, name) {
+  visitingNeighborKey = key
+  visitingNeighborName = name || ''
+}
+
+function returnToFarm () {
+  playerPos.x = 0
+  playerPos.z = 0
+  if (playerMesh) {
+    playerMesh.position.x = 0
+    playerMesh.position.z = 0
+  }
+  visiting = false
+  visitingNeighborKey = null
+  visitingNeighborName = ''
+  if (onVisitChangeCallback) {
+    onVisitChangeCallback({ visiting: false, position: { x: 0, z: 0 } })
+  }
+}
+
+function onVisitChange (callback) {
+  onVisitChangeCallback = callback
+}
+
+function isOnOwnFarm () {
+  return Math.abs(playerPos.x) <= FARM_HALF_W && Math.abs(playerPos.z) <= FARM_HALF_D
+}
+
+window.PlayerController = {
+  initPlayer,
+  updatePlayer,
+  updateCamera,
+  getPlayerPos,
+  isVisiting,
+  getVisitingInfo,
+  setVisitingNeighbor,
+  returnToFarm,
+  onVisitChange,
+  isOnOwnFarm
+}
