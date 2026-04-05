@@ -1,9 +1,11 @@
 import * as THREE from './three.module.min.js'
+import { createPlotGrid } from './terrain.js'
 
 const FARM_WIDTH = 80
 const FARM_DEPTH = 80
 
 let scene, camera, renderer
+let terrainData = null
 
 function initScene (canvasEl) {
   // Scene
@@ -45,24 +47,24 @@ function initScene (canvasEl) {
   const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x556b2f, 0.4)
   scene.add(hemiLight)
 
-  // Terrain (green plane)
-  const terrainGeo = new THREE.PlaneGeometry(FARM_WIDTH, FARM_DEPTH)
-  const terrainMat = new THREE.MeshStandardMaterial({
-    color: 0x4a7c2e,
-    roughness: 0.9,
+  // Outer terrain beyond farm (decorative)
+  const outerGeo = new THREE.PlaneGeometry(200, 200)
+  const outerMat = new THREE.MeshStandardMaterial({
+    color: 0x3a6520,
+    roughness: 0.95,
     metalness: 0.0
   })
-  const terrain = new THREE.Mesh(terrainGeo, terrainMat)
-  terrain.rotation.x = -Math.PI / 2
-  terrain.receiveShadow = true
-  scene.add(terrain)
+  const outerTerrain = new THREE.Mesh(outerGeo, outerMat)
+  outerTerrain.rotation.x = -Math.PI / 2
+  outerTerrain.position.y = -0.1
+  outerTerrain.receiveShadow = true
+  scene.add(outerTerrain)
 
-  // Grid overlay (subtle farm plot grid)
-  const gridHelper = new THREE.GridHelper(FARM_WIDTH, 20, 0x3a6c1e, 0x3a6c1e)
-  gridHelper.position.y = 0.01
-  gridHelper.material.opacity = 0.3
-  gridHelper.material.transparent = true
-  scene.add(gridHelper)
+  // Create plot grid (replaces old GridHelper + flat terrain)
+  terrainData = createPlotGrid(scene)
+
+  // Decorative trees around the farm border
+  _addBorderTrees(scene)
 
   // Handle resize
   window.addEventListener('resize', () => {
@@ -71,7 +73,43 @@ function initScene (canvasEl) {
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
 
-  return { scene, camera, renderer }
+  return { scene, camera, renderer, terrainData }
+}
+
+function _addBorderTrees (scene) {
+  const treePositions = [
+    [-24, -24], [-24, 0], [-24, 24],
+    [24, -24], [24, 0], [24, 24],
+    [-12, -25], [0, -25], [12, -25],
+    [-12, 25], [0, 25], [12, 25]
+  ]
+
+  for (const [x, z] of treePositions) {
+    const tree = new THREE.Group()
+
+    // Trunk
+    const trunkH = 2 + Math.random() * 1.5
+    const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, trunkH, 6)
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8b5e3c })
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat)
+    trunk.position.y = trunkH / 2
+    trunk.castShadow = true
+    tree.add(trunk)
+
+    // Canopy
+    const canopyR = 1.2 + Math.random() * 0.8
+    const canopyGeo = new THREE.SphereGeometry(canopyR, 8, 6)
+    const canopyMat = new THREE.MeshStandardMaterial({
+      color: 0x2d7a1e + Math.floor(Math.random() * 0x101010)
+    })
+    const canopy = new THREE.Mesh(canopyGeo, canopyMat)
+    canopy.position.y = trunkH + canopyR * 0.5
+    canopy.castShadow = true
+    tree.add(canopy)
+
+    tree.position.set(x + (Math.random() - 0.5) * 2, 0, z + (Math.random() - 0.5) * 2)
+    scene.add(tree)
+  }
 }
 
 function animate () {
@@ -79,5 +117,5 @@ function animate () {
 }
 
 // Export to window for non-module scripts and as ES module
-window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera }
+window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData }
 export { initScene, animate, scene, camera, renderer }

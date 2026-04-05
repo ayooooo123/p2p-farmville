@@ -14,8 +14,55 @@
       <div id="hud-top">
         <div id="coin-display">500 coins</div>
         <div id="xp-display">Level 1 (0/100 XP)</div>
-        <div id="energy-display">Energy: 30/30</div>
+        <div id="energy-bar-wrap">
+          <div id="energy-display">Energy: 30/30</div>
+          <div id="energy-bar"><div id="energy-bar-fill"></div></div>
+        </div>
       </div>
+
+      <!-- Toolbar -->
+      <div id="toolbar">
+        <button class="tool-btn" data-tool="plow" title="Plow (15 coins, 1 energy)">
+          <span class="tool-icon">🔨</span><span class="tool-label">Plow</span>
+        </button>
+        <button class="tool-btn" data-tool="plant" title="Plant seed on plowed soil">
+          <span class="tool-icon">🌱</span><span class="tool-label">Plant</span>
+        </button>
+        <button class="tool-btn" data-tool="water" title="Water crop (2x growth speed)">
+          <span class="tool-icon">💧</span><span class="tool-label">Water</span>
+        </button>
+        <button class="tool-btn" data-tool="harvest" title="Harvest mature crop">
+          <span class="tool-icon">🌾</span><span class="tool-label">Harvest</span>
+        </button>
+        <button class="tool-btn" data-tool="remove" title="Remove crop (no refund)">
+          <span class="tool-icon">✖</span><span class="tool-label">Remove</span>
+        </button>
+        <div class="toolbar-spacer"></div>
+        <button id="market-open-btn" class="tool-btn tool-btn-market" title="Open Market">
+          <span class="tool-icon">🏪</span><span class="tool-label">Market</span>
+        </button>
+      </div>
+
+      <!-- Seed Selector Strip (visible when plant tool selected) -->
+      <div id="seed-strip" style="display: none;"></div>
+
+      <!-- Level-up notification -->
+      <div id="level-up-notification" style="display: none;">
+        <div id="level-up-text">Level Up!</div>
+        <div id="level-up-detail"></div>
+      </div>
+
+      <!-- Action feedback -->
+      <div id="action-feedback" style="display: none;"></div>
+    </div>
+
+    <!-- Market Panel -->
+    <div id="market-panel">
+      <div id="market-header">
+        <h2>Seed Market</h2>
+        <button id="market-close-btn">X</button>
+      </div>
+      <div id="market-seed-grid"></div>
     </div>
 
     <!-- Setup Screen -->
@@ -38,7 +85,6 @@
 
   <!-- Three.js bundled locally (loaded as module for scene.js import) -->
   <script src="js/ipc-bridge.js"></script>
-  <script src="js/scene.js" type="module"></script>
   <script src="js/player.js"></script>
   <script src="app.js" type="module"></script>
 </body>
