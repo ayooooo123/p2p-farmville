@@ -48,6 +48,14 @@ function initFarmInteraction (canvas, ctx, farmState) {
 
     if (row < 0 || row >= farmState.gridRows || col < 0 || col >= farmState.gridCols) return
 
+    // Visitors can only water, and do so via the network
+    if (isVisitor) {
+      if (selectedTool === 'water' && network) {
+        network.sendFarmAction('water', row, col)
+      }
+      return
+    }
+
     let result
     switch (selectedTool) {
       case 'plant':

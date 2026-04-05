@@ -81,6 +81,20 @@ class FarmNetwork {
     }
   }
 
+  sendFarmStateToPeer (peerKey, farmState) {
+    const peer = this.peers.get(peerKey)
+    if (!peer) return
+    const data = JSON.stringify({ type: 'full-state', data: farmState.serialize() })
+    peer.channels.farmSync.send(data)
+  }
+
+  sendFarmAction (action, row, col) {
+    const data = JSON.stringify({ type: 'action', action, row, col })
+    for (const [, peer] of this.peers) {
+      peer.channels.farmSync.send(data)
+    }
+  }
+
   sendChatMessage (sender, text) {
     const data = JSON.stringify({ sender, text, timestamp: Date.now() })
     for (const [, peer] of this.peers) {

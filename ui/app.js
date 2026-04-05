@@ -110,9 +110,9 @@ function setupNetworkEvents () {
   network.onPeerJoin = (peerKey) => {
     console.log('Peer joined:', peerKey.slice(0, 8))
     if (chat) chat.addMessage('System', 'A peer connected')
-    // Send current state to newly joined peer
+    // Send current farm state to the newly joined visitor
     if (!isVisitor && farmState) {
-      network.broadcastFarmState(farmState)
+      network.sendFarmStateToPeer(peerKey, farmState)
     }
   }
 
@@ -121,10 +121,17 @@ function setupNetworkEvents () {
     if (chat) chat.addMessage('System', 'A peer disconnected')
   }
 
-  network.onFarmState = (peerKey, msg) => {
+  network.onFarmState = async (peerKey, msg) => {
     if (isVisitor && msg.type === 'full-state') {
       farmState = FarmState.deserialize(msg.data)
       updateCoinDisplay(farmState)
+    }
+    // Owner handles water actions from visitors
+    if (!isVisitor && msg.type === 'action' && msg.action === 'water') {
+      const result = farmState.water(msg.row, msg.col)
+      if (result && result.ok) {
+        await saveFarm()
+      }
     }
   }
 }
