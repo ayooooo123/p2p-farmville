@@ -1,0 +1,17 @@
+module.exports = {
+  FARM_WIDTH: 80,
+  FARM_DEPTH: 80,
+  PLOT_SIZE: 2,
+  GRID_COLS: 20,
+  GRID_ROWS: 20,
+  STARTING_COINS: 500,
+  STARTING_ENERGY: 30,
+  MAX_ENERGY: 30,
+  ENERGY_REGEN_TIME: 300000, // 5 minutes
+  STARTING_XP: 0,
+  XP_PER_LEVEL: 100,
+  WORLD_TOPIC: 'p2p-farmville-world-v1',
+  PLAYER_SPEED: 15,
+  CAMERA_OFFSET: { x: 0, y: 20, z: 25 },
+  CAMERA_LOOK_AHEAD: 5
+}

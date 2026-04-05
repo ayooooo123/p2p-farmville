@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>P2P FarmVille</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- HUD Overlay -->
+    <div id="hud" style="display: none;">
+      <div id="hud-top">
+        <div id="coin-display">500 coins</div>
+        <div id="xp-display">Level 1 (0/100 XP)</div>
+        <div id="energy-display">Energy: 30/30</div>
+      </div>
+    </div>
+
+    <!-- Setup Screen -->
+    <div id="setup-screen">
+      <h1>P2P FarmVille</h1>
+      <p>Start your farm and connect with neighbors</p>
+      <input id="farm-name" type="text" placeholder="Enter Farm Name" maxlength="20" autofocus>
+      <button id="start-btn">Start Farming</button>
+    </div>
+
+    <!-- Chat Panel -->
+    <div id="chat-panel" style="display: none;">
+      <div id="chat-messages"></div>
+      <form id="chat-form">
+        <input id="chat-input" type="text" placeholder="Chat..." autocomplete="off">
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Three.js bundled locally (loaded as module for scene.js import) -->
+  <script src="js/ipc-bridge.js"></script>
+  <script src="js/scene.js" type="module"></script>
+  <script src="js/player.js"></script>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
