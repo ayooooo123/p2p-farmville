@@ -32,6 +32,8 @@ const LEVEL_THRESHOLDS = [
   194000, 209000, 225000, 242000, 260000, 279000, 299000, 320000, 342000, 365000
 ]
 
+const SAVE_KEY = 'p2p-farmville-save'
+
 // ── Game state ───────────────────────────────────────────────────────────────
 const gameState = {
   coins: 500,
@@ -156,7 +158,7 @@ initMarket((seedKey) => {
 // ── Load saved data for initialization ──────────────────────────────────────
 let savedData = null
 try {
-  const raw = localStorage.getItem('p2p-farmville-save')
+  const raw = localStorage.getItem(SAVE_KEY)
   if (raw) savedData = JSON.parse(raw)
 } catch (e) { /* ignore */ }
 
@@ -2069,7 +2071,6 @@ window.addEventListener('keydown', (e) => {
 })
 
 // ── Save/Load Persistence (localStorage) ────────────────────────────────────
-const SAVE_KEY = 'p2p-farmville-save'
 const SAVE_INTERVAL = 15000 // auto-save every 15s
 let lastSaveTime = 0
 

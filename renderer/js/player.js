@@ -1,4 +1,4 @@
-/* global THREE */
+import * as THREE from './three.module.min.js'
 
 const PLAYER_SPEED = 15
 const FARM_HALF_W = 40
@@ -21,33 +21,33 @@ let onVisitChangeCallback = null
 
 function initPlayer (scene) {
   // Flat player: colored circle with direction triangle (top-down view)
-  const group = new window.THREE.Group()
+  const group = new THREE.Group()
 
   // Body circle (blue)
-  const bodyGeo = new window.THREE.CircleGeometry(0.5, 16)
-  const bodyMat = new window.THREE.MeshStandardMaterial({ color: 0x2196f3 })
-  const body = new window.THREE.Mesh(bodyGeo, bodyMat)
+  const bodyGeo = new THREE.CircleGeometry(0.5, 16)
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2196f3 })
+  const body = new THREE.Mesh(bodyGeo, bodyMat)
   body.rotation.x = -Math.PI / 2
   body.position.y = 0.03
   group.add(body)
 
   // Head/skin inner circle
-  const headGeo = new window.THREE.CircleGeometry(0.25, 12)
-  const headMat = new window.THREE.MeshStandardMaterial({ color: 0xffcc88 })
-  const head = new window.THREE.Mesh(headGeo, headMat)
+  const headGeo = new THREE.CircleGeometry(0.25, 12)
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xffcc88 })
+  const head = new THREE.Mesh(headGeo, headMat)
   head.rotation.x = -Math.PI / 2
   head.position.y = 0.035
   group.add(head)
 
   // Direction indicator (triangle pointing forward)
-  const triShape = new window.THREE.Shape()
+  const triShape = new THREE.Shape()
   triShape.moveTo(0, -0.7)
   triShape.lineTo(-0.15, -0.45)
   triShape.lineTo(0.15, -0.45)
   triShape.closePath()
-  const triGeo = new window.THREE.ShapeGeometry(triShape)
-  const triMat = new window.THREE.MeshStandardMaterial({ color: 0x1565c0 })
-  dirIndicator = new window.THREE.Mesh(triGeo, triMat)
+  const triGeo = new THREE.ShapeGeometry(triShape)
+  const triMat = new THREE.MeshStandardMaterial({ color: 0x1565c0 })
+  dirIndicator = new THREE.Mesh(triGeo, triMat)
   dirIndicator.rotation.x = -Math.PI / 2
   dirIndicator.position.y = 0.04
   group.add(dirIndicator)
