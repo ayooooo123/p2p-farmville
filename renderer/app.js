@@ -1404,6 +1404,23 @@ function updateCrops (dtMs) {
   }
 }
 
+// ── Ready-to-harvest pulse animation ────────────────────────────────────────
+function animateReadyCrops (time) {
+  if (!terrainData) return
+  const allPlots = terrainData.getAllPlots()
+  for (const plot of allPlots) {
+    if (!plot.cropMesh) continue
+    if (plot.crop && !plot.crop.withered && plot.cropMesh.userData.isReady) {
+      // Gentle pulse: scale between 1.0 and 1.15 with a slow sine wave
+      const pulse = 1.0 + 0.15 * Math.sin(time * 0.003 + plot.x * 1.7 + plot.z * 2.3)
+      plot.cropMesh.scale.set(pulse, 1, pulse)
+    } else {
+      // Reset scale for non-ready crops
+      plot.cropMesh.scale.set(1, 1, 1)
+    }
+  }
+}
+
 // ── Tree growth update ───────────────────────────────────────────────────────
 function updateTrees (dtMs) {
   const effects = getBuildingEffects(farmState.buildings)
@@ -1634,6 +1651,7 @@ function gameLoop (time) {
 
   // Update systems
   updateCrops(dtMs)
+  animateReadyCrops(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
   updateBuildings(dtMs)
