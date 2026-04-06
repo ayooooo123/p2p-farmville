@@ -159,6 +159,13 @@ if (savedData?.gameState?.farmName && farmNameInput) {
   farmNameInput.value = savedData.gameState.farmName
 }
 
+// Auto-start if a valid save exists — skip the setup screen
+if (savedData?.gameState?.farmName) {
+  // setTimeout 0 defers until this script finishes executing
+  // so all init code below (scene, mastery, etc.) runs first
+  setTimeout(() => startGame(), 0)
+}
+
 // ── Initialize Phase 6: Progression Systems ─────────────────────────────────
 initMastery(savedData?.mastery || {}, (cropKey, newLevel) => {
   const def = CROP_DEFINITIONS[cropKey]
