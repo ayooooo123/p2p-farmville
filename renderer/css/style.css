@@ -70,6 +70,12 @@ body {
   pointer-events: auto;
 }
 
+/* Electrobun WebView: explicitly re-enable pointer events for grandchildren
+   of #hud, since pointer-events inheritance from a none grandparent can be
+   unreliable in WebView environments. */
+#toolbar, #toolbar * { pointer-events: auto; }
+#hud-top * { pointer-events: auto; }
+
 #hud-top {
   display: flex;
   gap: 20px;
