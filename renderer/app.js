@@ -13,6 +13,7 @@ import { initMastery, recordHarvest, getMasteryData, getMasteryStars, getMastery
 import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel, isSetComplete, getCompletedSetsCount, getTotalItemsFound, COLLECTION_DEFINITIONS } from './js/collections.js'
 import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
+import { initParticles, createParticleEffect, updateParticles } from './js/particles.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -128,6 +129,7 @@ const mousePx = { x: 0, y: 0 }
 // ── Initialize Three.js scene ────────────────────────────────────────────────
 sceneData = initScene(canvas)
 terrainData = sceneData.terrainData
+initParticles(sceneData.scene)
 
 // ── Initialize Inventory ─────────────────────────────────────────────────────
 initInventory(() => {
@@ -365,6 +367,29 @@ function showFeedback (text, color) {
     actionFeedback.classList.remove('show')
     setTimeout(() => { actionFeedback.style.display = 'none' }, 300)
   }, 1500)
+}
+
+// ── Floating coin text (world-to-screen) ────────────────────────────────────
+function showFloatingCoin (worldX, worldZ, text) {
+  if (!sceneData || !sceneData.camera) return
+
+  // Project world position to screen
+  const pos = new THREE.Vector3(worldX, 0.5, worldZ)
+  pos.project(sceneData.camera)
+
+  const canvas = document.getElementById('game-canvas')
+  const screenX = (pos.x * 0.5 + 0.5) * canvas.clientWidth
+  const screenY = (-pos.y * 0.5 + 0.5) * canvas.clientHeight
+
+  const el = document.createElement('div')
+  el.className = 'floating-coin'
+  el.textContent = text
+  el.style.left = screenX + 'px'
+  el.style.top = screenY + 'px'
+  document.getElementById('game-container').appendChild(el)
+
+  // Remove after animation completes
+  setTimeout(() => { el.remove() }, 1200)
 }
 
 // ── Phase 6: Notification helpers ───────────────────────────────────────────
@@ -781,6 +806,8 @@ function handleTreeInteract (tree) {
       addXP(reward.xp)
       // Add product to inventory
       addItem(tree.type + '_fruit', 1, { name: reward.product, type: 'fruit', sellPrice: reward.coins })
+      createParticleEffect('harvest', { x: tree.x, y: 0.5, z: tree.z })
+      showFloatingCoin(tree.x, tree.z, '+' + reward.coins)
       showFeedback('Harvested ' + reward.product + '! +' + reward.coins + ' coins', '#ffd700')
       // Rebuild mesh without fruits
       if (tree.mesh) sceneData.scene.remove(tree.mesh)
@@ -813,6 +840,8 @@ function handleAnimalInteract (animal) {
       gameState.animalProductsCollected++
       addXP(reward.xp)
       addItem(animal.type + '_product', 1, { name: reward.product, type: 'animal product', sellPrice: reward.coins })
+      createParticleEffect('harvest', { x: animal.x, y: 0.3, z: animal.z })
+      showFloatingCoin(animal.x, animal.z, '+' + reward.coins)
       showFeedback('Collected ' + reward.product + '! +' + reward.coins + ' coins', '#ffd700')
       checkAchievements()
     }
@@ -1054,6 +1083,7 @@ function handlePlant (plot) {
 
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLANTED)
   gameState.totalPlanted++
+  createParticleEffect('planting', { x: plot.x, y: 0.1, z: plot.z })
   showFeedback('Planted ' + cropDef.name + '! -' + cropDef.seedCost + ' coins', '#32cd32')
   checkAchievements()
   syncFarmStateNow()
@@ -1076,6 +1106,7 @@ function handleWater (plot) {
 
   plot.crop.watered = true
   gameState.totalWatered++
+  createParticleEffect('watering', { x: plot.x, y: 0.1, z: plot.z })
   showFeedback('Watered! Growth speed 2x', '#4169e1')
   checkAchievements()
 }
@@ -1124,6 +1155,11 @@ function handleHarvest (plot) {
   }
   plot.crop = null
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
+
+  // Particle burst + floating coin text at harvest position
+  createParticleEffect('harvest', { x: plot.x, y: 0.1, z: plot.z })
+  createParticleEffect('coin', { x: plot.x, y: 0.3, z: plot.z })
+  showFloatingCoin(plot.x, plot.z, '+' + cropDef.sellPrice)
 
   let feedbackText = 'Harvested ' + cropDef.name + '! +' + cropDef.sellPrice + ' coins, +' + (cropDef.xp + masteryBonus) + ' XP'
   if (masteryBonus > 0) feedbackText += ' (+' + masteryBonus + ' mastery)'
@@ -1600,6 +1636,7 @@ function gameLoop (time) {
   updateTrees(dtMs)
   updateAnimals(dtMs)
   updateBuildings(dtMs)
+  updateParticles(dtMs)
 
   // Energy regen
   regenEnergy(dtMs)
