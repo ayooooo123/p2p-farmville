@@ -14,7 +14,7 @@
     "seed": "pear seed ."
   },
   "pear": {
-    "name": "P2P FarmVille",
+    "name": "p2p-farmville",
     "type": "desktop",
     "gui": {
       "backgroundColor": "#1a1a2e",
