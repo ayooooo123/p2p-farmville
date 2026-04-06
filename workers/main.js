@@ -22,6 +22,8 @@
  *     { type: 'contribute-coop', missionId, amount }
  *     { type: 'request-help', helpType, plotId }
  *     { type: 'respond-help', requestId }
+ *     { type: 'visitor-action-result', visitorKey, action, targetId, success, reason, reward }
+ *     { type: 'send-farm-action', targetKey, action, targetId }
  *   Worker sends:
  *     { type: 'neighbors', neighbors: [...] }
  *     { type: 'chat-message', from, message, timestamp, channel, fromKey }
@@ -38,6 +40,8 @@
  *     { type: 'help-response', requestId, responderKey, responderName }
  *     { type: 'player-joined', playerName, playerKey }
  *     { type: 'player-left', playerName, playerKey }
+ *     { type: 'visitor-farm-action', action, targetId, visitorKey, visitorName, timestamp }
+ *     { type: 'farm-action-result', action, targetId, success, reason, reward }
  */
 
 const Corestore = require('corestore')
@@ -92,6 +96,9 @@ let coopIdCounter = 0
 // Help requests: Map<requestId, { playerKey, playerName, type, plotId, timestamp, responded }>
 const helpRequests = new Map()
 let helpIdCounter = 0
+
+// Visitor farm action rate limiting: Map<peerKey, { count, windowStart }>
+const visitorActionCounts = new Map()
 
 // ── Protomux IPC (Bare.IPC ↔ Bun main process) ──────────────────────────────
 const ipcMux = new Protomux(Bare.IPC)
@@ -321,8 +328,23 @@ function handleConnection (stream) {
     })
     helpChannel.open()
 
+    // ── Farm action channel (visitor water/harvest/feed) ──────────────────
+    const farmActionChannel = mux.createChannel({
+      protocol: 'farm-action',
+      id: b4a.from('p2p-farmville-farm-action'),
+      onopen () {
+        console.log('[worker] Farm action channel opened with:', remoteKey.slice(0, 12))
+      }
+    })
+
+    farmActionChannel.addMessage({
+      encoding: rawEncoding,
+      onmessage (buf) { handleFarmActionMessage(remoteKey, buf) }
+    })
+    farmActionChannel.open()
+
     // Store peer info
-    peers.set(remoteKey, { stream, mux, farmChannel, worldChannel, chatChannel, tradeChannel, giftChannel, coopChannel, helpChannel })
+    peers.set(remoteKey, { stream, mux, farmChannel, worldChannel, chatChannel, tradeChannel, giftChannel, coopChannel, helpChannel, farmActionChannel })
 
     peerCount = peers.size
     send({ type: 'connected', count: peerCount })
@@ -628,6 +650,52 @@ function handleHelpMessage (remoteKey, buf) {
     }
   } catch (e) {
     console.error('[worker] Help message parse error:', e.message)
+  }
+}
+
+// ── Farm action message handler (visitor actions) ──────────────────────────
+function handleFarmActionMessage (remoteKey, buf) {
+  try {
+    const msg = JSON.parse(b4a.toString(buf))
+
+    if (msg.type === 'farm-action-result') {
+      // We sent an action to a neighbor and this is the result coming back
+      send({
+        type: 'farm-action-result',
+        action: msg.action,
+        targetId: msg.targetId,
+        success: msg.success,
+        reason: msg.reason,
+        reward: msg.reward
+      })
+      return
+    }
+
+    if (msg.type !== 'farm-action') return
+    if (msg.visitorKey !== remoteKey) return // reject spoofed keys
+
+    // Rate limit: max 30 visitor actions per minute
+    const now = Date.now()
+    const counts = visitorActionCounts.get(remoteKey) || { count: 0, windowStart: now }
+    if (now - counts.windowStart > 60000) { counts.count = 0; counts.windowStart = now }
+    counts.count++
+    visitorActionCounts.set(remoteKey, counts)
+    if (counts.count > 30) {
+      console.log('[worker] Rate limit exceeded for visitor:', remoteKey.slice(0, 12))
+      return
+    }
+
+    // Forward to renderer for validation + application
+    send({
+      type: 'visitor-farm-action',
+      action: msg.action,
+      targetId: msg.targetId,
+      visitorKey: msg.visitorKey,
+      visitorName: msg.visitorName,
+      timestamp: msg.timestamp
+    })
+  } catch (e) {
+    console.error('[worker] Farm action message error:', e.message)
   }
 }
 
@@ -1275,6 +1343,40 @@ async function handleIPCMessage (data) {
       case 'respond-help': {
         if (!initialized) return
         respondToHelp(data.requestId)
+        break
+      }
+
+      case 'visitor-action-result': {
+        // Renderer validated and applied a visitor action, send result back to visitor
+        if (!initialized) return
+        const peer = peers.get(data.visitorKey)
+        if (!peer || !peer.farmActionChannel || !peer.farmActionChannel.opened) return
+        const resultMsg = JSON.stringify({
+          type: 'farm-action-result',
+          action: data.action,
+          targetId: data.targetId,
+          success: data.success,
+          reason: data.reason || null,
+          reward: data.reward || null
+        })
+        try { peer.farmActionChannel.messages[0].send(b4a.from(resultMsg)) } catch (e) { /* ignore */ }
+        break
+      }
+
+      case 'send-farm-action': {
+        // Renderer wants to send an action to a neighbor's farm (we are the visitor)
+        if (!initialized) return
+        const peer = peers.get(data.targetKey)
+        if (!peer || !peer.farmActionChannel || !peer.farmActionChannel.opened) return
+        const actionMsg = JSON.stringify({
+          type: 'farm-action',
+          action: data.action,
+          targetId: data.targetId,
+          visitorKey: playerKey,
+          visitorName: playerName,
+          timestamp: Date.now()
+        })
+        try { peer.farmActionChannel.messages[0].send(b4a.from(actionMsg)) } catch (e) { /* ignore */ }
         break
       }
 

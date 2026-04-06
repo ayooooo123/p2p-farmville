@@ -26,7 +26,9 @@ const IPCBridge = {
     helpRequest: [],
     helpResponse: [],
     playerJoined: [],
-    playerLeft: []
+    playerLeft: [],
+    visitorFarmAction: [],
+    farmActionResult: []
   },
 
   // ── Internal: called by the view entrypoint when RPC events arrive ──────
@@ -168,6 +170,8 @@ const IPCBridge = {
   onHelpResponse (callback) { this._listeners.helpResponse.push(callback) },
   onPlayerJoined (callback) { this._listeners.playerJoined.push(callback) },
   onPlayerLeft (callback) { this._listeners.playerLeft.push(callback) },
+  onVisitorFarmAction (callback) { this._listeners.visitorFarmAction.push(callback) },
+  onFarmActionResult (callback) { this._listeners.farmActionResult.push(callback) },
 
   // ── Internal message router ─────────────────────────────────────────────
 
@@ -226,6 +230,12 @@ const IPCBridge = {
         break
       case 'player-left':
         fire('playerLeft', { playerName: msg.playerName, playerKey: msg.playerKey })
+        break
+      case 'visitor-farm-action':
+        fire('visitorFarmAction', { action: msg.action, targetId: msg.targetId, visitorKey: msg.visitorKey, visitorName: msg.visitorName, timestamp: msg.timestamp })
+        break
+      case 'farm-action-result':
+        fire('farmActionResult', { action: msg.action, targetId: msg.targetId, success: msg.success, reason: msg.reason, reward: msg.reward })
         break
     }
   }

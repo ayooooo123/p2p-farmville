@@ -14,6 +14,7 @@ import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel
 import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
 import { initParticles, createParticleEffect, updateParticles } from './js/particles.js'
+import { FarmActions } from './js/farm-actions.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -246,6 +247,31 @@ if (window.IPCBridge && window.IPCBridge.available) {
 
   window.IPCBridge.onError((error) => {
     console.error('[app] Worker error:', error)
+  })
+
+  // ── Farm action protocol (visitor water/harvest/feed) ────────────────────
+  window.IPCBridge.onVisitorFarmAction((msg) => {
+    // Someone is performing an action on our farm
+    const combinedFarmState = {
+      plots: terrainData ? terrainData.getAllPlots() : [],
+      animals: farmState.animals
+    }
+    FarmActions.handleVisitorAction(msg, combinedFarmState, gameState, ({ action, targetId, visitorName, reward }) => {
+      showFeedback(visitorName + ' ' + action + 'ed your ' + (action === 'feed' ? 'animal' : 'crop') + '!', '#4caf50')
+      syncFarmStateNow()
+    })
+  })
+
+  window.IPCBridge.onFarmActionResult((msg) => {
+    // Result of an action WE sent to a neighbor
+    if (msg.success) {
+      showFeedback(msg.action + ' successful! +' + (msg.reward?.xp || 0) + ' XP', '#4caf50')
+      if (msg.reward?.xp) addXP(msg.reward.xp)
+      if (msg.reward?.coins) { gameState.coins += msg.reward.coins; updateHUD() }
+    } else {
+      const reasons = { no_crop: 'No crop there', already_watered: 'Already watered', not_ready: 'Not ready yet', action_not_permitted: 'Not allowed', withered: 'Crop withered', no_animal: 'No animal there', already_fed: 'Already fed', mature: 'Already mature' }
+      showFeedback(reasons[msg.reason] || 'Action failed', '#f44336')
+    }
   })
 } else {
   console.warn('[app] IPC bridge not available - running without worker')
