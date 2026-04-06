@@ -34,7 +34,10 @@ function getStoragePath (): string {
 // PearRuntime.run() is just new Sidecar(entrypoint, args) under the hood.
 // Electrobun bundles main.js to Resources/main.js and copies workers/ to
 // Resources/workers/ — so resolve relative to the running script, not __dirname.
-const workerPath = join(dirname(fileURLToPath(import.meta.url)), 'workers', 'main.js')
+// Electrobun puts bundled bun code at Resources/app/bun/index.js
+// and copy entries at Resources/app/ — so go up one dir from import.meta.url
+const appCodeDir = join(dirname(fileURLToPath(import.meta.url)), '..')
+const workerPath = join(appCodeDir, 'workers', 'main.js')
 const storagePath = getStoragePath()
 ipc = PearRuntime.run(workerPath, [storagePath])
 console.log('[main] Bare worker spawned:', workerPath)

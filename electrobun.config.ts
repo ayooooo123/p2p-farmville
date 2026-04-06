@@ -20,6 +20,7 @@ export default {
       "renderer/js": "views/game/js",
       "shared/constants.js": "views/game/shared/constants.js",
       "workers": "workers",
+      "node_modules": "node_modules",
     },
   },
 };
