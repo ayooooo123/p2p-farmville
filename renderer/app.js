@@ -1,5 +1,5 @@
 import * as THREE from './js/three.module.min.js'
-import { initScene, animate as renderScene } from './js/scene.js'
+import { initScene, animate as renderScene, initCameraControls, updateCamera, resetCamera } from './js/scene.js'
 import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop } from './js/crops.js'
 import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, updateSeedStrip } from './js/market.js'
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
@@ -138,6 +138,7 @@ const mousePx = { x: 0, y: 0 }
 sceneData = initScene(canvas)
 terrainData = sceneData.terrainData
 initParticles(sceneData.scene)
+initCameraControls(canvas)
 
 // ── Initialize Inventory ─────────────────────────────────────────────────────
 initInventory(() => {
@@ -1308,9 +1309,7 @@ function handleHarvest (plot) {
   if (masteryBonus > 0) feedbackText += ' (+' + masteryBonus + ' mastery)'
   showFeedback(feedbackText, '#ffd700')
 
-  if (cropDef.sellPrice > 50) {
-    showToast('Harvested ' + cropDef.name, 'harvest', '+' + cropDef.sellPrice + ' coins · +' + cropDef.xp + ' XP')
-  }
+  showToast('Harvested ' + cropDef.name, 'harvest', '+' + cropDef.sellPrice + ' 🪙 · +' + (cropDef.xp + masteryBonus) + ' XP' + (masteryBonus > 0 ? ' (mastery bonus!)' : ''))
 
   checkAchievements()
   syncFarmStateNow()
@@ -1366,6 +1365,7 @@ function harvestAll () {
   }
   if (count > 0) {
     showFeedback('Harvested ' + count + ' crops! +' + totalCoins + ' coins', '#ffd700')
+    showToast('Harvest All: ' + count + ' crops', 'bulk', '+' + totalCoins + ' 🪙 coins earned')
     checkAchievements()
     syncFarmStateNow()
     updateHUD()
@@ -1394,6 +1394,7 @@ function waterAll () {
   }
   if (count > 0) {
     showFeedback('Watered ' + count + ' crops!', '#4169e1')
+    showToast('Water All: ' + count + ' crops watered', 'water', 'Growth speed doubled! 💧')
     checkAchievements()
     updateHUD()
   } else {
@@ -1596,6 +1597,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.key === 't' || e.key === 'T') {
     if (gameState.running) toggleChat()
+    return
+  }
+  if (e.key === 'r' || e.key === 'R') {
+    if (gameState.running) resetCamera()
     return
   }
 
@@ -1975,6 +1980,7 @@ function gameLoop (time) {
   // Update player movement
   window.PlayerController.updatePlayer(clampedDt)
   window.PlayerController.updateCamera(sceneData.camera)
+  updateCamera()
 
   // Update systems
   updateCrops(dtMs)

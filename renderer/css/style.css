@@ -1952,6 +1952,14 @@ body {
 .toast-quest       { border-left: 3px solid #44aaff; }
 .toast-trade       { border-left: 3px solid #44ff88; }
 .toast-gift        { border-left: 3px solid #ff88cc; }
+.toast-coin        { border-left: 3px solid #ffd700; }
+.toast-xp          { border-left: 3px solid #a855f7; }
+.toast-plant       { border-left: 3px solid #22c55e; }
+.toast-water       { border-left: 3px solid #38bdf8; }
+.toast-bulk        { border-left: 3px solid #f97316; }
+.toast-error       { border-left: 3px solid #ef4444; }
+.toast-warning     { border-left: 3px solid #eab308; }
+.toast-info        { border-left: 3px solid #6b7280; }
 
 /* ── Quest panel ─────────────────────────────────────────────────────────── */
 #quest-panel {

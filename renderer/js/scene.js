@@ -161,6 +161,94 @@ function setFrustumSize (size) {
   camera.updateProjectionMatrix()
 }
 
+// ── Camera controls (pan + zoom) ─────────────────────────────────────────────
+const camState = {
+  targetFrustum: 45,
+  targetX: 0,
+  targetZ: 0,
+  panning: false,
+  panStartX: 0,
+  panStartZ: 0,
+  panMouseX: 0,
+  panMouseZ: 0,
+  didPan: false
+}
+
+const CAM_MIN_FRUSTUM = 10
+const CAM_MAX_FRUSTUM = 80
+const CAM_CLAMP = 60
+const CAM_LERP = 0.15
+
+function initCameraControls (canvasEl) {
+  // Scroll to zoom
+  canvasEl.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? 5 : -5
+    camState.targetFrustum = Math.max(CAM_MIN_FRUSTUM, Math.min(CAM_MAX_FRUSTUM, camState.targetFrustum + delta))
+  }, { passive: false })
+
+  // Middle or right mouse to pan
+  canvasEl.addEventListener('mousedown', (e) => {
+    if (e.button === 1 || e.button === 2) {
+      camState.panning = true
+      camState.didPan = false
+      camState.panMouseX = e.clientX
+      camState.panMouseZ = e.clientY
+      camState.panStartX = camState.targetX
+      camState.panStartZ = camState.targetZ
+      e.preventDefault()
+    }
+  })
+
+  window.addEventListener('mousemove', (e) => {
+    if (!camState.panning) return
+    const rect = canvasEl.getBoundingClientRect()
+    const dx = (e.clientX - camState.panMouseX) / rect.height * frustumSize * -1
+    const dz = (e.clientY - camState.panMouseZ) / rect.height * frustumSize
+    camState.targetX = Math.max(-CAM_CLAMP, Math.min(CAM_CLAMP, camState.panStartX + dx))
+    camState.targetZ = Math.max(-CAM_CLAMP, Math.min(CAM_CLAMP, camState.panStartZ + dz))
+    if (Math.abs(dx) > 1 || Math.abs(dz) > 1) camState.didPan = true
+  })
+
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 1 || e.button === 2) camState.panning = false
+  })
+
+  // Suppress context menu only if we actually panned
+  canvasEl.addEventListener('contextmenu', (e) => {
+    if (camState.didPan) { e.preventDefault(); camState.didPan = false }
+  })
+}
+
+function updateCamera () {
+  if (!camera) return
+  // Lerp frustum size
+  if (Math.abs(frustumSize - camState.targetFrustum) > 0.01) {
+    frustumSize += (camState.targetFrustum - frustumSize) * CAM_LERP
+    const aspect = (document.documentElement.clientWidth / document.documentElement.clientHeight) || 1
+    camera.left   = -frustumSize * aspect / 2
+    camera.right  =  frustumSize * aspect / 2
+    camera.top    =  frustumSize / 2
+    camera.bottom = -frustumSize / 2
+    camera.updateProjectionMatrix()
+  }
+  // Lerp pan
+  const tx = camState.targetX
+  const tz = camState.targetZ
+  camera.position.x += (tx - camera.position.x) * CAM_LERP
+  camera.position.z += (tz - camera.position.z) * CAM_LERP
+}
+
+function resetCamera () {
+  camState.targetFrustum = 45
+  camState.targetX = 0
+  camState.targetZ = 0
+}
+
+function getCameraOffset () {
+  return { x: camera.position.x, z: camera.position.z }
+}
+
 // Export to window for non-module scripts and as ES module
-window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize }
-export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize }
+window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset }
+export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset }

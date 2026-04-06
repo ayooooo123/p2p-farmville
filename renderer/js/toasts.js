@@ -13,7 +13,8 @@ function ensureContainer () {
 const ICONS = {
   harvest: '🌾', coin: '🪙', xp: '⭐', level: '🎉',
   achievement: '🏆', quest: '📋', trade: '🤝', gift: '🎁',
-  error: '❌', info: 'ℹ️', warning: '⚠️'
+  error: '❌', info: 'ℹ️', warning: '⚠️',
+  plant: '🌱', water: '💧', bulk: '⚡'
 }
 
 export function showToast (message, type = 'info', subtitle = null) {
