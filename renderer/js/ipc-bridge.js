@@ -1,11 +1,14 @@
-/* global bridge */
+/* global __rpc */
 
-// IPC Bridge - wraps window.bridge for worker communication
-// Phase 5: Added social features (trade, gift, coop, help, enhanced chat)
+// IPC Bridge - Electrobun RPC version
+// Replaces the Electron contextBridge IPC with Electrobun's typed RPC
+// The RPC is set up by src/views/game.ts and exposed on window.__rpc
+
 const WORKER_PATH = '/workers/main.js'
 
 const IPCBridge = {
-  available: typeof window !== 'undefined' && !!window.bridge,
+  // Check availability: Electrobun RPC is available when __rpc is set
+  available: typeof window !== 'undefined' && !!window.__rpc,
 
   _listeners: {
     neighbors: [],
@@ -26,47 +29,61 @@ const IPCBridge = {
     playerLeft: []
   },
 
+  // ── Internal: called by the view entrypoint when RPC events arrive ──────
+  _emitWorkerStdout (data) {
+    console.log('[ipc-bridge] worker stdout:', data.trimEnd())
+  },
+
+  _emitWorkerStderr (data) {
+    console.warn('[ipc-bridge] worker stderr:', data.trimEnd())
+  },
+
+  _emitWorkerExit (code) {
+    console.log('[ipc-bridge] worker exited with code:', code)
+  },
+
+  _emitWorkerMessage (data) {
+    try {
+      const msg = JSON.parse(data)
+      this._routeMessage(msg)
+    } catch (e) {
+      console.warn('[ipc-bridge] Failed to parse worker message:', e)
+    }
+  },
+
+  // ── Worker lifecycle ───────────────────────────────────────────────────
   startWorker () {
     if (!this.available) {
-      console.warn('[ipc-bridge] window.bridge not available')
+      console.warn('[ipc-bridge] window.__rpc not available')
       return Promise.resolve({ ok: false })
     }
-    return window.bridge.startWorker(WORKER_PATH)
+    return window.__rpc.startWorker()
   },
 
   sendToWorker (msg) {
     if (!this.available) return
     const data = typeof msg === 'string' ? msg : JSON.stringify(msg)
-    window.bridge.writeWorkerIPC(WORKER_PATH, data)
+    window.__rpc.sendToWorker(data)
   },
 
+  // Backward compat: these are no-ops in Electrobun since we handle
+  // stdout/stderr/message via RPC event handlers in the view entrypoint
   onWorkerMessage (cb) {
-    if (!this.available) return
-    window.bridge.onWorkerIPC(WORKER_PATH, (data) => {
-      try {
-        const str = typeof data === 'string' ? data : new TextDecoder().decode(data)
-        const msg = JSON.parse(str)
-        cb(msg)
-        this._routeMessage(msg)
-      } catch (e) {
-        console.warn('[ipc-bridge] Failed to parse worker message:', e)
-      }
-    })
+    // Messages arrive via _emitWorkerMessage, which calls _routeMessage
+    // This is now a no-op since routing happens in the view entrypoint
+    // But we keep it for any code that calls it directly
   },
 
   onWorkerStdout (cb) {
-    if (!this.available) return
-    window.bridge.onWorkerStdout(WORKER_PATH, cb)
+    // No-op: handled in view entrypoint
   },
 
   onWorkerStderr (cb) {
-    if (!this.available) return
-    window.bridge.onWorkerStderr(WORKER_PATH, cb)
+    // No-op: handled in view entrypoint
   },
 
   onWorkerExit (cb) {
-    if (!this.available) return
-    window.bridge.onWorkerExit(WORKER_PATH, cb)
+    // No-op: handled in view entrypoint
   },
 
   // ── P2P High-Level Methods ──────────────────────────────────────────────

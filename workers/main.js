@@ -53,7 +53,7 @@ const HELP_REQUEST_EXPIRY = 30 * 60 * 1000 // 30 minutes
 const DAILY_GIFT_LIMIT = 5
 
 // ── State ───────────────────────────────────────────────────────────────────
-const storagePath = Bare.argv[2] || Bare.argv[0] || './storage'
+const storagePath = process.argv[2] || process.argv[0] || './storage'
 let store = null
 let swarm = null
 let playerName = ''
@@ -93,9 +93,9 @@ let helpIdCounter = 0
 // ── IPC helpers ─────────────────────────────────────────────────────────────
 function send (msg) {
   try {
-    Bare.IPC.write(JSON.stringify(msg))
+    process.stdout.write(JSON.stringify(msg) + '\n')
   } catch (e) {
-    console.error('[worker] IPC write error:', e.message)
+    console.error('[worker] stdout write error:', e.message)
   }
 }
 
@@ -1133,10 +1133,23 @@ function startPeriodicTasks () {
   }, 60000)
 }
 
-// ── IPC message handler from renderer ───────────────────────────────────────
-Bare.IPC.on('data', async (msg) => {
+// ── IPC message handler from renderer (via stdin) ──────────────────────────
+let inputBuffer = ''
+process.stdin.setEncoding('utf8')
+process.stdin.on('data', async (chunk) => {
+  inputBuffer += chunk
+  // Process complete lines (newline-delimited JSON)
+  let idx
+  while ((idx = inputBuffer.indexOf('\n')) !== -1) {
+    const line = inputBuffer.slice(0, idx).trim()
+    inputBuffer = inputBuffer.slice(idx + 1)
+    if (!line) continue
+    await handleIPCMessage(line)
+  }
+})
+
+async function handleIPCMessage (str) {
   try {
-    const str = msg.toString()
     let data
 
     try {
@@ -1278,7 +1291,7 @@ Bare.IPC.on('data', async (msg) => {
     console.error('[worker] IPC handler error:', e.message)
     sendError('Worker error: ' + e.message)
   }
-})
+}
 
 // ── Startup ─────────────────────────────────────────────────────────────────
 send({ type: 'worker:ready', storagePath })

@@ -239,7 +239,7 @@
           <h3>Technology</h3>
           <p>Three.js - 3D Rendering</p>
           <p>Hyperswarm - P2P Networking</p>
-          <p>Electron + Pear Runtime</p>
+          <p>Electrobun - Desktop Framework</p>
           <p>Web Audio API - Procedural Sound</p>
         </div>
         <div class="credits-section">
@@ -273,14 +273,16 @@
     </div>
   </div>
 
-  <!-- Scripts -->
-  <script src="js/ipc-bridge.js"></script>
+  <!-- Electrobun view entrypoint (compiled from src/game/index.ts) - sets up window.IPCBridge via RPC -->
+  <script src="views://game/index.js"></script>
+  <!-- Game scripts (use window.IPCBridge for P2P communication) -->
   <script src="js/player.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/trade.js"></script>
   <script src="js/gift.js"></script>
   <script src="js/coop.js"></script>
   <script src="js/neighbor-panel.js"></script>
+  <!-- Main app (ES module - imports Three.js and other modules) -->
   <script src="app.js" type="module"></script>
 </body>
 </html>
