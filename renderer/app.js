@@ -618,6 +618,18 @@ function openExpansionPanel () {
   }
 }
 
+// ── Chat panel toggle ────────────────────────────────────────────────────────
+function toggleChat () {
+  const minimized = chatPanel.classList.toggle('minimized')
+  localStorage.setItem('farmville-chat-minimized', minimized ? '1' : '0')
+  const btn = document.getElementById('chat-toggle-btn')
+  if (btn) btn.textContent = minimized ? '▲' : '▼'
+}
+
+document.getElementById('chat-header').addEventListener('click', () => {
+  if (gameState.running) toggleChat()
+})
+
 // ── Phase 6: Panel toggle helpers ───────────────────────────────────────────
 function togglePanel (panel) {
   if (!panel) return
@@ -1582,6 +1594,10 @@ window.addEventListener('keydown', (e) => {
     if (gameState.running) toggleInventory()
     return
   }
+  if (e.key === 't' || e.key === 'T') {
+    if (gameState.running) toggleChat()
+    return
+  }
 
   // Phase 6: panel hotkeys
   if (e.key === 'm' || e.key === 'M') {
@@ -2007,6 +2023,12 @@ function startGame () {
   setupScreen.style.display = 'none'
   hud.style.display = 'block'
   chatPanel.style.display = 'flex'
+  // Restore minimized state (default: minimized)
+  const chatWasMinimized = localStorage.getItem('farmville-chat-minimized')
+  const startMinimized = chatWasMinimized === null ? true : chatWasMinimized === '1'
+  if (startMinimized) chatPanel.classList.add('minimized')
+  const chatToggleBtn = document.getElementById('chat-toggle-btn')
+  if (chatToggleBtn) chatToggleBtn.textContent = startMinimized ? '▲' : '▼'
 
   // Init player
   window.PlayerController.initPlayer(sceneData.scene)

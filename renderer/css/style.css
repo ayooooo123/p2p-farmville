@@ -1307,6 +1307,57 @@ body {
   backdrop-filter: blur(4px);
   border-radius: 8px;
   overflow: hidden;
+  transition: height 0.15s ease;
+}
+
+#chat-panel.minimized {
+  height: auto;
+  width: auto;
+  min-width: 100px;
+}
+
+#chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+#chat-panel.minimized #chat-header {
+  border-bottom: none;
+  border-radius: 8px;
+}
+
+#chat-toggle-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+#chat-toggle-btn:hover {
+  color: #fff;
+}
+
+#chat-panel.minimized #chat-toggle-btn {
+  transform: rotate(180deg);
+}
+
+#chat-panel.minimized #chat-messages,
+#chat-panel.minimized #chat-form,
+#chat-panel.minimized #chat-tabs {
+  display: none !important;
 }
 
 #chat-messages {
