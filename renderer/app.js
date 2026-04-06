@@ -112,6 +112,9 @@ const placementText = document.getElementById('placement-text')
 const tooltipEl = document.getElementById('object-tooltip')
 const tooltipTitle = document.getElementById('tooltip-title')
 const tooltipInfo = document.getElementById('tooltip-info')
+const tooltipProgressWrap = document.getElementById('tooltip-progress-wrap')
+const tooltipProgressBar = document.getElementById('tooltip-progress-bar')
+const tooltipProgressLabel = document.getElementById('tooltip-progress-label')
 
 // P2P DOM elements
 const peerCountEl = document.getElementById('peer-count')
@@ -1077,13 +1080,30 @@ function renderInventoryUI () {
 }
 
 // ── Tooltip ──────────────────────────────────────────────────────────────────
-function showTooltip (title, info, px, py) {
+function showTooltip (title, info, px, py, progress) {
   if (!tooltipEl) return
   tooltipTitle.textContent = title
   tooltipInfo.textContent = info
   tooltipEl.style.left = (px + 15) + 'px'
   tooltipEl.style.top = (py + 15) + 'px'
   tooltipEl.style.display = 'block'
+  // progress: { pct: 0-100, label: string } or null
+  if (progress) {
+    tooltipProgressWrap.style.display = 'block'
+    tooltipProgressBar.style.width = progress.pct + '%'
+    // Color the bar: green when ready, yellow when close, blue for watered
+    if (progress.pct >= 100) {
+      tooltipProgressBar.style.background = 'linear-gradient(90deg, #ffd700, #ffeb3b)'
+    } else if (progress.watered) {
+      tooltipProgressBar.style.background = 'linear-gradient(90deg, #2196f3, #64b5f6)'
+    } else {
+      tooltipProgressBar.style.background = 'linear-gradient(90deg, #4caf50, #8bc34a)'
+    }
+    tooltipProgressLabel.textContent = progress.label
+  } else {
+    tooltipProgressWrap.style.display = 'none'
+    tooltipProgressLabel.textContent = ''
+  }
 }
 
 function hideTooltip () {
@@ -1409,7 +1429,19 @@ function updateHoverTooltip () {
   }
 
   const intersects = raycaster.intersectObjects(allMeshes, false)
-  if (intersects.length === 0) { hideTooltip(); return }
+
+  // If no placed objects hit, check if we're hovering a planted crop plot
+  if (intersects.length === 0) {
+    if (terrainData) {
+      const plot = terrainData.getPlotFromRaycast(new THREE.Vector2(mouse.x, mouse.y), sceneData.camera)
+      if (plot && plot.state === terrainData.PLOT_STATES.PLANTED && plot.crop && !plot.crop.withered) {
+        _showCropTooltip(plot, mousePx.x, mousePx.y)
+        return
+      }
+    }
+    hideTooltip()
+    return
+  }
 
   const obj = objectMap.get(intersects[0].object.id)
   if (!obj) { hideTooltip(); return }
@@ -1439,6 +1471,50 @@ function updateHoverTooltip () {
     }
   }
   showTooltip(title, info, mousePx.x, mousePx.y)
+}
+
+function _showCropTooltip (plot, px, py) {
+  const crop = plot.crop
+  const def = CROP_DEFINITIONS[crop.type]
+  if (!def) { hideTooltip(); return }
+
+  const maxStage = def.stages - 1
+  const isMature = crop.stage >= maxStage
+
+  let title = def.name
+  let info = ''
+  let progress = null
+
+  if (isMature) {
+    title = def.name + ' — Ready!'
+    info = 'Click to harvest  +' + def.sellPrice + ' coins  +' + def.xp + ' XP'
+    progress = { pct: 100, label: 'Stage ' + crop.stage + '/' + maxStage + ' — Ready to harvest!', watered: false }
+  } else {
+    const timePerStage = def.growTime / maxStage
+    const stageProgress = Math.min((crop.growthAccum || 0) / timePerStage, 1)
+    const overallPct = Math.round(((crop.stage + stageProgress) / maxStage) * 100)
+
+    // Estimate time remaining
+    const stagesLeft = maxStage - crop.stage
+    const accumLeft = timePerStage - (crop.growthAccum || 0)
+    const multiplier = crop.watered ? 2 : 1
+    const msLeft = (accumLeft + (stagesLeft - 1) * timePerStage) / multiplier
+    let timeLabel
+    if (msLeft < 60000) {
+      timeLabel = Math.ceil(msLeft / 1000) + 's'
+    } else if (msLeft < 3600000) {
+      timeLabel = Math.ceil(msLeft / 60000) + 'm'
+    } else {
+      timeLabel = (msLeft / 3600000).toFixed(1) + 'h'
+    }
+
+    const wateredNote = crop.watered ? '  · Watered (2x)' : '  · Water to speed up'
+    info = 'Stage ' + crop.stage + '/' + maxStage + wateredNote
+    const progressLabel = overallPct + '% grown  · ~' + timeLabel + ' remaining'
+    progress = { pct: overallPct, label: progressLabel, watered: crop.watered }
+  }
+
+  showTooltip(title, info, px, py, progress)
 }
 
 // ── Mouse click -> raycast to plot or object ─────────────────────────────────

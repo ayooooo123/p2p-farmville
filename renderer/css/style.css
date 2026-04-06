@@ -678,6 +678,28 @@ body {
   color: #aaa;
 }
 
+#tooltip-progress-wrap {
+  margin-top: 6px;
+  height: 6px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#tooltip-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #4caf50, #8bc34a);
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+#tooltip-progress-label {
+  font-size: 10px;
+  color: #888;
+  margin-top: 3px;
+}
+
 /* ── Inventory Panel ────────────────────────────────────────────────────────── */
 #inventory-panel {
   position: fixed;
