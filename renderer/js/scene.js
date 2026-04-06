@@ -17,8 +17,18 @@ function initScene (canvasEl) {
   scene = new THREE.Scene()
   scene.background = new THREE.Color(0x87ceeb) // sky blue
 
+  // Use clientWidth/Height — window.innerWidth/Height may be 0 in WebView at init time
+  const initW = canvasEl.parentElement
+    ? canvasEl.parentElement.clientWidth || document.documentElement.clientWidth
+    : document.documentElement.clientWidth
+  const initH = canvasEl.parentElement
+    ? canvasEl.parentElement.clientHeight || document.documentElement.clientHeight
+    : document.documentElement.clientHeight
+  console.log('[scene] initScene canvas parent size:', initW, 'x', initH,
+    '| canvas clientSize:', canvasEl.clientWidth, 'x', canvasEl.clientHeight)
+
   // Orthographic Camera - pure top-down
-  const aspect = window.innerWidth / window.innerHeight
+  const aspect = initW / initH || 1
   camera = new THREE.OrthographicCamera(
     -frustumSize * aspect / 2,
     frustumSize * aspect / 2,
@@ -33,10 +43,11 @@ function initScene (canvasEl) {
 
   // Renderer
   renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true })
-  renderer.setSize(window.innerWidth, window.innerHeight)
+  renderer.setSize(initW || 800, initH || 600)
   renderer.setPixelRatio(window.devicePixelRatio)
   // No shadow maps for top-down view
   renderer.shadowMap.enabled = false
+  console.log('[scene] renderer created, drawingBuffer:', renderer.domElement.width, 'x', renderer.domElement.height)
 
   // Ambient light (primary illumination for top-down)
   ambientLight = new THREE.AmbientLight(0xffffff, 1.0)
@@ -68,14 +79,40 @@ function initScene (canvasEl) {
 
   // Handle resize (update orthographic frustum)
   window.addEventListener('resize', () => {
-    const newAspect = window.innerWidth / window.innerHeight
+    const w = document.documentElement.clientWidth
+    const h = document.documentElement.clientHeight
+    const newAspect = w / h || 1
     camera.left = -frustumSize * newAspect / 2
     camera.right = frustumSize * newAspect / 2
     camera.top = frustumSize / 2
     camera.bottom = -frustumSize / 2
     camera.updateProjectionMatrix()
-    renderer.setSize(window.innerWidth, window.innerHeight)
+    renderer.setSize(w, h)
   })
+
+  // ResizeObserver: update renderer when canvas is actually laid out (WebView compat)
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect
+        if (width > 0 && height > 0) {
+          console.log('[scene] ResizeObserver fired:', width, 'x', height)
+          const newAspect = width / height
+          camera.left = -frustumSize * newAspect / 2
+          camera.right = frustumSize * newAspect / 2
+          camera.top = frustumSize / 2
+          camera.bottom = -frustumSize / 2
+          camera.updateProjectionMatrix()
+          renderer.setSize(width, height)
+          renderer.render(scene, camera)
+        }
+      }
+    })
+    ro.observe(canvasEl)
+  }
+
+  // Force one frame immediately so the canvas isn't blank if the loop hasn't started
+  renderer.render(scene, camera)
 
   return { scene, camera, renderer, terrainData, sunLight, ambientLight, hemiLight: null }
 }
@@ -116,7 +153,7 @@ function getHemiLight () { return null }
 function getFrustumSize () { return frustumSize }
 function setFrustumSize (size) {
   frustumSize = size
-  const aspect = window.innerWidth / window.innerHeight
+  const aspect = (document.documentElement.clientWidth / document.documentElement.clientHeight) || 1
   camera.left = -frustumSize * aspect / 2
   camera.right = frustumSize * aspect / 2
   camera.top = frustumSize / 2

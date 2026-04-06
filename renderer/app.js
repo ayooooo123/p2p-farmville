@@ -2326,4 +2326,5 @@ function hookFarmSync (fn) {
 }
 
 // Kick off render loop
+console.log('[app] starting game loop via requestAnimationFrame')
 requestAnimationFrame(gameLoop)
