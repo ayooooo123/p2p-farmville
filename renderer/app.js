@@ -145,18 +145,30 @@ initMarket((seedKey) => {
   handleMarketBuy(purchase)
 })
 
+// ── Load saved data for initialization ──────────────────────────────────────
+let savedData = null
+try {
+  const raw = localStorage.getItem('p2p-farmville-save')
+  if (raw) savedData = JSON.parse(raw)
+} catch (e) { /* ignore */ }
+
+// Pre-fill farm name from save
+if (savedData?.gameState?.farmName && farmNameInput) {
+  farmNameInput.value = savedData.gameState.farmName
+}
+
 // ── Initialize Phase 6: Progression Systems ─────────────────────────────────
-initMastery({}, (cropKey, newLevel) => {
+initMastery(savedData?.mastery || {}, (cropKey, newLevel) => {
   const def = CROP_DEFINITIONS[cropKey]
   const name = def ? def.name : cropKey
   showMasteryNotification(name, newLevel)
 })
 
-initCollections({}, (item, setKey, set) => {
+initCollections(savedData?.collections || {}, (item, setKey, set) => {
   showCollectionNotification(item, set)
 })
 
-initAchievements({}, (achievement) => {
+initAchievements(savedData?.achievements || {}, (achievement) => {
   showAchievementNotification(achievement)
   if (achievement.reward) {
     if (achievement.reward.coins) {
@@ -167,7 +179,7 @@ initAchievements({}, (achievement) => {
   }
 })
 
-initExpansion(null, 0) // scene set later in startGame
+initExpansion(null, savedData?.expansion?.tier || 0) // scene set later in startGame
 
 // Phase 6 DOM elements
 const masteryPanel = document.getElementById('mastery-panel')
@@ -1822,6 +1834,99 @@ function loadGame () {
       farmNameInput.value = gameState.farmName
     }
 
+    // ── Restore plot data (tilled soil + crops) ───────────────────────────────
+    if (saveData.plotData && terrainData) {
+      for (const pd of saveData.plotData) {
+        const plot = terrainData.getPlotAt(pd.row, pd.col)
+        if (!plot) continue
+        if (pd.state !== 'grass') {
+          terrainData.setPlotState(plot, pd.state)
+        }
+        if (pd.crop) {
+          const cropMesh = createCropMesh(pd.crop.type, pd.crop.stage)
+          cropMesh.position.set(pd.x, 0.02, pd.z)
+          sceneData.scene.add(cropMesh)
+          plot.crop = {
+            type: pd.crop.type,
+            stage: pd.crop.stage,
+            watered: pd.crop.watered,
+            withered: pd.crop.withered || false,
+            plantedAt: pd.crop.plantedAt,
+            growthAccum: pd.crop.growthAccum || 0,
+            mesh: cropMesh
+          }
+          plot.cropMesh = cropMesh
+        }
+      }
+    }
+
+    // ── Restore trees ─────────────────────────────────────────────────────────
+    if (saveData.farmState?.trees) {
+      for (const t of saveData.farmState.trees) {
+        const data = createTreeData(t.type, t.x, t.z)
+        const mesh = createTreeMesh(t.type, t.mature, t.growthScale || 0)
+        mesh.position.set(t.x, 0, t.z)
+        sceneData.scene.add(mesh)
+        data.mesh = mesh
+        data.growthScale = t.growthScale || 0
+        data.mature = t.mature || false
+        data.plantedAt = t.plantedAt || Date.now()
+        data.lastHarvest = t.lastHarvest || 0
+        farmState.trees.push(data)
+      }
+    }
+
+    // ── Restore animals ───────────────────────────────────────────────────────
+    if (saveData.farmState?.animals) {
+      for (const a of saveData.farmState.animals) {
+        const data = createAnimalData(a.type, a.x, a.z)
+        const mesh = createAnimalMesh(a.type)
+        mesh.position.set(a.x, 0, a.z)
+        sceneData.scene.add(mesh)
+        data.mesh = mesh
+        data.fed = a.fed || false
+        data.productReady = a.productReady || false
+        data.lastFed = a.lastFed || 0
+        data.fedAt = a.fedAt || 0
+        farmState.animals.push(data)
+      }
+    }
+
+    // ── Restore buildings ─────────────────────────────────────────────────────
+    if (saveData.farmState?.buildings) {
+      for (const b of saveData.farmState.buildings) {
+        const data = createBuildingData(b.type, b.x, b.z)
+        const mesh = createBuildingMesh(b.type)
+        mesh.position.set(b.x, 0, b.z)
+        sceneData.scene.add(mesh)
+        data.mesh = mesh
+        data.craftQueue = b.craftQueue || []
+        farmState.buildings.push(data)
+      }
+      const effects = getBuildingEffects(farmState.buildings)
+      setCapacityBonus(effects.storageBonus)
+    }
+
+    // ── Restore decorations ───────────────────────────────────────────────────
+    if (saveData.farmState?.decorations) {
+      for (const d of saveData.farmState.decorations) {
+        const data = createDecoData(d.type, d.x, d.z)
+        const mesh = createDecoMesh(d.type)
+        mesh.position.set(d.x, 0, d.z)
+        sceneData.scene.add(mesh)
+        data.mesh = mesh
+        data.color = d.color
+        farmState.decorations.push(data)
+      }
+    }
+
+    // ── Restore inventory ─────────────────────────────────────────────────────
+    if (saveData.inventory) {
+      for (const item of saveData.inventory) {
+        addItem(item.id, item.quantity, item.meta || {})
+      }
+    }
+
     console.log('[save] Game loaded, session #' + gameState.sessionsPlayed)
     return true
   } catch (e) {
@@ -1829,6 +1934,12 @@ function loadGame () {
     return false
   }
 }
+
+function deleteSave () {
+  localStorage.removeItem(SAVE_KEY)
+  console.log('[save] Save deleted')
+}
+window.deleteSave = deleteSave
 
 function autoSave (dtMs) {
   lastSaveTime += dtMs
