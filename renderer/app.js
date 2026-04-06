@@ -370,16 +370,17 @@ function deselectTool () {
   canvas.style.cursor = 'default'
 }
 
-// Toolbar click handlers
-toolbar.addEventListener('click', (e) => {
-  const btn = e.target.closest('.tool-btn')
-  if (!btn || btn.id === 'market-open-btn' || btn.id === 'inventory-btn') return
-
-  const tool = btn.dataset.tool
-  if (gameState.selectedTool === tool) {
-    deselectTool()
-  } else {
-    selectTool(tool)
+// Tool button direct listeners (delegation unreliable in Electrobun WebView)
+;['plow', 'plant', 'water', 'harvest', 'remove'].forEach(tool => {
+  const btn = toolbar.querySelector(`[data-tool="${tool}"]`)
+  if (btn) {
+    btn.addEventListener('click', () => {
+      if (gameState.selectedTool === tool) {
+        deselectTool()
+      } else {
+        selectTool(tool)
+      }
+    })
   }
 })
 
