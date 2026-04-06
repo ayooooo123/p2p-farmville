@@ -11,11 +11,13 @@
   },
   "dependencies": {
     "b4a": "^1.6.7",
+    "compact-encoding": "^2.19.2",
     "corestore": "^7.9.2",
+    "electrobun": "latest",
     "hypercore-crypto": "^3.6.1",
     "hyperswarm": "^4.17.0",
-    "protomux": "^3.10.1",
-    "electrobun": "latest"
+    "pear-runtime": "^1.1.1",
+    "protomux": "^3.10.1"
   },
   "devDependencies": {
     "@types/bun": "latest"
