@@ -297,6 +297,34 @@ function updateHUD () {
   if (pct > 50) energyBarFill.style.background = '#7cfc00'
   else if (pct > 20) energyBarFill.style.background = '#ffd700'
   else energyBarFill.style.background = '#ff4444'
+
+  // Quick-action buttons: show when there's something to do
+  if (terrainData && gameState.running) {
+    const allPlots = terrainData.getAllPlots()
+    let readyCount = 0
+    let unwateredCount = 0
+    for (const p of allPlots) {
+      if (p.state === terrainData.PLOT_STATES.PLANTED && p.crop && !p.crop.withered) {
+        const def = CROP_DEFINITIONS[p.crop.type]
+        if (def && p.crop.stage >= def.stages - 1) readyCount++
+        else if (!p.crop.watered) unwateredCount++
+      }
+    }
+    if (harvestAllBtn) {
+      harvestAllBtn.style.display = readyCount > 0 ? '' : 'none'
+      if (readyCount > 0) {
+        const label = harvestAllBtn.querySelector('.tool-label')
+        if (label) label.textContent = 'Harvest (' + readyCount + ')'
+      }
+    }
+    if (waterAllBtn) {
+      waterAllBtn.style.display = unwateredCount > 0 ? '' : 'none'
+      if (unwateredCount > 0) {
+        const label = waterAllBtn.querySelector('.tool-label')
+        if (label) label.textContent = 'Water (' + unwateredCount + ')'
+      }
+    }
+  }
 }
 
 // ── Tool system ──────────────────────────────────────────────────────────────
@@ -1222,6 +1250,69 @@ function handleRemove (plot) {
   showFeedback('Removed ' + name + ' (no refund)', '#ff6347')
 }
 
+// ── Quick bulk actions ───────────────────────────────────────────────────
+function harvestAll () {
+  if (!terrainData || !gameState.running) return
+  const allPlots = terrainData.getAllPlots()
+  let count = 0
+  let totalCoins = 0
+  for (const plot of allPlots) {
+    if (plot.state !== terrainData.PLOT_STATES.PLANTED || !plot.crop || plot.crop.withered) continue
+    const def = CROP_DEFINITIONS[plot.crop.type]
+    if (!def || plot.crop.stage < def.stages - 1) continue
+    if (!useEnergy(ENERGY_COST)) break  // stop if out of energy
+
+    gameState.coins += def.sellPrice
+    gameState.totalCoinsEarned += def.sellPrice
+    gameState.totalHarvests++
+    totalCoins += def.sellPrice
+    const masteryResult = recordHarvest(plot.crop.type)
+    const masteryBonus = masteryResult ? masteryResult.xpBonus : 0
+    addXP(def.xp + masteryBonus)
+    addItem(plot.crop.type, 1, { name: def.name, type: 'crop', sellPrice: def.sellPrice })
+    if (plot.cropMesh) { sceneData.scene.remove(plot.cropMesh); plot.cropMesh = null }
+    plot.crop = null
+    terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
+    createParticleEffect('harvest', { x: plot.x, y: 0.1, z: plot.z })
+    createParticleEffect('coin', { x: plot.x, y: 0.3, z: plot.z })
+    count++
+  }
+  if (count > 0) {
+    showFeedback('Harvested ' + count + ' crops! +' + totalCoins + ' coins', '#ffd700')
+    checkAchievements()
+    syncFarmStateNow()
+    updateHUD()
+  } else {
+    showFeedback('No crops ready to harvest!', '#ffa500')
+  }
+}
+
+function waterAll () {
+  if (!terrainData || !gameState.running) return
+  const allPlots = terrainData.getAllPlots()
+  let count = 0
+  for (const plot of allPlots) {
+    if (plot.state !== terrainData.PLOT_STATES.PLANTED || !plot.crop || plot.crop.withered) continue
+    const def = CROP_DEFINITIONS[plot.crop.type]
+    if (!def || plot.crop.stage >= def.stages - 1) continue  // already mature, skip
+    if (plot.crop.watered) continue
+    if (!useEnergy(ENERGY_COST)) break  // stop if out of energy
+
+    plot.crop.watered = true
+    gameState.totalWatered++
+    terrainData.setPlotWatered(plot.row, plot.col, true)
+    createParticleEffect('watering', { x: plot.x, y: 0.1, z: plot.z })
+    count++
+  }
+  if (count > 0) {
+    showFeedback('Watered ' + count + ' crops!', '#4169e1')
+    checkAchievements()
+    updateHUD()
+  } else {
+    showFeedback('No unwatered crops!', '#ffa500')
+  }
+}
+
 // ── Mouse tracking ───────────────────────────────────────────────────────────
 canvas.addEventListener('mousemove', (e) => {
   mouse.x = (e.clientX / window.innerWidth) * 2 - 1
@@ -1376,6 +1467,16 @@ window.addEventListener('keydown', (e) => {
     return
   }
 
+  // H key for Harvest All, W key for Water All
+  if (e.key === 'h' || e.key === 'H') {
+    if (gameState.running) harvestAll()
+    return
+  }
+  if (e.key === 'w' || e.key === 'W') {
+    if (gameState.running) waterAll()
+    return
+  }
+
   // Number keys for quick tool select
   const toolKeys = { '1': 'plow', '2': 'plant', '3': 'water', '4': 'harvest', '5': 'remove' }
   if (toolKeys[e.key] && gameState.running) {
@@ -1384,6 +1485,8 @@ window.addEventListener('keydown', (e) => {
 })
 
 // Inventory button
+const harvestAllBtn = document.getElementById('harvest-all-btn')
+const waterAllBtn = document.getElementById('water-all-btn')
 const invBtn = document.getElementById('inventory-btn')
 if (invBtn) {
   invBtn.addEventListener('click', () => {
@@ -1397,6 +1500,16 @@ if (invCloseBtn) {
   invCloseBtn.addEventListener('click', () => {
     if (inventoryPanel) inventoryPanel.classList.remove('visible')
   })
+}
+
+// Harvest All button
+if (harvestAllBtn) {
+  harvestAllBtn.addEventListener('click', () => harvestAll())
+}
+
+// Water All button
+if (waterAllBtn) {
+  waterAllBtn.addEventListener('click', () => waterAll())
 }
 
 // Crafting close button

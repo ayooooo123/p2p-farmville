@@ -334,6 +334,36 @@ body {
   background: rgba(100, 149, 237, 0.15);
 }
 
+.tool-btn-harvest-all {
+  border-color: rgba(255, 215, 0, 0.5);
+  background: rgba(255, 180, 0, 0.12);
+  color: #ffd700;
+  animation: harvest-all-pulse 1.8s ease-in-out infinite;
+}
+
+.tool-btn-harvest-all:hover {
+  border-color: rgba(255, 215, 0, 0.9);
+  background: rgba(255, 215, 0, 0.25);
+  color: #fff;
+}
+
+@keyframes harvest-all-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(255, 215, 0, 0.4); }
+  50% { box-shadow: 0 0 14px rgba(255, 215, 0, 0.8); }
+}
+
+.tool-btn-water-all {
+  border-color: rgba(65, 105, 225, 0.5);
+  background: rgba(65, 105, 225, 0.12);
+  color: #6495ed;
+}
+
+.tool-btn-water-all:hover {
+  border-color: rgba(65, 105, 225, 0.9);
+  background: rgba(65, 105, 225, 0.25);
+  color: #fff;
+}
+
 /* ── Seed Selector Strip ────────────────────────────────────────────────────── */
 #seed-strip {
   display: flex;
