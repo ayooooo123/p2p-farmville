@@ -2,7 +2,7 @@
 // Creates BrowserWindow, initializes P2P module directly (no worker spawn),
 // and bridges P2P callbacks to the renderer via typed RPC.
 
-import { BrowserWindow, BrowserView } from "electrobun/bun";
+import Electrobun, { BrowserWindow, BrowserView } from "electrobun/bun";
 import type { FarmvilleRPC } from "../shared/rpc-types";
 import {
   init as initP2P,
@@ -58,39 +58,34 @@ function createWindow() {
     rpc: gameRPC,
   });
 
-  mainWindow.on("closed", () => {
+  mainWindow.on("close", () => {
     shutdownP2P().catch((e) => console.error("[main] Shutdown error:", e));
     mainWindow = null;
     rendererReady = false;
+    if (process.platform !== "darwin") {
+      process.exit(0);
+    }
   });
 }
 
 // ── App lifecycle ───────────────────────────────────────────────────────────
-import Electrobun from "electrobun/bun";
+// Electrobun has no "ready" event — the main process runs immediately.
+// Initialize P2P and create the window at top level.
 
-Electrobun.events.on("ready", () => {
-  // Initialize P2P module with a callback that forwards events to the renderer
-  initP2P(undefined, (msg) => {
-    sendToRenderer(msg);
-    // Also forward stdout/stderr for debugging
-    if (msg.type === "error") {
-      const view = mainWindow?.webview;
-      if (view?.rpc?.send) {
-        view.rpc.send.onWorkerStderr({ data: String(msg.error) });
-      }
+initP2P(undefined, (msg) => {
+  sendToRenderer(msg);
+  if (msg.type === "error") {
+    const view = mainWindow?.webview;
+    if (view?.rpc?.send) {
+      view.rpc.send.onWorkerStderr({ data: String(msg.error) });
     }
-  });
-  createWindow();
-});
-
-Electrobun.events.on("window-all-closed", () => {
-  shutdownP2P().catch(() => {});
-  if (process.platform !== "darwin") {
-    process.exit(0);
   }
 });
 
-Electrobun.events.on("activate", () => {
+createWindow();
+
+// Re-create window when app is reactivated (macOS dock click)
+Electrobun.events.on("reopen", () => {
   if (!mainWindow) {
     createWindow();
   }

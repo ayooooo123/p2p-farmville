@@ -14,11 +14,11 @@ export default {
       },
     },
     copy: {
-      "renderer/index.html": "game/index.html",
-      "renderer/app.js": "game/app.js",
-      "renderer/css/style.css": "game/css/style.css",
-      "renderer/js": "game/js",
-      "shared/constants.js": "shared/constants.js",
+      "renderer/index.html": "views/game/index.html",
+      "renderer/app.js": "views/game/app.js",
+      "renderer/css/style.css": "views/game/css/style.css",
+      "renderer/js": "views/game/js",
+      "shared/constants.js": "views/game/shared/constants.js",
     },
   },
 };
