@@ -6,6 +6,9 @@ const FARM_DEPTH = 80
 
 let scene, camera, renderer
 let terrainData = null
+let sunLight = null
+let ambientLight = null
+let hemiLight = null
 
 function initScene (canvasEl) {
   // Scene
@@ -26,7 +29,7 @@ function initScene (canvasEl) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
   // Directional light (sun)
-  const sunLight = new THREE.DirectionalLight(0xffffff, 1.2)
+  sunLight = new THREE.DirectionalLight(0xffffff, 1.2)
   sunLight.position.set(30, 50, 30)
   sunLight.castShadow = true
   sunLight.shadow.mapSize.width = 2048
@@ -40,11 +43,11 @@ function initScene (canvasEl) {
   scene.add(sunLight)
 
   // Ambient light
-  const ambientLight = new THREE.AmbientLight(0x404040, 0.6)
+  ambientLight = new THREE.AmbientLight(0x404040, 0.6)
   scene.add(ambientLight)
 
   // Hemisphere light for sky/ground color blend
-  const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x556b2f, 0.4)
+  hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x556b2f, 0.4)
   scene.add(hemiLight)
 
   // Outer terrain beyond farm (decorative)
@@ -73,7 +76,7 @@ function initScene (canvasEl) {
     renderer.setSize(window.innerWidth, window.innerHeight)
   })
 
-  return { scene, camera, renderer, terrainData }
+  return { scene, camera, renderer, terrainData, sunLight, ambientLight, hemiLight }
 }
 
 function _addBorderTrees (scene) {
@@ -116,6 +119,10 @@ function animate () {
   renderer.render(scene, camera)
 }
 
+function getSunLight () { return sunLight }
+function getAmbientLight () { return ambientLight }
+function getHemiLight () { return hemiLight }
+
 // Export to window for non-module scripts and as ES module
-window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData }
-export { initScene, animate, scene, camera, renderer }
+window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight }
+export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight }

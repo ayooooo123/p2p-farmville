@@ -92,6 +92,148 @@ body {
   margin-left: auto;
 }
 
+/* ── Phase 7: Time Display ─────────────────────────────────────────────────── */
+#time-display {
+  color: #ffeebb;
+  font-size: 13px;
+  padding: 2px 10px;
+  background: rgba(255, 238, 187, 0.1);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 238, 187, 0.25);
+  white-space: nowrap;
+}
+
+/* ── Phase 7: Weather Display ──────────────────────────────────────────────── */
+#weather-display {
+  color: #b0d4f1;
+  font-size: 13px;
+  padding: 2px 10px;
+  background: rgba(176, 212, 241, 0.1);
+  border-radius: 10px;
+  border: 1px solid rgba(176, 212, 241, 0.25);
+  white-space: nowrap;
+}
+
+/* ── Phase 7: Sound Toggle ─────────────────────────────────────────────────── */
+.hud-icon-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #ccc;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.hud-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+.hud-icon-btn.muted {
+  color: #666;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Phase 7: FPS Counter ──────────────────────────────────────────────────── */
+#fps-display {
+  position: fixed;
+  top: 50px;
+  right: 10px;
+  z-index: 30;
+  font-size: 13px;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  color: #7cfc00;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 6px;
+  border: 1px solid rgba(124, 252, 0, 0.3);
+  pointer-events: none;
+}
+
+/* ── Phase 7: Credits Modal ────────────────────────────────────────────────── */
+#credits-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+}
+
+#credits-content {
+  width: 400px;
+  max-width: 90vw;
+  padding: 30px;
+  background: rgba(15, 20, 15, 0.95);
+  border: 2px solid rgba(76, 175, 80, 0.4);
+  border-radius: 16px;
+  text-align: center;
+}
+
+#credits-content h2 {
+  font-size: 28px;
+  color: #4caf50;
+  margin-bottom: 8px;
+}
+
+#credits-content > p {
+  font-size: 13px;
+  color: #aaa;
+  margin-bottom: 20px;
+}
+
+.credits-section {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.credits-section h3 {
+  font-size: 14px;
+  color: #7df9ff;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 4px;
+}
+
+.credits-section p {
+  font-size: 12px;
+  color: #ccc;
+  margin: 3px 0;
+}
+
+#credits-close-btn {
+  margin-top: 12px;
+  padding: 8px 30px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid #4caf50;
+  border-radius: 8px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+#credits-close-btn:hover {
+  background: rgba(76, 175, 80, 0.4);
+  color: #fff;
+}
+
 /* ── Toolbar ────────────────────────────────────────────────────────────────── */
 #toolbar {
   display: flex;

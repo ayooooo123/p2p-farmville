@@ -18,12 +18,15 @@
           <div id="energy-display">Energy: 30/30</div>
           <div id="energy-bar"><div id="energy-bar-fill"></div></div>
         </div>
+        <div id="time-display" title="Game time">&#9728; 12:00</div>
+        <div id="weather-display" title="Current weather">&#9728;&#65039; Clear</div>
         <div id="peer-count" style="display: none;">0 peers</div>
         <div id="vehicle-status" style="display: none;"></div>
         <div id="hud-social-btns">
           <button id="neighbors-btn" class="hud-social-btn" title="Neighbors (N)">Neighbors</button>
           <button id="coop-open-btn" class="hud-social-btn" title="Co-op (C)">Co-op</button>
         </div>
+        <button id="sound-toggle-btn" class="hud-icon-btn" title="Toggle Sound">&#128266;</button>
       </div>
 
       <!-- Toolbar -->
@@ -76,6 +79,9 @@
         <div id="tooltip-info"></div>
       </div>
     </div>
+
+    <!-- FPS Counter (toggle with F3) -->
+    <div id="fps-display" style="display: none;">60 FPS</div>
 
     <!-- Market Panel -->
     <div id="market-panel">
@@ -222,6 +228,30 @@
         </div>
       </div>
       <div id="coop-mission-list"></div>
+    </div>
+
+    <!-- Credits / About Modal -->
+    <div id="credits-modal" style="display: none;">
+      <div id="credits-content">
+        <h2>P2P FarmVille</h2>
+        <p>A peer-to-peer farming game built with Three.js and Hyperswarm</p>
+        <div class="credits-section">
+          <h3>Technology</h3>
+          <p>Three.js - 3D Rendering</p>
+          <p>Hyperswarm - P2P Networking</p>
+          <p>Electron + Pear Runtime</p>
+          <p>Web Audio API - Procedural Sound</p>
+        </div>
+        <div class="credits-section">
+          <h3>Controls</h3>
+          <p>WASD - Move | 1-5 - Tools</p>
+          <p>I - Inventory | M - Mastery</p>
+          <p>J - Collections | K - Achievements</p>
+          <p>X - Expansion | N - Neighbors</p>
+          <p>F3 - FPS Counter | ESC - Cancel</p>
+        </div>
+        <button id="credits-close-btn">Close</button>
+      </div>
     </div>
 
     <!-- Setup Screen -->
