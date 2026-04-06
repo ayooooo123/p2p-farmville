@@ -19,6 +19,7 @@ export default {
       "renderer/css/style.css": "views/game/css/style.css",
       "renderer/js": "views/game/js",
       "shared/constants.js": "views/game/shared/constants.js",
+      "workers": "workers",
     },
   },
 };

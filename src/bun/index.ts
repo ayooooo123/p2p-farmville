@@ -32,11 +32,12 @@ function getStoragePath (): string {
 
 // ── Spawn Bare worker via PearRuntime.run() (static — no updater/swarm) ─────
 // PearRuntime.run() is just new Sidecar(entrypoint, args) under the hood.
-// We don't need the instance (updater, OTA, etc.) for local P2P.
-const workerPath = join(__dirname, '..', '..', 'workers', 'main.js')
+// Electrobun bundles main.js to Resources/main.js and copies workers/ to
+// Resources/workers/ — so resolve relative to the running script, not __dirname.
+const workerPath = join(dirname(fileURLToPath(import.meta.url)), 'workers', 'main.js')
 const storagePath = getStoragePath()
 ipc = PearRuntime.run(workerPath, [storagePath])
-console.log('[main] Bare worker spawned')
+console.log('[main] Bare worker spawned:', workerPath)
 
 ipc.stdout.on('data', (d: Buffer) => console.log('[worker]', d.toString().trim()))
 ipc.stderr.on('data', (d: Buffer) => console.error('[worker:err]', d.toString().trim()))
