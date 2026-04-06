@@ -23,6 +23,7 @@
     }
   },
   "dependencies": {
+    "pear": "^2.0.1",
     "b4a": "^1.6.7",
     "corestore": "^7.9.2",
     "hypercore-crypto": "^3.6.1",
