@@ -2154,9 +2154,12 @@ function loadGame () {
     if (!raw) return false
 
     const saveData = JSON.parse(raw)
-    if (!saveData || saveData.version < 2) {
-      console.warn('[save] Incompatible save version')
-      return false
+    if (!saveData) return false
+
+    // Migrate old saves: ensure version field is present
+    if (!saveData.version || saveData.version < 2) {
+      console.warn('[save] Migrating save from version', saveData.version ?? 'unknown', '→ 2')
+      saveData.version = 2
     }
 
     const gs = saveData.gameState
