@@ -1264,3 +1264,493 @@ body {
 #chat-form button:hover {
   background: #66bb6a;
 }
+
+/* ── Phase 6: Mastery Panel ───────────────────────────────────────────────── */
+#mastery-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  width: 550px;
+  max-width: 92vw;
+  max-height: 75vh;
+  z-index: 50;
+  background: rgba(15, 25, 15, 0.95);
+  backdrop-filter: blur(12px);
+  border: 2px solid rgba(76, 175, 80, 0.4);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#mastery-panel.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#mastery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(76, 175, 80, 0.15);
+  border-bottom: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+#mastery-header h2 {
+  font-size: 18px;
+  color: #4caf50;
+}
+
+#mastery-content {
+  padding: 14px;
+  overflow-y: auto;
+  max-height: calc(75vh - 60px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.mastery-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.15s;
+}
+
+.mastery-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mastery-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mastery-crop-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.mastery-crop-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mastery-level-name {
+  font-size: 11px;
+  color: #aaa;
+}
+
+.mastery-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.mastery-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b6914, #ffd700);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.mastery-next {
+  font-size: 10px;
+  color: #888;
+  margin-top: 3px;
+}
+
+.mastery-count {
+  font-size: 20px;
+  font-weight: bold;
+  color: #ffd700;
+  flex-shrink: 0;
+  text-align: center;
+  min-width: 30px;
+}
+
+/* ── Phase 6: Collections Panel ───────────────────────────────────────────── */
+#collections-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  width: 560px;
+  max-width: 92vw;
+  max-height: 75vh;
+  z-index: 50;
+  background: rgba(20, 15, 25, 0.95);
+  backdrop-filter: blur(12px);
+  border: 2px solid rgba(224, 64, 251, 0.35);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#collections-panel.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#collections-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(224, 64, 251, 0.12);
+  border-bottom: 1px solid rgba(224, 64, 251, 0.25);
+}
+
+#collections-header h2 {
+  font-size: 18px;
+  color: #e040fb;
+}
+
+#collections-progress {
+  font-size: 13px;
+  color: #aaa;
+  flex: 1;
+  text-align: center;
+}
+
+#collections-content {
+  padding: 14px;
+  overflow-y: auto;
+  max-height: calc(75vh - 60px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.collection-set {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.collection-set-complete {
+  border-color: rgba(76, 175, 80, 0.5);
+  background: rgba(76, 175, 80, 0.08);
+}
+
+.collection-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  margin: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.collection-item-found {
+  border-color: rgba(76, 175, 80, 0.4);
+  background: rgba(76, 175, 80, 0.1);
+  color: #8bc34a;
+}
+
+.collection-item-missing {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  color: #555;
+}
+
+/* ── Phase 6: Achievements Panel ──────────────────────────────────────────── */
+#achievements-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  width: 580px;
+  max-width: 92vw;
+  max-height: 80vh;
+  z-index: 50;
+  background: rgba(25, 20, 10, 0.95);
+  backdrop-filter: blur(12px);
+  border: 2px solid rgba(255, 193, 7, 0.4);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#achievements-panel.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#achievements-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(255, 193, 7, 0.12);
+  border-bottom: 1px solid rgba(255, 193, 7, 0.25);
+}
+
+#achievements-header h2 {
+  font-size: 18px;
+  color: #ffc107;
+}
+
+#achievements-progress {
+  font-size: 13px;
+  color: #aaa;
+  flex: 1;
+  text-align: center;
+}
+
+#achievements-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#achievements-content {
+  padding: 14px;
+  overflow-y: auto;
+  max-height: calc(80vh - 110px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.achievement-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: background 0.15s;
+}
+
+.achievement-unlocked {
+  border-color: rgba(255, 193, 7, 0.4);
+  background: rgba(255, 193, 7, 0.08);
+}
+
+.achievement-locked {
+  opacity: 0.55;
+}
+
+.achievement-category {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.achievement-reward {
+  font-size: 11px;
+  color: #ffd700;
+  margin-top: 2px;
+}
+
+/* ── Phase 6: Expansion Panel ─────────────────────────────────────────────── */
+#expansion-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  width: 450px;
+  max-width: 90vw;
+  max-height: 70vh;
+  z-index: 50;
+  background: rgba(10, 20, 25, 0.95);
+  backdrop-filter: blur(12px);
+  border: 2px solid rgba(33, 150, 243, 0.4);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#expansion-panel.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#expansion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: rgba(33, 150, 243, 0.12);
+  border-bottom: 1px solid rgba(33, 150, 243, 0.25);
+}
+
+#expansion-header h2 {
+  font-size: 18px;
+  color: #2196f3;
+}
+
+#expansion-current {
+  padding: 8px 20px;
+  font-size: 14px;
+  color: #7df9ff;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+#expansion-content {
+  padding: 14px;
+  overflow-y: auto;
+  max-height: calc(70vh - 100px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.expansion-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.15s;
+}
+
+.expansion-current {
+  border-color: rgba(76, 175, 80, 0.5);
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.expansion-available {
+  border-color: rgba(33, 150, 243, 0.4);
+  background: rgba(33, 150, 243, 0.06);
+  cursor: pointer;
+}
+
+.expansion-available:hover {
+  background: rgba(33, 150, 243, 0.12);
+}
+
+.expansion-locked {
+  opacity: 0.4;
+}
+
+.expansion-affordable {
+  border-color: rgba(255, 215, 0, 0.5);
+  background: rgba(255, 215, 0, 0.08);
+  box-shadow: 0 0 8px rgba(255, 215, 0, 0.15);
+}
+
+/* ── Phase 6: Panel Close Buttons (shared) ────────────────────────────────── */
+.panel-close-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.panel-close-btn:hover {
+  background: rgba(255, 80, 80, 0.3);
+  color: #fff;
+}
+
+/* ── Phase 6: Progress Notifications ──────────────────────────────────────── */
+#progress-notification-area {
+  position: fixed;
+  top: 60px;
+  right: 14px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 320px;
+}
+
+.progress-notif {
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: rgba(15, 15, 20, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(60px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.progress-notif.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.notif-mastery {
+  border-color: rgba(255, 215, 0, 0.35);
+}
+
+.notif-collection {
+  border-color: rgba(224, 64, 251, 0.35);
+}
+
+.notif-achievement {
+  border-color: rgba(255, 193, 7, 0.4);
+}
+
+.notif-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.notif-sparkle {
+  font-size: 16px;
+}

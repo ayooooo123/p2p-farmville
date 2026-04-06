@@ -46,30 +46,29 @@ function createPlotGrid (sceneRef) {
   const terrain = new THREE.Mesh(terrainGeo, terrainMat)
   terrain.rotation.x = -Math.PI / 2
   terrain.position.y = -0.05
-  terrain.receiveShadow = true
   terrain.name = 'baseTerrain'
   scene.add(terrain)
 
   // Path borders around farm
   _createPaths(scene)
 
-  // Create individual plot meshes
+  // Create individual plot meshes (flat planes for top-down, with gap for grid lines)
   for (let row = 0; row < GRID_ROWS; row++) {
     plotGrid[row] = []
     for (let col = 0; col < GRID_COLS; col++) {
       const x = GRID_OFFSET_X + col * PLOT_SIZE
       const z = GRID_OFFSET_Z + row * PLOT_SIZE
 
-      // Plot tile mesh
-      const plotGeo = new THREE.BoxGeometry(PLOT_SIZE - 0.08, 0.08, PLOT_SIZE - 0.08)
+      // Flat plane with slight gap for grid lines (0.08 gap = ~1px grid line at normal zoom)
+      const plotGeo = new THREE.PlaneGeometry(PLOT_SIZE - 0.08, PLOT_SIZE - 0.08)
       const plotMat = new THREE.MeshStandardMaterial({
         color: (row + col) % 2 === 0 ? COLORS.grass : COLORS.grassAlt,
         roughness: 0.9,
         metalness: 0.0
       })
       const plotMesh = new THREE.Mesh(plotGeo, plotMat)
-      plotMesh.position.set(x, 0.04, z)
-      plotMesh.receiveShadow = true
+      plotMesh.rotation.x = -Math.PI / 2
+      plotMesh.position.set(x, 0.01, z)
       plotMesh.userData.row = row
       plotMesh.userData.col = col
       plotMesh.userData.isPlot = true
@@ -110,32 +109,32 @@ function _createPaths (scene) {
     metalness: 0.0
   })
 
-  // Top/bottom paths
+  // Top/bottom paths (flat planes)
   for (const zSign of [-1, 1]) {
-    const pathGeo = new THREE.BoxGeometry(halfW * 2 + pathWidth * 2, 0.06, pathWidth)
+    const pathGeo = new THREE.PlaneGeometry(halfW * 2 + pathWidth * 2, pathWidth)
     const path = new THREE.Mesh(pathGeo, pathMat)
-    path.position.set(0, 0.01, zSign * halfD)
-    path.receiveShadow = true
+    path.rotation.x = -Math.PI / 2
+    path.position.set(0, 0.005, zSign * halfD)
     scene.add(path)
   }
 
-  // Left/right paths
+  // Left/right paths (flat planes)
   for (const xSign of [-1, 1]) {
-    const pathGeo = new THREE.BoxGeometry(pathWidth, 0.06, halfD * 2 + pathWidth * 2)
+    const pathGeo = new THREE.PlaneGeometry(pathWidth, halfD * 2 + pathWidth * 2)
     const path = new THREE.Mesh(pathGeo, pathMat)
-    path.position.set(xSign * halfW, 0.01, 0)
-    path.receiveShadow = true
+    path.rotation.x = -Math.PI / 2
+    path.position.set(xSign * halfW, 0.005, 0)
     scene.add(path)
   }
 
-  // Corner fence posts
+  // Corner posts as small circles from above
   for (const xSign of [-1, 1]) {
     for (const zSign of [-1, 1]) {
-      const postGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.2, 6)
+      const postGeo = new THREE.CircleGeometry(0.3, 8)
       const postMat = new THREE.MeshStandardMaterial({ color: 0x8b5e3c })
       const post = new THREE.Mesh(postGeo, postMat)
-      post.position.set(xSign * halfW, 0.6, zSign * halfD)
-      post.castShadow = true
+      post.rotation.x = -Math.PI / 2
+      post.position.set(xSign * halfW, 0.02, zSign * halfD)
       scene.add(post)
     }
   }
@@ -192,10 +191,12 @@ function _addFurrows (plot) {
   const furrows = new THREE.Group()
   const furrowMat = new THREE.MeshStandardMaterial({ color: COLORS.plowedDark })
 
+  // Horizontal furrow lines (flat planes from top-down)
   for (let i = 0; i < 4; i++) {
-    const fGeo = new THREE.BoxGeometry(PLOT_SIZE - 0.3, 0.03, 0.06)
+    const fGeo = new THREE.PlaneGeometry(PLOT_SIZE - 0.3, 0.06)
     const f = new THREE.Mesh(fGeo, furrowMat)
-    f.position.set(plot.x, 0.1, plot.z - 0.6 + i * 0.4)
+    f.rotation.x = -Math.PI / 2
+    f.position.set(plot.x, 0.02, plot.z - 0.6 + i * 0.4)
     scene.add(f)
     furrows.add(f)
   }

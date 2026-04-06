@@ -65,7 +65,7 @@ export const TREE_DEFINITIONS = {
 }
 
 /**
- * Create a procedural 3D tree mesh
+ * Create a flat top-down tree mesh (circle representing canopy from above)
  * @param {string} treeType - key in TREE_DEFINITIONS
  * @param {boolean} mature - whether to show fruits
  * @param {number} growthScale - 0..1 for growth animation
@@ -80,49 +80,35 @@ export function createTreeMesh (treeType, mature, growthScale) {
   group.userData.objectType = 'tree'
   group.userData.treeType = treeType
 
-  // Trunk
-  const trunkH = (2.0 + def.canopySize * 0.5) * scale
-  const trunkGeo = new THREE.CylinderGeometry(0.15 * scale, 0.25 * scale, trunkH, 8)
-  const trunkMat = new THREE.MeshStandardMaterial({ color: def.trunkColor })
-  const trunk = new THREE.Mesh(trunkGeo, trunkMat)
-  trunk.position.y = trunkH / 2
-  trunk.castShadow = true
-  group.add(trunk)
-
-  // Canopy
+  // Canopy circle (flat from above)
   const canopyR = def.canopySize * scale
-  let canopy
-  if (def.isPine) {
-    const canopyGeo = new THREE.ConeGeometry(canopyR, canopyR * 2, 8)
-    const canopyMat = new THREE.MeshStandardMaterial({ color: def.canopyColor })
-    canopy = new THREE.Mesh(canopyGeo, canopyMat)
-    canopy.position.y = trunkH + canopyR * 0.6
-  } else {
-    const canopyGeo = new THREE.SphereGeometry(canopyR, 10, 8)
-    const canopyMat = new THREE.MeshStandardMaterial({ color: def.canopyColor })
-    canopy = new THREE.Mesh(canopyGeo, canopyMat)
-    canopy.position.y = trunkH + canopyR * 0.4
-  }
-  canopy.castShadow = true
+  const canopyGeo = new THREE.CircleGeometry(canopyR, 20)
+  const canopyMat = new THREE.MeshStandardMaterial({ color: def.canopyColor })
+  const canopy = new THREE.Mesh(canopyGeo, canopyMat)
+  canopy.rotation.x = -Math.PI / 2
+  canopy.position.y = 0.02
   group.add(canopy)
 
-  // Fruits (only on mature trees at full growth)
+  // Small trunk circle in center (visible from above)
+  const trunkR = 0.2 * scale
+  const trunkGeo = new THREE.CircleGeometry(trunkR, 8)
+  const trunkMat = new THREE.MeshStandardMaterial({ color: def.trunkColor })
+  const trunk = new THREE.Mesh(trunkGeo, trunkMat)
+  trunk.rotation.x = -Math.PI / 2
+  trunk.position.y = 0.025
+  group.add(trunk)
+
+  // Fruit dots (only on mature trees at full growth)
   if (mature && scale >= 0.9) {
-    const fruitMat = new THREE.MeshStandardMaterial({ color: def.fruitColor })
-    const fruitCount = 5 + Math.floor(Math.random() * 4)
+    const fruitCount = 4 + Math.floor(Math.random() * 3)
     for (let i = 0; i < fruitCount; i++) {
-      const fGeo = new THREE.SphereGeometry(0.1, 6, 4)
-      const fruit = new THREE.Mesh(fGeo, fruitMat)
-      // Position randomly on canopy surface
-      const theta = Math.random() * Math.PI * 2
-      const phi = Math.random() * Math.PI * 0.6 + Math.PI * 0.2
-      const r = canopyR * 0.85
-      fruit.position.set(
-        Math.sin(phi) * Math.cos(theta) * r,
-        canopy.position.y + Math.cos(phi) * r * 0.6 - canopyR * 0.2,
-        Math.sin(phi) * Math.sin(theta) * r
-      )
-      fruit.castShadow = true
+      const angle = (i / fruitCount) * Math.PI * 2 + Math.random() * 0.5
+      const r = canopyR * (0.4 + Math.random() * 0.35)
+      const fruitGeo = new THREE.CircleGeometry(0.12, 6)
+      const fruitMat = new THREE.MeshStandardMaterial({ color: def.fruitColor })
+      const fruit = new THREE.Mesh(fruitGeo, fruitMat)
+      fruit.rotation.x = -Math.PI / 2
+      fruit.position.set(Math.cos(angle) * r, 0.03, Math.sin(angle) * r)
       group.add(fruit)
     }
   }

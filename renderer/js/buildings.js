@@ -81,7 +81,7 @@ export const BUILDING_DEFINITIONS = {
 }
 
 /**
- * Create a procedural 3D building mesh
+ * Create a flat top-down building mesh (colored rectangle from above)
  * @param {string} buildingType - key in BUILDING_DEFINITIONS
  * @returns {THREE.Group}
  */
@@ -94,58 +94,36 @@ export function createBuildingMesh (buildingType) {
   group.userData.buildingType = buildingType
 
   const w = def.width
-  const h = def.height
   const d = def.depth
 
-  // Walls
-  const wallGeo = new THREE.BoxGeometry(w, h, d)
-  const wallMat = new THREE.MeshStandardMaterial({ color: def.wallColor })
-  const walls = new THREE.Mesh(wallGeo, wallMat)
-  walls.position.y = h / 2
-  walls.castShadow = true
-  walls.receiveShadow = true
-  group.add(walls)
-
-  // Roof (pyramid/cone shape)
-  const roofH = h * 0.4
-  const roofGeo = new THREE.ConeGeometry(Math.max(w, d) * 0.75, roofH, 4)
+  // Main building rectangle (roof color from above)
+  const roofGeo = new THREE.PlaneGeometry(w, d)
   const roofMat = new THREE.MeshStandardMaterial({ color: def.roofColor })
   const roof = new THREE.Mesh(roofGeo, roofMat)
-  roof.position.y = h + roofH / 2
-  roof.rotation.y = Math.PI / 4
-  roof.castShadow = true
+  roof.rotation.x = -Math.PI / 2
+  roof.position.y = 0.02
   group.add(roof)
 
-  // Door
-  const doorW = w * 0.25
-  const doorH = h * 0.5
-  const doorGeo = new THREE.BoxGeometry(doorW, doorH, 0.1)
+  // Wall outline (slightly larger, wall color, underneath)
+  const outlineGeo = new THREE.PlaneGeometry(w + 0.3, d + 0.3)
+  const outlineMat = new THREE.MeshStandardMaterial({ color: def.wallColor })
+  const outline = new THREE.Mesh(outlineGeo, outlineMat)
+  outline.rotation.x = -Math.PI / 2
+  outline.position.y = 0.015
+  group.add(outline)
+
+  // Door indicator (small rectangle on one side)
+  const doorGeo = new THREE.PlaneGeometry(w * 0.25, 0.4)
   const doorMat = new THREE.MeshStandardMaterial({ color: def.doorColor })
   const door = new THREE.Mesh(doorGeo, doorMat)
-  door.position.set(0, doorH / 2, -d / 2 - 0.05)
+  door.rotation.x = -Math.PI / 2
+  door.position.set(0, 0.025, -d / 2 - 0.15)
   group.add(door)
 
-  // Windows (two on front)
-  const winMat = new THREE.MeshStandardMaterial({ color: 0x87ceeb, emissive: 0x335577, emissiveIntensity: 0.3 })
-  for (const side of [-1, 1]) {
-    const winGeo = new THREE.BoxGeometry(w * 0.15, h * 0.2, 0.08)
-    const win = new THREE.Mesh(winGeo, winMat)
-    win.position.set(side * w * 0.3, h * 0.6, -d / 2 - 0.04)
-    group.add(win)
-  }
-
-  // Side windows
-  for (const sideZ of [-1, 1]) {
-    const winGeo = new THREE.BoxGeometry(0.08, h * 0.2, d * 0.15)
-    const win = new THREE.Mesh(winGeo, winMat)
-    win.position.set(sideZ * w / 2 + sideZ * 0.04, h * 0.6, 0)
-    group.add(win)
-  }
-
-  // Greenhouse special: translucent walls
+  // Greenhouse special: translucent
   if (buildingType === 'greenhouse') {
-    wallMat.transparent = true
-    wallMat.opacity = 0.5
+    roofMat.transparent = true
+    roofMat.opacity = 0.6
   }
 
   return group

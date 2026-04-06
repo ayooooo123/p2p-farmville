@@ -66,7 +66,7 @@ export const ANIMAL_DEFINITIONS = {
 }
 
 /**
- * Create a simple low-poly 3D animal mesh
+ * Create a flat top-down animal mesh (colored circle/oval from above)
  * @param {string} animalType - key in ANIMAL_DEFINITIONS
  * @returns {THREE.Group}
  */
@@ -78,89 +78,42 @@ export function createAnimalMesh (animalType) {
   group.userData.objectType = 'animal'
   group.userData.animalType = animalType
 
-  // Body
-  const bodyGeo = def.woolly
-    ? new THREE.SphereGeometry(Math.max(def.bodyW, def.bodyD) * 0.5, 8, 6)
-    : new THREE.BoxGeometry(def.bodyW, def.bodyH, def.bodyD)
+  // Body oval/circle (flat from above)
+  const bodyR = Math.max(def.bodyW, def.bodyD) * 0.5
+  const bodyGeo = new THREE.CircleGeometry(bodyR, 16)
   const bodyMat = new THREE.MeshStandardMaterial({ color: def.bodyColor })
   const body = new THREE.Mesh(bodyGeo, bodyMat)
-  const legH = def.legs === 2 ? 0.25 : 0.4
-  body.position.y = legH + def.bodyH / 2
-  body.castShadow = true
+  body.rotation.x = -Math.PI / 2
+  body.position.y = 0.02
+  // Stretch to oval for non-square animals
+  if (def.bodyD > def.bodyW * 1.2) {
+    body.scale.set(def.bodyW / def.bodyD, 1, 1)
+  }
   group.add(body)
 
-  // Spots for cow
+  // Head circle (slightly offset forward)
+  const headGeo = new THREE.CircleGeometry(def.headSize, 12)
+  const headMat = new THREE.MeshStandardMaterial({ color: def.headColor })
+  const head = new THREE.Mesh(headGeo, headMat)
+  head.rotation.x = -Math.PI / 2
+  head.position.set(0, 0.025, -bodyR * 0.7)
+  group.add(head)
+
+  // Spots for cow (small dark circles)
   if (def.spots) {
     const spotMat = new THREE.MeshStandardMaterial({ color: def.spotColor })
     for (let i = 0; i < 3; i++) {
-      const spotGeo = new THREE.SphereGeometry(0.12, 6, 4)
+      const spotGeo = new THREE.CircleGeometry(0.1, 6)
       const spot = new THREE.Mesh(spotGeo, spotMat)
+      spot.rotation.x = -Math.PI / 2
       spot.position.set(
-        (Math.random() - 0.5) * def.bodyW * 0.6,
-        body.position.y + (Math.random() - 0.5) * def.bodyH * 0.3,
-        (Math.random() - 0.5) * def.bodyD * 0.5
+        (Math.random() - 0.5) * bodyR * 0.8,
+        0.03,
+        (Math.random() - 0.5) * bodyR * 0.6
       )
-      spot.scale.set(1, 0.5, 1)
       group.add(spot)
     }
   }
-
-  // Head
-  const headGeo = new THREE.SphereGeometry(def.headSize, 8, 6)
-  const headMat = new THREE.MeshStandardMaterial({ color: def.headColor })
-  const head = new THREE.Mesh(headGeo, headMat)
-  head.position.set(0, body.position.y + def.bodyH * 0.2, -def.bodyD / 2 - def.headSize * 0.6)
-  head.castShadow = true
-  group.add(head)
-
-  // Beak/snout for certain animals
-  if (animalType === 'chicken' || animalType === 'duck') {
-    const beakGeo = new THREE.ConeGeometry(0.05, 0.12, 4)
-    const beakMat = new THREE.MeshStandardMaterial({ color: 0xff8c00 })
-    const beak = new THREE.Mesh(beakGeo, beakMat)
-    beak.rotation.x = Math.PI / 2
-    beak.position.set(0, head.position.y - 0.02, head.position.z - def.headSize - 0.04)
-    group.add(beak)
-  }
-
-  // Ears for rabbit
-  if (animalType === 'rabbit') {
-    const earMat = new THREE.MeshStandardMaterial({ color: 0xddccbb })
-    for (const side of [-1, 1]) {
-      const earGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.3, 4)
-      const ear = new THREE.Mesh(earGeo, earMat)
-      ear.position.set(side * 0.08, head.position.y + 0.2, head.position.z)
-      ear.rotation.z = side * 0.2
-      group.add(ear)
-    }
-  }
-
-  // Legs
-  const legGeo = new THREE.CylinderGeometry(0.05, 0.06, legH, 5)
-  const legMat = new THREE.MeshStandardMaterial({ color: def.legColor })
-  if (def.legs === 2) {
-    for (const side of [-1, 1]) {
-      const leg = new THREE.Mesh(legGeo, legMat)
-      leg.position.set(side * def.bodyW * 0.25, legH / 2, 0)
-      group.add(leg)
-    }
-  } else {
-    const offX = def.bodyW * 0.35
-    const offZ = def.bodyD * 0.3
-    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      const leg = new THREE.Mesh(legGeo, legMat)
-      leg.position.set(sx * offX, legH / 2, sz * offZ)
-      group.add(leg)
-    }
-  }
-
-  // Tail (simple small cylinder)
-  const tailGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.2, 4)
-  const tailMat = new THREE.MeshStandardMaterial({ color: def.bodyColor })
-  const tail = new THREE.Mesh(tailGeo, tailMat)
-  tail.position.set(0, body.position.y, def.bodyD / 2 + 0.08)
-  tail.rotation.x = -0.5
-  group.add(tail)
 
   return group
 }

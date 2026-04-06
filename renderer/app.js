@@ -11,7 +11,7 @@ import { initInventory, addItem, removeItem, hasItem, getItemQty, sellItem, getI
 import * as NeighborRenderer from './js/neighbor-renderer.js'
 import { initMastery, recordHarvest, getMasteryData, getMasteryStars, getMasteryStarHTML, renderMasteryPanel, getMasteryLevel } from './js/mastery.js'
 import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel, isSetComplete, getCompletedSetsCount, getTotalItemsFound, COLLECTION_DEFINITIONS } from './js/collections.js'
-import { initAchievements, updateStats, getAchievementState, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
+import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
@@ -444,6 +444,45 @@ function checkAchievements () {
   })
 }
 
+// ── Phase 6: Panel open functions ───────────────────────────────────────────
+function openMasteryPanel () {
+  togglePanel(masteryPanel)
+  if (masteryPanel && masteryPanel.classList.contains('visible')) {
+    const content = document.getElementById('mastery-content')
+    if (content) renderMasteryPanel(content, CROP_DEFINITIONS)
+  }
+}
+
+function openCollectionsPanel () {
+  togglePanel(collectionsPanel)
+  if (collectionsPanel && collectionsPanel.classList.contains('visible')) {
+    const content = document.getElementById('collections-content')
+    const progressEl = document.getElementById('collections-progress')
+    if (progressEl) progressEl.textContent = getCompletedSetsCount() + '/' + Object.keys(COLLECTION_DEFINITIONS).length + ' sets'
+    if (content) renderCollectionsPanel(content)
+  }
+}
+
+function openAchievementsPanel () {
+  togglePanel(achievementsPanel)
+  if (achievementsPanel && achievementsPanel.classList.contains('visible')) {
+    const content = document.getElementById('achievements-content')
+    const progressEl = document.getElementById('achievements-progress')
+    if (progressEl) progressEl.textContent = getUnlockedCount() + '/' + Object.keys(ACHIEVEMENT_DEFINITIONS).length + ' unlocked'
+    if (content) renderAchievementsPanel(content)
+  }
+}
+
+function openExpansionPanel () {
+  togglePanel(expansionPanel)
+  if (expansionPanel && expansionPanel.classList.contains('visible')) {
+    const content = document.getElementById('expansion-content')
+    const currentEl = document.getElementById('expansion-current')
+    if (currentEl) currentEl.textContent = 'Current: ' + getCurrentGridSize() + 'x' + getCurrentGridSize()
+    if (content) renderExpansionPanel(content, gameState.coins, gameState.level)
+  }
+}
+
 // ── Phase 6: Panel toggle helpers ───────────────────────────────────────────
 function togglePanel (panel) {
   if (!panel) return
@@ -458,6 +497,16 @@ function togglePanel (panel) {
 function closePanelIfOpen (panel) {
   if (panel) panel.classList.remove('visible')
 }
+
+// ── Phase 6: Close button handlers ──────────────────────────────────────────
+const masteryCloseBtn = document.getElementById('mastery-close-btn')
+if (masteryCloseBtn) masteryCloseBtn.addEventListener('click', () => closePanelIfOpen(masteryPanel))
+const collectionsCloseBtn = document.getElementById('collections-close-btn')
+if (collectionsCloseBtn) collectionsCloseBtn.addEventListener('click', () => closePanelIfOpen(collectionsPanel))
+const achievementsCloseBtn = document.getElementById('achievements-close-btn')
+if (achievementsCloseBtn) achievementsCloseBtn.addEventListener('click', () => closePanelIfOpen(achievementsPanel))
+const expansionCloseBtn = document.getElementById('expansion-close-btn')
+if (expansionCloseBtn) expansionCloseBtn.addEventListener('click', () => closePanelIfOpen(expansionPanel))
 
 // ── Vehicle status ───────────────────────────────────────────────────────────
 function updateVehicleStatus () {
@@ -1546,6 +1595,9 @@ function gameLoop (time) {
   // P2P: sync farm state periodically
   syncFarmState()
 
+  // Auto-save
+  autoSave(dtMs)
+
   // P2P: update visiting state UI
   updateVisitingUI()
 
@@ -1568,6 +1620,9 @@ function startGame () {
   gameState.farmName = name
   gameState.running = true
   gameState.lastEnergyRegen = 0
+
+  // Load saved game state (restores coins, xp, level, etc.)
+  loadGame()
 
   setupScreen.style.display = 'none'
   hud.style.display = 'block'
@@ -1633,6 +1688,159 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && window.PlayerController.isVisiting()) {
     window.PlayerController.returnToFarm()
   }
+})
+
+// ── Save/Load Persistence (localStorage) ────────────────────────────────────
+const SAVE_KEY = 'p2p-farmville-save'
+const SAVE_INTERVAL = 15000 // auto-save every 15s
+let lastSaveTime = 0
+
+function saveGame () {
+  try {
+    const plotData = []
+    if (terrainData) {
+      const allPlots = terrainData.getAllPlots()
+      for (const plot of allPlots) {
+        if (plot.state !== 'grass') {
+          plotData.push({
+            row: plot.row, col: plot.col,
+            x: plot.x, z: plot.z,
+            state: plot.state,
+            crop: plot.crop ? {
+              type: plot.crop.type, stage: plot.crop.stage,
+              watered: plot.crop.watered, withered: plot.crop.withered,
+              plantedAt: plot.crop.plantedAt, growthAccum: plot.crop.growthAccum
+            } : null
+          })
+        }
+      }
+    }
+
+    const saveData = {
+      version: 2,
+      timestamp: Date.now(),
+      gameState: {
+        coins: gameState.coins,
+        totalXp: gameState.totalXp,
+        level: gameState.level,
+        energy: gameState.energy,
+        maxEnergy: gameState.maxEnergy,
+        farmName: gameState.farmName,
+        totalHarvests: gameState.totalHarvests,
+        totalPlanted: gameState.totalPlanted,
+        totalPlowed: gameState.totalPlowed,
+        totalWatered: gameState.totalWatered,
+        totalCoinsEarned: gameState.totalCoinsEarned,
+        itemsSold: gameState.itemsSold,
+        itemsCrafted: gameState.itemsCrafted,
+        sessionsPlayed: gameState.sessionsPlayed,
+        giftsSent: gameState.giftsSent,
+        tradesCompleted: gameState.tradesCompleted,
+        chatMessages: gameState.chatMessages,
+        coopCompleted: gameState.coopCompleted,
+        farmsVisited: gameState.farmsVisited,
+        animalsFed: gameState.animalsFed,
+        animalProductsCollected: gameState.animalProductsCollected
+      },
+      farmState: {
+        ownedVehicles: farmState.ownedVehicles,
+        trees: farmState.trees.map(t => ({
+          type: t.type, x: t.x, z: t.z,
+          growthScale: t.growthScale, mature: t.mature,
+          plantedAt: t.plantedAt, lastHarvest: t.lastHarvest
+        })),
+        animals: farmState.animals.map(a => ({
+          type: a.type, x: a.x, z: a.z,
+          fed: a.fed, productReady: a.productReady,
+          lastFed: a.lastFed, fedAt: a.fedAt
+        })),
+        buildings: farmState.buildings.map(b => ({
+          type: b.type, x: b.x, z: b.z,
+          wallColor: b.wallColor, roofColor: b.roofColor,
+          width: b.width, height: b.height, depth: b.depth,
+          craftQueue: b.craftQueue
+        })),
+        decorations: farmState.decorations.map(d => ({
+          type: d.type, x: d.x, z: d.z, color: d.color
+        }))
+      },
+      plotData: plotData,
+      inventory: getInventory(),
+      mastery: getMasteryData(),
+      collections: getCollectionData(),
+      achievements: getAchievementState(),
+      expansion: {
+        tier: getCurrentTier()
+      }
+    }
+
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saveData))
+    console.log('[save] Game saved', new Date().toLocaleTimeString())
+  } catch (e) {
+    console.error('[save] Save error:', e)
+  }
+}
+
+function loadGame () {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY)
+    if (!raw) return false
+
+    const saveData = JSON.parse(raw)
+    if (!saveData || saveData.version < 2) {
+      console.warn('[save] Incompatible save version')
+      return false
+    }
+
+    const gs = saveData.gameState
+    if (gs) {
+      gameState.coins = gs.coins ?? 500
+      gameState.totalXp = gs.totalXp ?? 0
+      gameState.level = gs.level ?? 1
+      gameState.energy = gs.energy ?? 30
+      gameState.maxEnergy = gs.maxEnergy ?? 30
+      gameState.farmName = gs.farmName ?? ''
+      gameState.totalHarvests = gs.totalHarvests ?? 0
+      gameState.totalPlanted = gs.totalPlanted ?? 0
+      gameState.totalPlowed = gs.totalPlowed ?? 0
+      gameState.totalWatered = gs.totalWatered ?? 0
+      gameState.totalCoinsEarned = gs.totalCoinsEarned ?? 0
+      gameState.itemsSold = gs.itemsSold ?? 0
+      gameState.itemsCrafted = gs.itemsCrafted ?? 0
+      gameState.sessionsPlayed = (gs.sessionsPlayed ?? 0) + 1
+      gameState.giftsSent = gs.giftsSent ?? 0
+      gameState.tradesCompleted = gs.tradesCompleted ?? 0
+      gameState.chatMessages = gs.chatMessages ?? 0
+      gameState.coopCompleted = gs.coopCompleted ?? 0
+      gameState.farmsVisited = gs.farmsVisited ?? 0
+      gameState.animalsFed = gs.animalsFed ?? 0
+      gameState.animalProductsCollected = gs.animalProductsCollected ?? 0
+    }
+
+    // Restore farm name to input
+    if (gameState.farmName && farmNameInput) {
+      farmNameInput.value = gameState.farmName
+    }
+
+    console.log('[save] Game loaded, session #' + gameState.sessionsPlayed)
+    return true
+  } catch (e) {
+    console.error('[save] Load error:', e)
+    return false
+  }
+}
+
+function autoSave (dtMs) {
+  lastSaveTime += dtMs
+  if (lastSaveTime >= SAVE_INTERVAL) {
+    lastSaveTime = 0
+    saveGame()
+  }
+}
+
+// Save before unload
+window.addEventListener('beforeunload', () => {
+  if (gameState.running) saveGame()
 })
 
 // Trigger immediate farm sync after crop actions

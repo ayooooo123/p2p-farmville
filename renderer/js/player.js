@@ -3,14 +3,13 @@
 const PLAYER_SPEED = 15
 const FARM_HALF_W = 40
 const FARM_HALF_D = 40
-const CAMERA_OFFSET = { x: 0, y: 20, z: 25 }
-const CAMERA_LOOK_AHEAD = 5
 
 // Extended world bounds for visiting neighbors
 const WORLD_HALF_W = 200 // can walk far left/right to visit neighbors
 const WORLD_HALF_D = 50 // slightly beyond farm depth
 
 let playerMesh = null
+let dirIndicator = null
 const keys = { w: false, a: false, s: false, d: false }
 const playerPos = { x: 0, z: 0 }
 
@@ -21,32 +20,37 @@ let visitingNeighborName = ''
 let onVisitChangeCallback = null
 
 function initPlayer (scene) {
-  // Simple player: capsule-like shape (cylinder + spheres)
+  // Flat player: colored circle with direction triangle (top-down view)
   const group = new window.THREE.Group()
 
-  // Body (cylinder)
-  const bodyGeo = new window.THREE.CylinderGeometry(0.4, 0.4, 1.0, 8)
+  // Body circle (blue)
+  const bodyGeo = new window.THREE.CircleGeometry(0.5, 16)
   const bodyMat = new window.THREE.MeshStandardMaterial({ color: 0x2196f3 })
   const body = new window.THREE.Mesh(bodyGeo, bodyMat)
-  body.position.y = 0.8
-  body.castShadow = true
+  body.rotation.x = -Math.PI / 2
+  body.position.y = 0.03
   group.add(body)
 
-  // Head (sphere)
-  const headGeo = new window.THREE.SphereGeometry(0.35, 8, 8)
+  // Head/skin inner circle
+  const headGeo = new window.THREE.CircleGeometry(0.25, 12)
   const headMat = new window.THREE.MeshStandardMaterial({ color: 0xffcc88 })
   const head = new window.THREE.Mesh(headGeo, headMat)
-  head.position.y = 1.55
-  head.castShadow = true
+  head.rotation.x = -Math.PI / 2
+  head.position.y = 0.035
   group.add(head)
 
-  // Hat (cone)
-  const hatGeo = new window.THREE.ConeGeometry(0.4, 0.4, 8)
-  const hatMat = new window.THREE.MeshStandardMaterial({ color: 0x8b4513 })
-  const hat = new window.THREE.Mesh(hatGeo, hatMat)
-  hat.position.y = 1.95
-  hat.castShadow = true
-  group.add(hat)
+  // Direction indicator (triangle pointing forward)
+  const triShape = new window.THREE.Shape()
+  triShape.moveTo(0, -0.7)
+  triShape.lineTo(-0.15, -0.45)
+  triShape.lineTo(0.15, -0.45)
+  triShape.closePath()
+  const triGeo = new window.THREE.ShapeGeometry(triShape)
+  const triMat = new window.THREE.MeshStandardMaterial({ color: 0x1565c0 })
+  dirIndicator = new window.THREE.Mesh(triGeo, triMat)
+  dirIndicator.rotation.x = -Math.PI / 2
+  dirIndicator.position.y = 0.04
+  group.add(dirIndicator)
 
   group.position.set(0, 0, 0)
   scene.add(group)
@@ -106,11 +110,10 @@ function updatePlayer (dt) {
 function updateCamera (camera) {
   if (!playerMesh || !camera) return
 
-  camera.position.x = playerPos.x + CAMERA_OFFSET.x
-  camera.position.y = CAMERA_OFFSET.y
-  camera.position.z = playerPos.z + CAMERA_OFFSET.z
-
-  camera.lookAt(playerPos.x, 0, playerPos.z - CAMERA_LOOK_AHEAD)
+  // Top-down: camera directly above player, looking straight down
+  camera.position.x = playerPos.x
+  camera.position.y = 50
+  camera.position.z = playerPos.z
 }
 
 function getPlayerPos () {
