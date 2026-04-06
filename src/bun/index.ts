@@ -30,23 +30,13 @@ function getStoragePath (): string {
   return join(base, 'p2p-farmville')
 }
 
-// ── pear-runtime setup ──────────────────────────────────────────────────────
-const pearRuntimeDir = join(getStoragePath(), 'pear-runtime')
-const pear = new PearRuntime({
-  dir: pearRuntimeDir,
-  name: APP_NAME,
-  version: '1.0.0',
-  upgrade: 'pear://none',
-  updates: false
-})
-
-await pear.ready()
-console.log('[main] PearRuntime ready')
-
-// ── Spawn Bare worker ────────────────────────────────────────────────────────
+// ── Spawn Bare worker via PearRuntime.run() (static — no updater/swarm) ─────
+// PearRuntime.run() is just new Sidecar(entrypoint, args) under the hood.
+// We don't need the instance (updater, OTA, etc.) for local P2P.
 const workerPath = join(__dirname, '..', '..', 'workers', 'main.js')
 const storagePath = getStoragePath()
-ipc = pear.run(workerPath, [storagePath])
+ipc = PearRuntime.run(workerPath, [storagePath])
+console.log('[main] Bare worker spawned')
 
 ipc.stdout.on('data', (d: Buffer) => console.log('[worker]', d.toString().trim()))
 ipc.stderr.on('data', (d: Buffer) => console.error('[worker:err]', d.toString().trim()))
@@ -109,9 +99,8 @@ function createWindow () {
     rpc: gameRPC
   })
 
-  mainWindow.on('close', async () => {
+  mainWindow.on('close', () => {
     ipc?.destroy()
-    await pear.close()
     mainWindow = null
     rendererReady = false
     if (process.platform !== 'darwin') process.exit(0)
