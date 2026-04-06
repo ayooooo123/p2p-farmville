@@ -53,7 +53,9 @@ const HELP_REQUEST_EXPIRY = 30 * 60 * 1000 // 30 minutes
 const DAILY_GIFT_LIMIT = 5
 
 // ── State ───────────────────────────────────────────────────────────────────
-const storagePath = process.argv[2] || process.argv[0] || './storage'
+// Bare.argv: [bare-binary, script-path, ...args]
+// pear.run(script, [storagePath]) → argv[2] = storagePath
+const storagePath = Bare.argv[2] || './storage'
 let store = null
 let swarm = null
 let playerName = ''
@@ -93,9 +95,9 @@ let helpIdCounter = 0
 // ── IPC helpers ─────────────────────────────────────────────────────────────
 function send (msg) {
   try {
-    process.stdout.write(JSON.stringify(msg) + '\n')
+    Bare.IPC.write(JSON.stringify(msg) + '\n')
   } catch (e) {
-    console.error('[worker] stdout write error:', e.message)
+    console.error('[worker] IPC write error:', e.message)
   }
 }
 
@@ -144,7 +146,8 @@ async function initSwarm () {
   try {
     swarm = new Hyperswarm()
 
-    const topicBuffer = b4a.from(WORLD_TOPIC)
+    // Hash the topic string to 32 bytes, then derive discovery key
+    const topicBuffer = crypto.data(b4a.from(WORLD_TOPIC))
     const topicKey = crypto.discoveryKey(topicBuffer)
 
     swarm.on('connection', handleConnection)
@@ -1133,12 +1136,10 @@ function startPeriodicTasks () {
   }, 60000)
 }
 
-// ── IPC message handler from renderer (via stdin) ──────────────────────────
+// ── IPC message handler from Bun host (via Bare.IPC) ───────────────────────
 let inputBuffer = ''
-process.stdin.setEncoding('utf8')
-process.stdin.on('data', async (chunk) => {
-  inputBuffer += chunk
-  // Process complete lines (newline-delimited JSON)
+Bare.IPC.on('data', async (chunk) => {
+  inputBuffer += chunk.toString()
   let idx
   while ((idx = inputBuffer.indexOf('\n')) !== -1) {
     const line = inputBuffer.slice(0, idx).trim()

@@ -1,92 +1,135 @@
 // P2P FarmVille - Electrobun Main Process
-// Creates BrowserWindow, initializes P2P module directly (no worker spawn),
-// and bridges P2P callbacks to the renderer via typed RPC.
+//
+// Spawns workers/main.js as a Bare worker via pear-runtime.
+// Bare.IPC in the worker ↔ ipc duplex stream here.
+// Renderer communicates via Electrobun typed RPC.
 
-import Electrobun, { BrowserWindow, BrowserView } from "electrobun/bun";
-import type { FarmvilleRPC } from "../shared/rpc-types";
-import {
-  init as initP2P,
-  handleMessage,
-  shutdown as shutdownP2P,
-} from "./p2p";
+import Electrobun, { BrowserWindow, BrowserView } from 'electrobun/bun'
+import PearRuntime from 'pear-runtime'
+import type { FarmvilleRPC } from '../shared/rpc-types'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { homedir, platform } from 'os'
 
-const APP_NAME = "P2P FarmVille";
-let mainWindow: any = null;
-let rendererReady = false;
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// ── RPC definition: bun-side handlers (called by browser) ───────────────────
+const APP_NAME = 'P2P FarmVille'
+let mainWindow: any = null
+let rendererReady = false
+let ipc: any = null  // duplex stream returned by pear.run()
+
+// ── Storage path ────────────────────────────────────────────────────────────
+function getStoragePath (): string {
+  const base =
+    process.env.APPDATA ||
+    (platform() === 'darwin'
+      ? join(homedir(), 'Library', 'Application Support')
+      : join(homedir(), '.local', 'share'))
+  return join(base, 'p2p-farmville')
+}
+
+// ── pear-runtime setup ──────────────────────────────────────────────────────
+const pearRuntimeDir = join(getStoragePath(), 'pear-runtime')
+const pear = new PearRuntime({
+  dir: pearRuntimeDir,
+  name: APP_NAME,
+  version: '1.0.0',
+  upgrade: 'pear://none',
+  updates: false
+})
+
+await pear.ready()
+console.log('[main] PearRuntime ready')
+
+// ── Spawn Bare worker ────────────────────────────────────────────────────────
+const workerPath = join(__dirname, '..', '..', 'workers', 'main.js')
+const storagePath = getStoragePath()
+ipc = pear.run(workerPath, [storagePath])
+
+ipc.stdout.on('data', (d: Buffer) => console.log('[worker]', d.toString().trim()))
+ipc.stderr.on('data', (d: Buffer) => console.error('[worker:err]', d.toString().trim()))
+
+// ── IPC: worker → renderer ───────────────────────────────────────────────────
+let ipcBuffer = ''
+ipc.on('data', (chunk: Buffer) => {
+  ipcBuffer += chunk.toString()
+  let idx: number
+  while ((idx = ipcBuffer.indexOf('\n')) !== -1) {
+    const line = ipcBuffer.slice(0, idx).trim()
+    ipcBuffer = ipcBuffer.slice(idx + 1)
+    if (!line) continue
+    try {
+      const msg = JSON.parse(line)
+      sendToRenderer(msg)
+    } catch (e) {
+      console.error('[main] IPC parse error:', e)
+    }
+  }
+})
+
+ipc.on('error', (e: Error) => console.error('[main] IPC stream error:', e.message))
+
+// ── IPC: renderer → worker ───────────────────────────────────────────────────
+function sendToWorker (msg: any) {
+  if (!ipc) return
+  try {
+    ipc.write(JSON.stringify(msg) + '\n')
+  } catch (e: any) {
+    console.error('[main] sendToWorker error:', e.message)
+  }
+}
+
+// ── RPC: Bun-side handlers called by renderer ────────────────────────────────
 const gameRPC = BrowserView.defineRPC<FarmvilleRPC>({
   maxRequestTime: 10000,
   handlers: {
     requests: {
       viewReady: async () => {
-        rendererReady = true;
-        console.log("[main] Renderer is ready");
-        return { ok: true };
-      },
+        rendererReady = true
+        console.log('[main] Renderer is ready')
+        return { ok: true }
+      }
     },
     messages: {
       p2pMessage: ({ type, ...rest }) => {
-        if (!rendererReady) {
-          console.warn("[main] Renderer not ready, dropping p2p message");
-          return;
-        }
-        handleMessage({ type, ...rest });
-      },
-    },
-  },
-});
+        sendToWorker({ type, ...rest })
+      }
+    }
+  }
+})
 
-// ── Helper: send message from bun to renderer ──────────────────────────────
-function sendToRenderer(msg: any) {
-  if (!mainWindow) return;
-  const view = mainWindow.webview;
+// ── Helper: push message from Bun to renderer ────────────────────────────────
+function sendToRenderer (msg: any) {
+  if (!mainWindow || !rendererReady) return
+  const view = mainWindow.webview
   if (view?.rpc?.send) {
-    view.rpc.send.onWorkerMessage(msg);
+    view.rpc.send.onWorkerMessage(msg)
+    if (msg.type === 'error') {
+      view.rpc.send.onWorkerStderr({ data: String(msg.error) })
+    }
   }
 }
 
-// ── Create window ───────────────────────────────────────────────────────────
-function createWindow() {
+// ── Create window ────────────────────────────────────────────────────────────
+function createWindow () {
   mainWindow = new BrowserWindow({
     title: APP_NAME,
-    url: "views://game/index.html",
-    frame: {
-      width: 1280,
-      height: 800,
-    },
-    rpc: gameRPC,
-  });
+    url: 'views://game/index.html',
+    frame: { width: 1280, height: 800 },
+    rpc: gameRPC
+  })
 
-  mainWindow.on("close", () => {
-    shutdownP2P().catch((e) => console.error("[main] Shutdown error:", e));
-    mainWindow = null;
-    rendererReady = false;
-    if (process.platform !== "darwin") {
-      process.exit(0);
-    }
-  });
+  mainWindow.on('close', async () => {
+    ipc?.destroy()
+    await pear.close()
+    mainWindow = null
+    rendererReady = false
+    if (process.platform !== 'darwin') process.exit(0)
+  })
 }
 
-// ── App lifecycle ───────────────────────────────────────────────────────────
-// Electrobun has no "ready" event — the main process runs immediately.
-// Initialize P2P and create the window at top level.
+createWindow()
 
-initP2P(undefined, (msg) => {
-  sendToRenderer(msg);
-  if (msg.type === "error") {
-    const view = mainWindow?.webview;
-    if (view?.rpc?.send) {
-      view.rpc.send.onWorkerStderr({ data: String(msg.error) });
-    }
-  }
-});
-
-createWindow();
-
-// Re-create window when app is reactivated (macOS dock click)
-Electrobun.events.on("reopen", () => {
-  if (!mainWindow) {
-    createWindow();
-  }
-});
+Electrobun.events.on('reopen', () => {
+  if (!mainWindow) createWindow()
+})
