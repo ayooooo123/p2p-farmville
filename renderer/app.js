@@ -1106,6 +1106,7 @@ function handleWater (plot) {
 
   plot.crop.watered = true
   gameState.totalWatered++
+  terrainData.setPlotWatered(plot.row, plot.col, true)
   createParticleEffect('watering', { x: plot.x, y: 0.1, z: plot.z })
   showFeedback('Watered! Growth speed 2x', '#4169e1')
   checkAchievements()
@@ -1893,6 +1894,10 @@ function loadGame () {
             mesh: cropMesh
           }
           plot.cropMesh = cropMesh
+          // Restore watered soil colour
+          if (pd.crop.watered) {
+            terrainData.setPlotWatered(plot.row, plot.col, true)
+          }
         }
       }
     }

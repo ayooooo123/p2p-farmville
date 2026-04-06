@@ -17,6 +17,8 @@ const COLORS = {
   grassAlt: 0x3f7028,
   plowed: 0x6b4226,
   plowedDark: 0x5a3520,
+  plowedWatered: 0x3d2510,      // darker, richer wet soil
+  plowedWateredDark: 0x2e1b0a,  // furrow lines on wet soil
   path: 0xc2a66e
 }
 
@@ -92,6 +94,7 @@ function createPlotGrid (sceneRef) {
     plots: plotGrid,
     getPlotAt,
     setPlotState,
+    setPlotWatered,
     getPlotFromRaycast,
     getAllPlots,
     PLOT_STATES
@@ -210,6 +213,37 @@ function _removeFurrows (plot) {
 }
 
 /**
+ * Update a plot's visual to reflect watered / dry state
+ * Call this after plot.crop.watered is set or on load
+ * @param {number} row
+ * @param {number} col
+ * @param {boolean} watered
+ */
+function setPlotWatered (row, col, watered) {
+  const plot = getPlotAt(row, col)
+  if (!plot) return
+
+  if (watered) {
+    // Darken soil to show moisture
+    plot.mesh.material.color.setHex(COLORS.plowedWatered)
+    // Update furrow line colours too
+    if (plot._furrows) {
+      plot._furrows.children.forEach(f => {
+        f.material.color.setHex(COLORS.plowedWateredDark)
+      })
+    }
+  } else {
+    // Restore dry plowed appearance
+    plot.mesh.material.color.setHex(COLORS.plowed)
+    if (plot._furrows) {
+      plot._furrows.children.forEach(f => {
+        f.material.color.setHex(COLORS.plowedDark)
+      })
+    }
+  }
+}
+
+/**
  * Raycast from mouse position to find clicked plot
  * @param {THREE.Vector2} mouseNDC - normalized device coordinates (-1 to 1)
  * @param {THREE.Camera} camera
@@ -229,4 +263,4 @@ function getPlotFromRaycast (mouseNDC, camera) {
 }
 
 window.TerrainSystem = { createPlotGrid, PLOT_STATES }
-export { createPlotGrid, PLOT_STATES, getPlotAt, getPlotFromRaycast, getAllPlots }
+export { createPlotGrid, PLOT_STATES, getPlotAt, getPlotFromRaycast, getAllPlots, setPlotWatered }
