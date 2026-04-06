@@ -43,6 +43,7 @@
 const Corestore = require('corestore')
 const Hyperswarm = require('hyperswarm')
 const Protomux = require('protomux')
+const cenc = require('compact-encoding')
 const b4a = require('b4a')
 const crypto = require('hypercore-crypto')
 
@@ -92,12 +93,24 @@ let coopIdCounter = 0
 const helpRequests = new Map()
 let helpIdCounter = 0
 
-// ── IPC helpers ─────────────────────────────────────────────────────────────
+// ── Protomux IPC (Bare.IPC ↔ Bun main process) ──────────────────────────────
+const ipcMux = new Protomux(Bare.IPC)
+const ipcChannel = ipcMux.createChannel({
+  protocol: 'farmville-ipc',
+  onopen () {
+    // Both sides open — safe to send now
+    ipcMessage.send({ type: 'worker:ready', storagePath })
+    console.log('[worker] Protomux IPC channel open, sent worker:ready')
+  }
+})
+const ipcMessage = ipcChannel.addMessage({ encoding: cenc.json, onmessage: handleIPCMessage })
+ipcChannel.open()
+
 function send (msg) {
   try {
-    Bare.IPC.write(JSON.stringify(msg) + '\n')
+    ipcMessage.send(msg)
   } catch (e) {
-    console.error('[worker] IPC write error:', e.message)
+    console.error('[worker] IPC send error:', e.message)
   }
 }
 
@@ -1136,30 +1149,10 @@ function startPeriodicTasks () {
   }, 60000)
 }
 
-// ── IPC message handler from Bun host (via Bare.IPC) ───────────────────────
-let inputBuffer = ''
-Bare.IPC.on('data', async (chunk) => {
-  inputBuffer += chunk.toString()
-  let idx
-  while ((idx = inputBuffer.indexOf('\n')) !== -1) {
-    const line = inputBuffer.slice(0, idx).trim()
-    inputBuffer = inputBuffer.slice(idx + 1)
-    if (!line) continue
-    await handleIPCMessage(line)
-  }
-})
+// IPC messages are handled via Protomux ipcMessage.onmessage above.
 
-async function handleIPCMessage (str) {
+async function handleIPCMessage (data) {
   try {
-    let data
-
-    try {
-      data = JSON.parse(str)
-    } catch (e) {
-      console.log('[worker] Non-JSON message:', str)
-      return
-    }
-
     switch (data.type) {
       case 'init':
       case 'farm:init': {
@@ -1295,6 +1288,6 @@ async function handleIPCMessage (str) {
 }
 
 // ── Startup ─────────────────────────────────────────────────────────────────
-send({ type: 'worker:ready', storagePath })
+// worker:ready is sent from ipcChannel.onopen once Protomux handshake completes
 console.log('[worker] P2P FarmVille worker started, storage:', storagePath)
-console.log('[worker] Waiting for init message from renderer...')
+console.log('[worker] Waiting for Protomux IPC channel open...')

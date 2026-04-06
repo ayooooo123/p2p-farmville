@@ -6,6 +6,8 @@
 
 import Electrobun, { BrowserWindow, BrowserView } from 'electrobun/bun'
 import PearRuntime from 'pear-runtime'
+import Protomux from 'protomux'
+import cenc from 'compact-encoding'
 import type { FarmvilleRPC } from '../shared/rpc-types'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -48,32 +50,20 @@ ipc = pear.run(workerPath, [storagePath])
 
 ipc.stdout.on('data', (d: Buffer) => console.log('[worker]', d.toString().trim()))
 ipc.stderr.on('data', (d: Buffer) => console.error('[worker:err]', d.toString().trim()))
-
-// ── IPC: worker → renderer ───────────────────────────────────────────────────
-let ipcBuffer = ''
-ipc.on('data', (chunk: Buffer) => {
-  ipcBuffer += chunk.toString()
-  let idx: number
-  while ((idx = ipcBuffer.indexOf('\n')) !== -1) {
-    const line = ipcBuffer.slice(0, idx).trim()
-    ipcBuffer = ipcBuffer.slice(idx + 1)
-    if (!line) continue
-    try {
-      const msg = JSON.parse(line)
-      sendToRenderer(msg)
-    } catch (e) {
-      console.error('[main] IPC parse error:', e)
-    }
-  }
-})
-
 ipc.on('error', (e: Error) => console.error('[main] IPC stream error:', e.message))
 
-// ── IPC: renderer → worker ───────────────────────────────────────────────────
+// ── Protomux IPC (Bun main process ↔ Bare.IPC in worker) ────────────────────
+const ipcMux = new Protomux(ipc)
+const ipcChannel = ipcMux.createChannel({ protocol: 'farmville-ipc' })
+const ipcMessage = ipcChannel.addMessage({
+  encoding: cenc.json,
+  onmessage (msg: any) { sendToRenderer(msg) }
+})
+ipcChannel.open()
+
 function sendToWorker (msg: any) {
-  if (!ipc) return
   try {
-    ipc.write(JSON.stringify(msg) + '\n')
+    ipcMessage.send(msg)
   } catch (e: any) {
     console.error('[main] sendToWorker error:', e.message)
   }
