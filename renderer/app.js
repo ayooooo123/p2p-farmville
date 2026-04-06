@@ -335,6 +335,7 @@ function updateHUD () {
 
 // ── Tool system ──────────────────────────────────────────────────────────────
 function selectTool (toolName) {
+  console.log('[app] selectTool called with:', toolName)
   cancelPlacement()
   gameState.selectedTool = toolName
 
@@ -373,6 +374,7 @@ function deselectTool () {
 }
 
 // Tool button direct listeners (delegation unreliable in Electrobun WebView)
+console.log('[app] registering direct tool listeners, toolbar:', toolbar, 'buttons found:', ['plow','plant','water','harvest','remove'].map(t => toolbar.querySelector('[data-tool="'+t+'"]')))
 ;['plow', 'plant', 'water', 'harvest', 'remove'].forEach(tool => {
   const btn = toolbar.querySelector(`[data-tool="${tool}"]`)
   if (btn) {

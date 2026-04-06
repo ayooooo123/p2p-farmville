@@ -348,6 +348,23 @@
   <script src="js/gift.js"></script>
   <script src="js/coop.js"></script>
   <script src="js/neighbor-panel.js"></script>
+  <!-- Debug: native DOM click diagnostics -->
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log('[debug] DOM ready');
+    ['plow','plant','water','harvest','remove'].forEach(function(tool) {
+      var btns = document.querySelectorAll('[data-tool="' + tool + '"]');
+      btns.forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          console.log('[debug] NATIVE click on', tool, 'button, e.target:', e.target.tagName);
+        });
+      });
+    });
+    document.getElementById('market-open-btn').addEventListener('click', function() {
+      console.log('[debug] NATIVE market click');
+    });
+  });
+  </script>
   <!-- Main app (ES module - imports Three.js and other modules) -->
   <script src="app.js" type="module"></script>
 </body>
