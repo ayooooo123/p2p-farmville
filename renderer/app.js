@@ -359,6 +359,7 @@ function selectTool (toolName) {
     remove: 'not-allowed'
   }
   canvas.style.cursor = cursors[toolName] || 'default'
+  canvas.style.pointerEvents = 'auto'
 }
 
 function deselectTool () {
@@ -368,6 +369,7 @@ function deselectTool () {
   toolbar.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'))
   seedStrip.style.display = 'none'
   canvas.style.cursor = 'default'
+  canvas.style.pointerEvents = 'none'
 }
 
 // Tool button direct listeners (delegation unreliable in Electrobun WebView)
@@ -708,6 +710,7 @@ function enterPlacementMode (category, key, def) {
   if (placementText) placementText.textContent = 'Placing: ' + def.name
 
   canvas.style.cursor = 'crosshair'
+  canvas.style.pointerEvents = 'auto'
 }
 
 function cancelPlacement () {
@@ -721,6 +724,7 @@ function cancelPlacement () {
 
   if (placementIndicator) placementIndicator.style.display = 'none'
   canvas.style.cursor = 'default'
+  canvas.style.pointerEvents = 'none'
 }
 
 function updateGhostPosition () {
