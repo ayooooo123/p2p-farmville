@@ -462,6 +462,31 @@ export function createCropMesh (cropType, stage) {
     inner.rotation.x = -Math.PI / 2
     inner.position.y = 0.025
     group.add(inner)
+
+    // Pulsing glow ring for mature crops
+    const ringInner = radius + 0.05
+    const ringOuter = radius + 0.2
+    const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 32)
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffee44, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+    const ring = new THREE.Mesh(ringGeo, ringMat)
+    ring.rotation.x = -Math.PI / 2
+    ring.position.y = 0.03
+    ring.userData.isGlowRing = true
+    group.add(ring)
+  }
+
+  // Progress arc for growing (non-seed, non-mature) crops
+  if (clampedStage > 0 && !isReady) {
+    const arcInner = radius + 0.05
+    const arcOuter = radius + 0.12
+    const arcLen = 2 * Math.PI * (clampedStage / maxStage)
+    const arcGeo = new THREE.RingGeometry(arcInner, arcOuter, 32, 1, -Math.PI / 2, arcLen)
+    const arcMat = new THREE.MeshBasicMaterial({ color: 0x44ff88, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+    const arc = new THREE.Mesh(arcGeo, arcMat)
+    arc.rotation.x = -Math.PI / 2
+    arc.position.y = 0.03
+    arc.userData.isProgressArc = true
+    group.add(arc)
   }
 
   group.userData.cropType = cropType
@@ -536,4 +561,46 @@ export function updateCropGrowth (cropPlot, deltaTime) {
   return false
 }
 
-window.CropSystem = { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth }
+/**
+ * Animate a harvest pop: scale 1.0 → 1.4 → 0 over 400ms with brief upward Y translation.
+ * Calls onComplete() when done so the caller can remove the mesh from the scene.
+ * @param {THREE.Object3D} mesh
+ * @param {THREE.Scene} scene
+ * @param {function} onComplete
+ */
+export function animateHarvestPop (mesh, scene, onComplete) {
+  const startTime = performance.now()
+  const duration = 400
+  const baseY = mesh.position.y
+
+  function animate () {
+    const elapsed = performance.now() - startTime
+    const t = Math.min(elapsed / duration, 1)
+
+    let scale, yOffset
+    if (t < 0.4) {
+      // Scale up phase: 1.0 → 1.4, Y 0 → 0.3
+      const p = t / 0.4
+      scale = 1.0 + 0.4 * p
+      yOffset = 0.3 * p
+    } else {
+      // Scale down phase: 1.4 → 0
+      const p = (t - 0.4) / 0.6
+      scale = 1.4 * (1 - p)
+      yOffset = 0.3
+    }
+
+    mesh.scale.set(scale, scale, scale)
+    mesh.position.y = baseY + yOffset
+
+    if (t < 1) {
+      requestAnimationFrame(animate)
+    } else {
+      onComplete()
+    }
+  }
+
+  requestAnimationFrame(animate)
+}
+
+window.CropSystem = { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop }

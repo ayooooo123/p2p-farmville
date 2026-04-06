@@ -1,6 +1,6 @@
 import * as THREE from './js/three.module.min.js'
 import { initScene, animate as renderScene } from './js/scene.js'
-import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth } from './js/crops.js'
+import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop } from './js/crops.js'
 import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, updateSeedStrip } from './js/market.js'
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
@@ -15,6 +15,8 @@ import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlo
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
 import { initParticles, createParticleEffect, updateParticles } from './js/particles.js'
 import { FarmActions } from './js/farm-actions.js'
+import { showToast } from './js/toasts.js'
+import { QuestSystem } from './js/quests.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -180,6 +182,7 @@ initCollections(savedData?.collections || {}, (item, setKey, set) => {
 
 initAchievements(savedData?.achievements || {}, (achievement) => {
   showAchievementNotification(achievement)
+  showToast(achievement.name, 'achievement', achievement.description)
   if (achievement.reward) {
     if (achievement.reward.coins) {
       gameState.coins += achievement.reward.coins
@@ -411,6 +414,8 @@ function showLevelUp (level) {
   levelUpNotif.style.display = 'flex'
   levelUpNotif.classList.add('show')
 
+  showToast('Level Up! You are now level ' + level, 'level', 'New crops and items unlocked!')
+
   setTimeout(() => {
     levelUpNotif.classList.remove('show')
     setTimeout(() => { levelUpNotif.style.display = 'none' }, 500)
@@ -451,6 +456,26 @@ function showFloatingCoin (worldX, worldZ, text) {
 
   // Remove after animation completes
   setTimeout(() => { el.remove() }, 1200)
+}
+
+// ── Float-up DOM text (coins / XP) ───────────────────────────────────────────
+function worldToScreen (worldPos) {
+  if (!sceneData || !sceneData.camera) return { x: 0, y: 0 }
+  const vec = worldPos.clone().project(sceneData.camera)
+  return {
+    x: (vec.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-vec.y * 0.5 + 0.5) * window.innerHeight
+  }
+}
+
+function spawnFloatUp (text, cssClass, screenX, screenY) {
+  const el = document.createElement('div')
+  el.className = `float-up ${cssClass}`
+  el.textContent = text
+  el.style.left = (screenX - 20) + 'px'
+  el.style.top = (screenY - 20) + 'px'
+  document.body.appendChild(el)
+  setTimeout(() => el.remove(), 1300)
 }
 
 // ── Phase 6: Notification helpers ───────────────────────────────────────────
@@ -1041,6 +1066,8 @@ function renderInventoryUI () {
       gameState.coins += result.coins
       gameState.totalCoinsEarned += result.coins
       gameState.itemsSold++
+      QuestSystem.recordAction('sell', qty)
+      QuestSystem.recordAction('earn', result.coins)
       showFeedback('Sold for ' + result.coins + ' coins!', '#ffd700')
       updateHUD()
       renderInventoryUI()
@@ -1103,6 +1130,7 @@ function handlePlow (plot) {
   gameState.totalPlowed++
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
   showFeedback('Plowed! -' + PLOW_COST + ' coins', '#daa520')
+  QuestSystem.recordAction('plow')
   checkAchievements()
   syncFarmStateNow()
 }
@@ -1146,6 +1174,7 @@ function handlePlant (plot) {
   gameState.totalPlanted++
   createParticleEffect('planting', { x: plot.x, y: 0.1, z: plot.z })
   showFeedback('Planted ' + cropDef.name + '! -' + cropDef.seedCost + ' coins', '#32cd32')
+  QuestSystem.recordAction('plant')
   checkAchievements()
   syncFarmStateNow()
 }
@@ -1170,6 +1199,7 @@ function handleWater (plot) {
   terrainData.setPlotWatered(plot.row, plot.col, true)
   createParticleEffect('watering', { x: plot.x, y: 0.1, z: plot.z })
   showFeedback('Watered! Growth speed 2x', '#4169e1')
+  QuestSystem.recordAction('water')
   checkAchievements()
 }
 
@@ -1210,22 +1240,34 @@ function handleHarvest (plot) {
   // Add harvested crop to inventory
   addItem(cropType, 1, { name: cropDef.name, type: 'crop', sellPrice: cropDef.sellPrice })
 
-  // Remove crop mesh
+  // Quest tracking
+  QuestSystem.recordAction('harvest', 1, { cropType })
+
+  // Animate harvest pop, then remove mesh
   if (plot.cropMesh) {
-    sceneData.scene.remove(plot.cropMesh)
+    const meshRef = plot.cropMesh
     plot.cropMesh = null
+    animateHarvestPop(meshRef, sceneData.scene, () => {
+      sceneData.scene.remove(meshRef)
+    })
   }
   plot.crop = null
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
 
-  // Particle burst + floating coin text at harvest position
+  // Particle burst + float-up text at harvest position
   createParticleEffect('harvest', { x: plot.x, y: 0.1, z: plot.z })
   createParticleEffect('coin', { x: plot.x, y: 0.3, z: plot.z })
-  showFloatingCoin(plot.x, plot.z, '+' + cropDef.sellPrice)
+  const sc = worldToScreen(new THREE.Vector3(plot.x, 0.08, plot.z))
+  spawnFloatUp('+' + cropDef.sellPrice + ' 🪙', 'coins', sc.x, sc.y)
+  spawnFloatUp('+' + (cropDef.xp + masteryBonus) + ' XP', 'xp', sc.x, sc.y + 25)
 
   let feedbackText = 'Harvested ' + cropDef.name + '! +' + cropDef.sellPrice + ' coins, +' + (cropDef.xp + masteryBonus) + ' XP'
   if (masteryBonus > 0) feedbackText += ' (+' + masteryBonus + ' mastery)'
   showFeedback(feedbackText, '#ffd700')
+
+  if (cropDef.sellPrice > 50) {
+    showToast('Harvested ' + cropDef.name, 'harvest', '+' + cropDef.sellPrice + ' coins · +' + cropDef.xp + ' XP')
+  }
 
   checkAchievements()
   syncFarmStateNow()
@@ -1262,14 +1304,16 @@ function harvestAll () {
     if (!def || plot.crop.stage < def.stages - 1) continue
     if (!useEnergy(ENERGY_COST)) break  // stop if out of energy
 
+    const harvestCropType = plot.crop.type
     gameState.coins += def.sellPrice
     gameState.totalCoinsEarned += def.sellPrice
     gameState.totalHarvests++
     totalCoins += def.sellPrice
-    const masteryResult = recordHarvest(plot.crop.type)
+    const masteryResult = recordHarvest(harvestCropType)
     const masteryBonus = masteryResult ? masteryResult.xpBonus : 0
     addXP(def.xp + masteryBonus)
-    addItem(plot.crop.type, 1, { name: def.name, type: 'crop', sellPrice: def.sellPrice })
+    addItem(harvestCropType, 1, { name: def.name, type: 'crop', sellPrice: def.sellPrice })
+    QuestSystem.recordAction('harvest', 1, { cropType: harvestCropType })
     if (plot.cropMesh) { sceneData.scene.remove(plot.cropMesh); plot.cropMesh = null }
     plot.crop = null
     terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
@@ -1302,6 +1346,7 @@ function waterAll () {
     gameState.totalWatered++
     terrainData.setPlotWatered(plot.row, plot.col, true)
     createParticleEffect('watering', { x: plot.x, y: 0.1, z: plot.z })
+    QuestSystem.recordAction('water')
     count++
   }
   if (count > 0) {
@@ -1512,6 +1557,30 @@ if (waterAllBtn) {
   waterAllBtn.addEventListener('click', () => waterAll())
 }
 
+// Quest button
+const questBtn = document.getElementById('quest-btn')
+if (questBtn) {
+  questBtn.addEventListener('click', () => {
+    if (gameState.running) QuestSystem.openPanel()
+  })
+}
+const questCloseBtn = document.getElementById('quest-close-btn')
+if (questCloseBtn) {
+  questCloseBtn.addEventListener('click', () => QuestSystem.closePanel())
+}
+
+// Quest complete event — grant rewards
+window.addEventListener('quest-complete', (e) => {
+  const { quest, coins, xp, streak } = e.detail
+  gameState.coins += coins
+  addXP(xp)
+  updateHUD()
+  showToast(
+    'Quest Complete: ' + quest.desc, 'quest',
+    '+' + coins + ' coins · +' + xp + ' XP' + (streak > 1 ? ' · 🔥' + streak + ' streak' : '')
+  )
+})
+
 // Crafting close button
 const craftCloseBtn = document.getElementById('crafting-close-btn')
 if (craftCloseBtn) {
@@ -1554,12 +1623,19 @@ function updateCrops (dtMs) {
 function animateReadyCrops (time) {
   if (!terrainData) return
   const allPlots = terrainData.getAllPlots()
+  const glowOpacity = Math.sin(Date.now() * 0.004) * 0.5 + 0.5
   for (const plot of allPlots) {
     if (!plot.cropMesh) continue
     if (plot.crop && !plot.crop.withered && plot.cropMesh.userData.isReady) {
       // Gentle pulse: scale between 1.0 and 1.15 with a slow sine wave
       const pulse = 1.0 + 0.15 * Math.sin(time * 0.003 + plot.x * 1.7 + plot.z * 2.3)
       plot.cropMesh.scale.set(pulse, 1, pulse)
+      // Pulse glow ring opacity
+      plot.cropMesh.traverse(child => {
+        if (child.userData.isGlowRing && child.material) {
+          child.material.opacity = glowOpacity
+        }
+      })
     } else {
       // Reset scale for non-ready crops
       plot.cropMesh.scale.set(1, 1, 1)
@@ -1837,6 +1913,7 @@ function startGame () {
 
   // Load saved game state (restores coins, xp, level, etc.)
   loadGame()
+  QuestSystem.init()
 
   setupScreen.style.display = 'none'
   hud.style.display = 'block'

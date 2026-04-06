@@ -56,6 +56,9 @@
         <button id="inventory-btn" class="tool-btn tool-btn-inv" title="Inventory (I)">
           <span class="tool-icon">&#128230;</span><span class="tool-label">Items</span>
         </button>
+        <button id="quest-btn" class="tool-btn" title="Daily Quests">
+          <span class="tool-icon">&#128203;</span><span class="tool-label">Quests</span>
+        </button>
         <button id="market-open-btn" class="tool-btn tool-btn-market" title="Open Market">
           <span class="tool-icon">&#127978;</span><span class="tool-label">Market</span>
         </button>
@@ -234,6 +237,16 @@
         </div>
       </div>
       <div id="coop-mission-list"></div>
+    </div>
+
+    <!-- Quest Panel -->
+    <div id="quest-panel">
+      <div id="quest-header">
+        <h2>Daily Quests</h2>
+        <button id="quest-close-btn" class="panel-close-btn">&#215;</button>
+      </div>
+      <div id="quest-streak" class="quest-streak-bar"></div>
+      <div id="quest-list" class="quest-list"></div>
     </div>
 
     <!-- Credits / About Modal -->
