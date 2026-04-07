@@ -1,7 +1,7 @@
 import * as THREE from './js/three.module.min.js'
 import { initScene, animate as renderScene, initCameraControls, updateCamera, resetCamera } from './js/scene.js'
 import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop } from './js/crops.js'
-import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, updateSeedStrip } from './js/market.js'
+import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip } from './js/market.js'
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
 import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildingEffects, updateCraftingQueue, startCrafting } from './js/buildings.js'
@@ -47,6 +47,7 @@ const gameState = {
   selectedTool: null,
   selectedSeed: null,
   lastEnergyRegen: 0,
+  lastUsedSeed: null,   // auto-equip: re-select this seed when plant tool activates
   // Phase 6: Progression tracking
   totalHarvests: 0,
   totalPlanted: 0,
@@ -357,6 +358,11 @@ function selectTool (toolName) {
 
   if (toolName === 'plant') {
     seedStrip.style.display = 'flex'
+    // Auto-equip last used seed before rendering strip so it highlights correctly
+    if (!gameState.selectedSeed && gameState.lastUsedSeed) {
+      gameState.selectedSeed = gameState.lastUsedSeed
+      setSelectedSeed(gameState.lastUsedSeed)
+    }
     updateSeedStrip(gameState.level, seedStrip, (seedKey) => {
       gameState.selectedSeed = seedKey
     })
@@ -1223,6 +1229,7 @@ function handlePlant (plot) {
 
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLANTED)
   gameState.totalPlanted++
+  gameState.lastUsedSeed = seedKey  // remember for auto-equip next time
   createParticleEffect('planting', { x: plot.x, y: 0.1, z: plot.z })
   showFeedback('Planted ' + cropDef.name + '! -' + cropDef.seedCost + ' coins', '#32cd32')
   QuestSystem.recordAction('plant')
@@ -2204,7 +2211,8 @@ function saveGame () {
         coopCompleted: gameState.coopCompleted,
         farmsVisited: gameState.farmsVisited,
         animalsFed: gameState.animalsFed,
-        animalProductsCollected: gameState.animalProductsCollected
+        animalProductsCollected: gameState.animalProductsCollected,
+        lastUsedSeed: gameState.lastUsedSeed
       },
       farmState: {
         ownedVehicles: farmState.ownedVehicles,
@@ -2282,6 +2290,7 @@ function loadGame () {
       gameState.farmsVisited = gs.farmsVisited ?? 0
       gameState.animalsFed = gs.animalsFed ?? 0
       gameState.animalProductsCollected = gs.animalProductsCollected ?? 0
+      gameState.lastUsedSeed = gs.lastUsedSeed ?? null
     }
 
     // Restore farm name to input

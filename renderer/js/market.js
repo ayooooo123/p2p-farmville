@@ -211,6 +211,10 @@ function clearSelectedSeed () {
   }
 }
 
+function setSelectedSeed (key) {
+  selectedSeed = key
+}
+
 /**
  * Update seed selector strip (shown when plant tool is active)
  */
@@ -241,5 +245,5 @@ function updateSeedStrip (playerLevel, stripEl, onSelect) {
   }
 }
 
-window.MarketSystem = { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, updateSeedStrip }
-export { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, updateSeedStrip }
+window.MarketSystem = { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip }
+export { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip }
