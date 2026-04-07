@@ -1914,6 +1914,18 @@ function animateReadyCrops (time) {
   }
 }
 
+// ── Decoration animations (windmill blade rotation) ──────────────────────────
+function updateDecorations (time) {
+  for (const deco of farmState.decorations) {
+    if (!deco.mesh) continue
+    deco.mesh.traverse(child => {
+      if (child.userData.isWindmillRotor) {
+        child.rotation.z = time * 0.0005
+      }
+    })
+  }
+}
+
 // ── Tree growth update ───────────────────────────────────────────────────────
 function updateTrees (dtMs) {
   const effects = getBuildingEffects(farmState.buildings)
@@ -2241,6 +2253,7 @@ function gameLoop (time) {
   updateTrees(dtMs)
   updateAnimals(dtMs)
   updateBuildings(dtMs)
+  updateDecorations(time)
   updateParticles(dtMs)
 
   // Energy regen
