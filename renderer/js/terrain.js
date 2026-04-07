@@ -38,6 +38,17 @@ let plotMeshes = []
 let raycaster = null
 let scene = null
 
+// ── Hover highlight mesh ─────────────────────────────────────────────────────
+let hoverHighlightMesh = null
+const HIGHLIGHT_COLORS = {
+  plow:    { color: 0xffa040, opacity: 0.35 },
+  plant:   { color: 0x44ff88, opacity: 0.35 },
+  water:   { color: 0x44aaff, opacity: 0.35 },
+  harvest: { color: 0xffd700, opacity: 0.35 },
+  remove:  { color: 0xff4444, opacity: 0.35 },
+  default: { color: 0xffffff, opacity: 0.20 }
+}
+
 /**
  * Create the entire farm plot grid
  * @param {THREE.Scene} sceneRef
@@ -102,6 +113,21 @@ function createPlotGrid (sceneRef) {
     }
   }
 
+  // Create a single hover highlight quad (hidden by default)
+  const hlGeo = new THREE.PlaneGeometry(PLOT_SIZE - 0.04, PLOT_SIZE - 0.04)
+  const hlMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  })
+  hoverHighlightMesh = new THREE.Mesh(hlGeo, hlMat)
+  hoverHighlightMesh.rotation.x = -Math.PI / 2
+  hoverHighlightMesh.position.y = 0.05
+  hoverHighlightMesh.visible = false
+  scene.add(hoverHighlightMesh)
+
   return {
     plots: plotGrid,
     getPlotAt,
@@ -111,6 +137,8 @@ function createPlotGrid (sceneRef) {
     getAllPlots,
     setSeasonColors,
     getCurrentSeason,
+    setHoverHighlight,
+    clearHoverHighlight,
     PLOT_STATES
   }
 }
@@ -311,5 +339,28 @@ function getCurrentSeason () {
   return currentSeason
 }
 
-window.TerrainSystem = { createPlotGrid, PLOT_STATES, setSeasonColors, getCurrentSeason }
-export { createPlotGrid, PLOT_STATES, getPlotAt, getPlotFromRaycast, getAllPlots, setPlotWatered, setSeasonColors, getCurrentSeason }
+/**
+ * Show a colored highlight quad over the given plot.
+ * @param {object} plot - plot data object
+ * @param {string} toolName - 'plow'|'plant'|'water'|'harvest'|'remove'|null
+ */
+function setHoverHighlight (plot, toolName) {
+  if (!hoverHighlightMesh) return
+  if (!plot) { clearHoverHighlight(); return }
+
+  const cfg = HIGHLIGHT_COLORS[toolName] || HIGHLIGHT_COLORS.default
+  hoverHighlightMesh.material.color.setHex(cfg.color)
+  hoverHighlightMesh.material.opacity = cfg.opacity
+  hoverHighlightMesh.position.set(plot.x, 0.05, plot.z)
+  hoverHighlightMesh.visible = true
+}
+
+/**
+ * Hide the hover highlight.
+ */
+function clearHoverHighlight () {
+  if (hoverHighlightMesh) hoverHighlightMesh.visible = false
+}
+
+window.TerrainSystem = { createPlotGrid, PLOT_STATES, setSeasonColors, getCurrentSeason, setHoverHighlight, clearHoverHighlight }
+export { createPlotGrid, PLOT_STATES, getPlotAt, getPlotFromRaycast, getAllPlots, setPlotWatered, setSeasonColors, getCurrentSeason, setHoverHighlight, clearHoverHighlight }

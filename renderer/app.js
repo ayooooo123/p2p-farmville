@@ -435,6 +435,7 @@ function deselectTool () {
   seedStrip.style.display = 'none'
   canvas.style.cursor = 'default'
   canvas.style.pointerEvents = 'none'
+  if (terrainData) terrainData.clearHoverHighlight()
 }
 
 // Tool button direct listeners (delegation unreliable in Electrobun WebView)
@@ -1522,9 +1523,26 @@ canvas.addEventListener('mousemove', (e) => {
   // Tooltip on hover over placed objects (when no tool/placement active)
   if (!placementMode && !gameState.selectedTool && gameState.running) {
     updateHoverTooltip()
+    if (terrainData) terrainData.clearHoverHighlight()
   } else {
     hideTooltip()
+    // Grid highlight: show colored overlay on hovered plot when a tool is active
+    if (terrainData && gameState.selectedTool && gameState.running && !placementMode) {
+      const hoverPlot = terrainData.getPlotFromRaycast(mouse, sceneData.camera)
+      if (hoverPlot) {
+        terrainData.setHoverHighlight(hoverPlot, gameState.selectedTool)
+      } else {
+        terrainData.clearHoverHighlight()
+      }
+    } else if (terrainData) {
+      terrainData.clearHoverHighlight()
+    }
   }
+})
+
+canvas.addEventListener('mouseleave', () => {
+  if (terrainData) terrainData.clearHoverHighlight()
+  hideTooltip()
 })
 
 // ── Drag-to-multi-action: start / finish ─────────────────────────────────────
