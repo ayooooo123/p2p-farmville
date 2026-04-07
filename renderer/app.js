@@ -1755,8 +1755,22 @@ function _showCropTooltip (plot, px, py) {
   let progress = null
 
   if (isMature) {
+    // Calculate wither countdown
+    const witherTime = def.growTime * 3
+    const elapsed = Date.now() - crop.plantedAt
+    const witherMsLeft = Math.max(0, witherTime - elapsed)
+    const witherPct = witherMsLeft / (def.growTime * 2)
+    let witherNote = ''
+    if (witherMsLeft > 0) {
+      const witherLabel = _fmtTimeRemaining(witherMsLeft)
+      if (witherPct <= 0.25) {
+        witherNote = '  · ⚠ Withers in ' + witherLabel + '!'
+      } else if (witherPct <= 0.5) {
+        witherNote = '  · Withers in ' + witherLabel
+      }
+    }
     title = def.name + ' — Ready!'
-    info = 'Click to harvest  +' + def.sellPrice + ' coins  +' + def.xp + ' XP'
+    info = 'Click to harvest  +' + def.sellPrice + ' coins  +' + def.xp + ' XP' + witherNote
     progress = { pct: 100, label: 'Stage ' + crop.stage + '/' + maxStage + ' — Ready to harvest!', watered: false }
   } else {
     const timePerStage = def.growTime / maxStage
@@ -2136,8 +2150,27 @@ function updateCropTimers (time) {
     if (updateText) {
       const isMature = plot.crop.stage >= maxStage
       if (isMature) {
-        el.textContent = '★'
-        el.className = 'crop-timer ready'
+        // Show wither countdown: witherTime = growTime * 3 total from plantedAt
+        const witherTime = def.growTime * 3
+        const elapsed = Date.now() - plot.crop.plantedAt
+        const witherMsLeft = witherTime - elapsed
+        const witherPct = witherMsLeft / (def.growTime * 2)  // fraction of wither window left
+        if (witherMsLeft <= 0) {
+          el.textContent = '★'
+          el.className = 'crop-timer ready'
+        } else if (witherPct <= 0.25) {
+          // Last 25% of wither window — red urgent countdown
+          el.textContent = '★ ' + _fmtTimeRemaining(witherMsLeft)
+          el.className = 'crop-timer ready wither-urgent'
+        } else if (witherPct <= 0.5) {
+          // Middle 25-50% — orange warning
+          el.textContent = '★ ' + _fmtTimeRemaining(witherMsLeft)
+          el.className = 'crop-timer ready wither-warn'
+        } else {
+          // Fresh mature — just the star (no countdown clutter)
+          el.textContent = '★'
+          el.className = 'crop-timer ready'
+        }
       } else {
         const timePerStage = def.growTime / maxStage
         const stagesLeft = maxStage - plot.crop.stage
