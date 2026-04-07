@@ -1,7 +1,7 @@
 import * as THREE from './js/three.module.min.js'
-import { initScene, animate as renderScene } from './js/scene.js'
-import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth } from './js/crops.js'
-import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, updateSeedStrip } from './js/market.js'
+import { initScene, animate as renderScene, initCameraControls, updateCamera, resetCamera } from './js/scene.js'
+import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop } from './js/crops.js'
+import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, CONSUMABLE_DEFINITIONS } from './js/market.js'
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
 import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildingEffects, updateCraftingQueue, startCrafting } from './js/buildings.js'
@@ -11,8 +11,14 @@ import { initInventory, addItem, removeItem, hasItem, getItemQty, sellItem, getI
 import * as NeighborRenderer from './js/neighbor-renderer.js'
 import { initMastery, recordHarvest, getMasteryData, getMasteryStars, getMasteryStarHTML, renderMasteryPanel, getMasteryLevel } from './js/mastery.js'
 import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel, isSetComplete, getCompletedSetsCount, getTotalItemsFound, COLLECTION_DEFINITIONS } from './js/collections.js'
-import { initAchievements, updateStats, getAchievementState, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
+import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
+import { initParticles, createParticleEffect, updateParticles } from './js/particles.js'
+import { FarmActions } from './js/farm-actions.js'
+import { showToast } from './js/toasts.js'
+import { QuestSystem } from './js/quests.js'
+import { SoundSystem } from './js/sounds.js'
+import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -28,6 +34,8 @@ const LEVEL_THRESHOLDS = [
   194000, 209000, 225000, 242000, 260000, 279000, 299000, 320000, 342000, 365000
 ]
 
+const SAVE_KEY = 'p2p-farmville-save'
+
 // ── Game state ───────────────────────────────────────────────────────────────
 const gameState = {
   coins: 500,
@@ -41,6 +49,7 @@ const gameState = {
   selectedTool: null,
   selectedSeed: null,
   lastEnergyRegen: 0,
+  lastUsedSeed: null,   // auto-equip: re-select this seed when plant tool activates
   // Phase 6: Progression tracking
   totalHarvests: 0,
   totalPlanted: 0,
@@ -72,6 +81,12 @@ const farmState = {
 let placementMode = null // { category, key, def, ghostMesh }
 let activeCraftingBuilding = null
 
+// ── Drag-to-multi-action state ───────────────────────────────────────────────
+let isDragBulk = false          // suppress per-plot feedback during drag
+let dragTool = null             // which tool is being dragged
+let dragVisited = new Set()     // 'row,col' keys of plots acted on this drag
+let dragDidMove = false         // true once mouse moved to a second plot
+
 // ── P2P state ───────────────────────────────────────────────────────────────
 const p2pState = {
   initialized: false,
@@ -94,6 +109,7 @@ const startBtn = document.getElementById('start-btn')
 const coinDisplay = document.getElementById('coin-display')
 const xpDisplay = document.getElementById('xp-display')
 const energyDisplay = document.getElementById('energy-display')
+const seasonDisplay = document.getElementById('season-display')
 const energyBarFill = document.getElementById('energy-bar-fill')
 const toolbar = document.getElementById('toolbar')
 const seedStrip = document.getElementById('seed-strip')
@@ -108,6 +124,9 @@ const placementText = document.getElementById('placement-text')
 const tooltipEl = document.getElementById('object-tooltip')
 const tooltipTitle = document.getElementById('tooltip-title')
 const tooltipInfo = document.getElementById('tooltip-info')
+const tooltipProgressWrap = document.getElementById('tooltip-progress-wrap')
+const tooltipProgressBar = document.getElementById('tooltip-progress-bar')
+const tooltipProgressLabel = document.getElementById('tooltip-progress-label')
 
 // P2P DOM elements
 const peerCountEl = document.getElementById('peer-count')
@@ -128,6 +147,8 @@ const mousePx = { x: 0, y: 0 }
 // ── Initialize Three.js scene ────────────────────────────────────────────────
 sceneData = initScene(canvas)
 terrainData = sceneData.terrainData
+initParticles(sceneData.scene)
+initCameraControls(canvas)
 
 // ── Initialize Inventory ─────────────────────────────────────────────────────
 initInventory(() => {
@@ -145,19 +166,39 @@ initMarket((seedKey) => {
   handleMarketBuy(purchase)
 })
 
+// ── Load saved data for initialization ──────────────────────────────────────
+let savedData = null
+try {
+  const raw = localStorage.getItem(SAVE_KEY)
+  if (raw) savedData = JSON.parse(raw)
+} catch (e) { /* ignore */ }
+
+// Pre-fill farm name from save
+if (savedData?.gameState?.farmName && farmNameInput) {
+  farmNameInput.value = savedData.gameState.farmName
+}
+
+// Auto-start if a valid save exists — skip the setup screen
+if (savedData?.gameState?.farmName) {
+  // setTimeout 0 defers until this script finishes executing
+  // so all init code below (scene, mastery, etc.) runs first
+  setTimeout(() => startGame(), 0)
+}
+
 // ── Initialize Phase 6: Progression Systems ─────────────────────────────────
-initMastery({}, (cropKey, newLevel) => {
+initMastery(savedData?.mastery || {}, (cropKey, newLevel) => {
   const def = CROP_DEFINITIONS[cropKey]
   const name = def ? def.name : cropKey
   showMasteryNotification(name, newLevel)
 })
 
-initCollections({}, (item, setKey, set) => {
+initCollections(savedData?.collections || {}, (item, setKey, set) => {
   showCollectionNotification(item, set)
 })
 
-initAchievements({}, (achievement) => {
+initAchievements(savedData?.achievements || {}, (achievement) => {
   showAchievementNotification(achievement)
+  showToast(achievement.name, 'achievement', achievement.description)
   if (achievement.reward) {
     if (achievement.reward.coins) {
       gameState.coins += achievement.reward.coins
@@ -167,7 +208,7 @@ initAchievements({}, (achievement) => {
   }
 })
 
-initExpansion(null, 0) // scene set later in startGame
+initExpansion(null, savedData?.expansion?.tier || 0) // scene set later in startGame
 
 // Phase 6 DOM elements
 const masteryPanel = document.getElementById('mastery-panel')
@@ -226,12 +267,112 @@ if (window.IPCBridge && window.IPCBridge.available) {
   window.IPCBridge.onError((error) => {
     console.error('[app] Worker error:', error)
   })
+
+  // ── Farm action protocol (visitor water/harvest/feed) ────────────────────
+  if (typeof window.IPCBridge.onVisitorFarmAction === 'function') {
+    window.IPCBridge.onVisitorFarmAction((msg) => {
+      // Someone is performing an action on our farm
+      const combinedFarmState = {
+        plots: terrainData ? terrainData.getAllPlots() : [],
+        animals: farmState.animals
+      }
+      FarmActions.handleVisitorAction(msg, combinedFarmState, gameState, ({ action, targetId, visitorName, reward }) => {
+        showFeedback(visitorName + ' ' + action + 'ed your ' + (action === 'feed' ? 'animal' : 'crop') + '!', '#4caf50')
+        syncFarmStateNow()
+      })
+    })
+  }
+
+  if (typeof window.IPCBridge.onFarmActionResult === 'function') {
+    window.IPCBridge.onFarmActionResult((msg) => {
+      // Result of an action WE sent to a neighbor
+      if (msg.success) {
+        showFeedback(msg.action + ' successful! +' + (msg.reward?.xp || 0) + ' XP', '#4caf50')
+        if (msg.reward?.xp) addXP(msg.reward.xp)
+        if (msg.reward?.coins) { gameState.coins += msg.reward.coins; updateHUD() }
+      } else {
+        const reasons = { no_crop: 'No crop there', already_watered: 'Already watered', not_ready: 'Not ready yet', action_not_permitted: 'Not allowed', withered: 'Crop withered', no_animal: 'No animal there', already_fed: 'Already fed', mature: 'Already mature' }
+        showFeedback(reasons[msg.reason] || 'Action failed', '#f44336')
+      }
+    })
+  }
 } else {
   console.warn('[app] IPC bridge not available - running without worker')
 }
 
 // ── Initialize NeighborRenderer ─────────────────────────────────────────────
 NeighborRenderer.init(sceneData.scene)
+
+// ── Weather HUD + Rain auto-water ─────────────────────────────────────────────
+const weatherDisplay = document.getElementById('weather-display')
+
+function _updateWeatherHUD () {
+  if (!weatherDisplay) return
+  const icon = getWeatherIcon()
+  const name = getWeatherName()
+  weatherDisplay.textContent = icon + ' ' + name
+}
+
+function rainAutoWaterCrops () {
+  if (!terrainData || !gameState.running) return
+  const allPlots = terrainData.getAllPlots()
+  let count = 0
+  for (const plot of allPlots) {
+    if (plot.state !== terrainData.PLOT_STATES.PLANTED || !plot.crop || plot.crop.withered || plot.crop.watered) continue
+    terrainData.setPlotWatered(plot.row, plot.col, true)
+    count++
+  }
+  if (count > 0) {
+    showToast('Rain watered ' + count + ' crop' + (count === 1 ? '' : 's') + '!', 'water', 'Growth speed doubled! 💧')
+    SoundSystem.play('water')
+    QuestSystem.recordAction('water', count)
+  }
+}
+
+// ── Season system ─────────────────────────────────────────────────────────────
+// Seasons cycle based on real-world week-of-year: 13 weeks each (spring/summer/autumn/winter)
+// Using a repeating 52-week cycle so it feels alive without requiring a save field.
+const SEASON_INFO = {
+  spring: { icon: '🌸', label: 'Spring', weekStart: 0  },
+  summer: { icon: '☀️', label: 'Summer', weekStart: 13 },
+  autumn: { icon: '🍂', label: 'Autumn', weekStart: 26 },
+  winter: { icon: '❄️', label: 'Winter', weekStart: 39 }
+}
+
+function getSeasonFromDate () {
+  const now = new Date()
+  const startOfYear = new Date(now.getFullYear(), 0, 1)
+  const weekOfYear = Math.floor((now - startOfYear) / (7 * 24 * 60 * 60 * 1000))
+  const w = weekOfYear % 52
+  if (w < 13) return 'spring'
+  if (w < 26) return 'summer'
+  if (w < 39) return 'autumn'
+  return 'winter'
+}
+
+let _lastSeasonCheck = 0
+
+function updateSeasonIfChanged () {
+  const now = Date.now()
+  if (now - _lastSeasonCheck < 60000) return  // check at most once per minute
+  _lastSeasonCheck = now
+
+  const season = getSeasonFromDate()
+  if (terrainData && terrainData.getCurrentSeason() !== season) {
+    terrainData.setSeasonColors(season)
+    showToast(SEASON_INFO[season].label + ' has arrived!', 'level',
+      season === 'spring' ? 'Flowers bloom across the farm' :
+      season === 'summer' ? 'Long sunny days ahead' :
+      season === 'autumn' ? 'Harvest time — leaves turn golden' :
+      'A blanket of frost settles on the fields')
+  }
+
+  // Update season HUD
+  if (seasonDisplay) {
+    const info = SEASON_INFO[season] || SEASON_INFO.summer
+    seasonDisplay.textContent = info.icon + ' ' + info.label
+  }
+}
 
 // ── HUD update ───────────────────────────────────────────────────────────────
 function updateHUD () {
@@ -250,6 +391,34 @@ function updateHUD () {
   if (pct > 50) energyBarFill.style.background = '#7cfc00'
   else if (pct > 20) energyBarFill.style.background = '#ffd700'
   else energyBarFill.style.background = '#ff4444'
+
+  // Quick-action buttons: show when there's something to do
+  if (terrainData && gameState.running) {
+    const allPlots = terrainData.getAllPlots()
+    let readyCount = 0
+    let unwateredCount = 0
+    for (const p of allPlots) {
+      if (p.state === terrainData.PLOT_STATES.PLANTED && p.crop && !p.crop.withered) {
+        const def = CROP_DEFINITIONS[p.crop.type]
+        if (def && p.crop.stage >= def.stages - 1) readyCount++
+        else if (!p.crop.watered) unwateredCount++
+      }
+    }
+    if (harvestAllBtn) {
+      harvestAllBtn.style.display = readyCount > 0 ? '' : 'none'
+      if (readyCount > 0) {
+        const label = harvestAllBtn.querySelector('.tool-label')
+        if (label) label.textContent = 'Harvest (' + readyCount + ')'
+      }
+    }
+    if (waterAllBtn) {
+      waterAllBtn.style.display = unwateredCount > 0 ? '' : 'none'
+      if (unwateredCount > 0) {
+        const label = waterAllBtn.querySelector('.tool-label')
+        if (label) label.textContent = 'Water (' + unwateredCount + ')'
+      }
+    }
+  }
 }
 
 // ── Tool system ──────────────────────────────────────────────────────────────
@@ -263,6 +432,11 @@ function selectTool (toolName) {
 
   if (toolName === 'plant') {
     seedStrip.style.display = 'flex'
+    // Auto-equip last used seed before rendering strip so it highlights correctly
+    if (!gameState.selectedSeed && gameState.lastUsedSeed) {
+      gameState.selectedSeed = gameState.lastUsedSeed
+      setSelectedSeed(gameState.lastUsedSeed)
+    }
     updateSeedStrip(gameState.level, seedStrip, (seedKey) => {
       gameState.selectedSeed = seedKey
     })
@@ -278,6 +452,7 @@ function selectTool (toolName) {
     remove: 'not-allowed'
   }
   canvas.style.cursor = cursors[toolName] || 'default'
+  canvas.style.pointerEvents = 'auto'
 }
 
 function deselectTool () {
@@ -287,18 +462,21 @@ function deselectTool () {
   toolbar.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'))
   seedStrip.style.display = 'none'
   canvas.style.cursor = 'default'
+  canvas.style.pointerEvents = 'none'
+  if (terrainData) terrainData.clearHoverHighlight()
 }
 
-// Toolbar click handlers
-toolbar.addEventListener('click', (e) => {
-  const btn = e.target.closest('.tool-btn')
-  if (!btn || btn.id === 'market-open-btn' || btn.id === 'inventory-btn') return
-
-  const tool = btn.dataset.tool
-  if (gameState.selectedTool === tool) {
-    deselectTool()
-  } else {
-    selectTool(tool)
+// Tool button direct listeners (delegation unreliable in Electrobun WebView)
+;['plow', 'plant', 'water', 'harvest', 'remove'].forEach(tool => {
+  const btn = toolbar.querySelector(`[data-tool="${tool}"]`)
+  if (btn) {
+    btn.addEventListener('click', () => {
+      if (gameState.selectedTool === tool) {
+        deselectTool()
+      } else {
+        selectTool(tool)
+      }
+    })
   }
 })
 
@@ -332,9 +510,17 @@ function addXP (amount) {
 }
 
 function showLevelUp (level) {
+  SoundSystem.play('levelup')
   levelUpDetail.textContent = 'You reached Level ' + level + '!'
   levelUpNotif.style.display = 'flex'
   levelUpNotif.classList.add('show')
+
+  // Burst level-up particles at farm center
+  createParticleEffect('levelup', { x: 0, y: 0.5, z: 0 })
+  createParticleEffect('levelup', { x: -3, y: 0.5, z: -3 })
+  createParticleEffect('levelup', { x: 3, y: 0.5, z: 3 })
+
+  showToast('Level Up! You are now level ' + level, 'level', 'New crops and items unlocked!')
 
   setTimeout(() => {
     levelUpNotif.classList.remove('show')
@@ -344,6 +530,7 @@ function showLevelUp (level) {
 
 // ── Action feedback ──────────────────────────────────────────────────────────
 function showFeedback (text, color) {
+  if (isDragBulk) return
   actionFeedback.textContent = text
   actionFeedback.style.color = color || '#fff'
   actionFeedback.style.display = 'block'
@@ -353,6 +540,49 @@ function showFeedback (text, color) {
     actionFeedback.classList.remove('show')
     setTimeout(() => { actionFeedback.style.display = 'none' }, 300)
   }, 1500)
+}
+
+// ── Floating coin text (world-to-screen) ────────────────────────────────────
+function showFloatingCoin (worldX, worldZ, text) {
+  if (!sceneData || !sceneData.camera) return
+
+  // Project world position to screen
+  const pos = new THREE.Vector3(worldX, 0.5, worldZ)
+  pos.project(sceneData.camera)
+
+  const canvas = document.getElementById('game-canvas')
+  const screenX = (pos.x * 0.5 + 0.5) * canvas.clientWidth
+  const screenY = (-pos.y * 0.5 + 0.5) * canvas.clientHeight
+
+  const el = document.createElement('div')
+  el.className = 'floating-coin'
+  el.textContent = text
+  el.style.left = screenX + 'px'
+  el.style.top = screenY + 'px'
+  document.getElementById('game-container').appendChild(el)
+
+  // Remove after animation completes
+  setTimeout(() => { el.remove() }, 1200)
+}
+
+// ── Float-up DOM text (coins / XP) ───────────────────────────────────────────
+function worldToScreen (worldPos) {
+  if (!sceneData || !sceneData.camera) return { x: 0, y: 0 }
+  const vec = worldPos.clone().project(sceneData.camera)
+  return {
+    x: (vec.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-vec.y * 0.5 + 0.5) * window.innerHeight
+  }
+}
+
+function spawnFloatUp (text, cssClass, screenX, screenY) {
+  const el = document.createElement('div')
+  el.className = `float-up ${cssClass}`
+  el.textContent = text
+  el.style.left = (screenX - 20) + 'px'
+  el.style.top = (screenY - 20) + 'px'
+  document.body.appendChild(el)
+  setTimeout(() => el.remove(), 1300)
 }
 
 // ── Phase 6: Notification helpers ───────────────────────────────────────────
@@ -444,6 +674,57 @@ function checkAchievements () {
   })
 }
 
+// ── Phase 6: Panel open functions ───────────────────────────────────────────
+function openMasteryPanel () {
+  togglePanel(masteryPanel)
+  if (masteryPanel && masteryPanel.classList.contains('visible')) {
+    const content = document.getElementById('mastery-content')
+    if (content) renderMasteryPanel(content, CROP_DEFINITIONS)
+  }
+}
+
+function openCollectionsPanel () {
+  togglePanel(collectionsPanel)
+  if (collectionsPanel && collectionsPanel.classList.contains('visible')) {
+    const content = document.getElementById('collections-content')
+    const progressEl = document.getElementById('collections-progress')
+    if (progressEl) progressEl.textContent = getCompletedSetsCount() + '/' + Object.keys(COLLECTION_DEFINITIONS).length + ' sets'
+    if (content) renderCollectionsPanel(content)
+  }
+}
+
+function openAchievementsPanel () {
+  togglePanel(achievementsPanel)
+  if (achievementsPanel && achievementsPanel.classList.contains('visible')) {
+    const content = document.getElementById('achievements-content')
+    const progressEl = document.getElementById('achievements-progress')
+    if (progressEl) progressEl.textContent = getUnlockedCount() + '/' + Object.keys(ACHIEVEMENT_DEFINITIONS).length + ' unlocked'
+    if (content) renderAchievementsPanel(content)
+  }
+}
+
+function openExpansionPanel () {
+  togglePanel(expansionPanel)
+  if (expansionPanel && expansionPanel.classList.contains('visible')) {
+    const content = document.getElementById('expansion-content')
+    const currentEl = document.getElementById('expansion-current')
+    if (currentEl) currentEl.textContent = 'Current: ' + getCurrentGridSize() + 'x' + getCurrentGridSize()
+    if (content) renderExpansionPanel(content, gameState.coins, gameState.level)
+  }
+}
+
+// ── Chat panel toggle ────────────────────────────────────────────────────────
+function toggleChat () {
+  const minimized = chatPanel.classList.toggle('minimized')
+  localStorage.setItem('farmville-chat-minimized', minimized ? '1' : '0')
+  const btn = document.getElementById('chat-toggle-btn')
+  if (btn) btn.textContent = minimized ? '▲' : '▼'
+}
+
+document.getElementById('chat-header').addEventListener('click', () => {
+  if (gameState.running) toggleChat()
+})
+
 // ── Phase 6: Panel toggle helpers ───────────────────────────────────────────
 function togglePanel (panel) {
   if (!panel) return
@@ -458,6 +739,16 @@ function togglePanel (panel) {
 function closePanelIfOpen (panel) {
   if (panel) panel.classList.remove('visible')
 }
+
+// ── Phase 6: Close button handlers ──────────────────────────────────────────
+const masteryCloseBtn = document.getElementById('mastery-close-btn')
+if (masteryCloseBtn) masteryCloseBtn.addEventListener('click', () => closePanelIfOpen(masteryPanel))
+const collectionsCloseBtn = document.getElementById('collections-close-btn')
+if (collectionsCloseBtn) collectionsCloseBtn.addEventListener('click', () => closePanelIfOpen(collectionsPanel))
+const achievementsCloseBtn = document.getElementById('achievements-close-btn')
+if (achievementsCloseBtn) achievementsCloseBtn.addEventListener('click', () => closePanelIfOpen(achievementsPanel))
+const expansionCloseBtn = document.getElementById('expansion-close-btn')
+if (expansionCloseBtn) expansionCloseBtn.addEventListener('click', () => closePanelIfOpen(expansionPanel))
 
 // ── Vehicle status ───────────────────────────────────────────────────────────
 function updateVehicleStatus () {
@@ -478,6 +769,7 @@ function updateVehicleStatus () {
 function handleMarketBuy ({ category, key, def }) {
   if (gameState.coins < def.cost) {
     showFeedback('Not enough coins! (need ' + def.cost + ')', '#ff4444')
+    SoundSystem.play('error')
     return
   }
 
@@ -490,13 +782,31 @@ function handleMarketBuy ({ category, key, def }) {
     farmState.ownedVehicles.push(key)
     updateVehicleStatus()
     addXP(10)
+    SoundSystem.play('buy')
     showFeedback('Bought ' + def.name + '!', '#32cd32')
     hideMarket()
     updateHUD()
     return
   }
 
+  if (category === 'consumable') {
+    gameState.coins -= def.cost
+    addItem(key, 1, {
+      name: def.name,
+      type: 'consumable',
+      sellPrice: def.sellPrice || 0,
+      usable: true,
+      useEffect: def.useEffect
+    })
+    SoundSystem.play('buy')
+    showFeedback('Bought ' + def.name + '!', '#5bc8f5')
+    showToast(def.name, 'harvest', 'Added to inventory — use it from your pack!')
+    updateHUD()
+    return
+  }
+
   // Trees, Animals, Buildings, Decorations -> enter placement mode
+  SoundSystem.play('buy')
   enterPlacementMode(category, key, def)
   hideMarket()
 }
@@ -532,6 +842,7 @@ function enterPlacementMode (category, key, def) {
   if (placementText) placementText.textContent = 'Placing: ' + def.name
 
   canvas.style.cursor = 'crosshair'
+  canvas.style.pointerEvents = 'auto'
 }
 
 function cancelPlacement () {
@@ -545,6 +856,7 @@ function cancelPlacement () {
 
   if (placementIndicator) placementIndicator.style.display = 'none'
   canvas.style.cursor = 'default'
+  canvas.style.pointerEvents = 'none'
 }
 
 function updateGhostPosition () {
@@ -720,6 +1032,8 @@ function handleTreeInteract (tree) {
       addXP(reward.xp)
       // Add product to inventory
       addItem(tree.type + '_fruit', 1, { name: reward.product, type: 'fruit', sellPrice: reward.coins })
+      createParticleEffect('harvest', { x: tree.x, y: 0.5, z: tree.z })
+      showFloatingCoin(tree.x, tree.z, '+' + reward.coins)
       showFeedback('Harvested ' + reward.product + '! +' + reward.coins + ' coins', '#ffd700')
       // Rebuild mesh without fruits
       if (tree.mesh) sceneData.scene.remove(tree.mesh)
@@ -752,6 +1066,9 @@ function handleAnimalInteract (animal) {
       gameState.animalProductsCollected++
       addXP(reward.xp)
       addItem(animal.type + '_product', 1, { name: reward.product, type: 'animal product', sellPrice: reward.coins })
+      createParticleEffect('harvest', { x: animal.x, y: 0.3, z: animal.z })
+      showFloatingCoin(animal.x, animal.z, '+' + reward.coins)
+      SoundSystem.play('collect')
       showFeedback('Collected ' + reward.product + '! +' + reward.coins + ' coins', '#ffd700')
       checkAchievements()
     }
@@ -766,6 +1083,7 @@ function handleAnimalInteract (animal) {
     if (result) {
       gameState.animalsFed++
       gameState.coins -= result.feedCost
+      SoundSystem.play('feed')
       showFeedback('Fed ' + def.name + '! -' + result.feedCost + ' coins', '#32cd32')
     }
   } else {
@@ -889,23 +1207,57 @@ function renderInventoryUI () {
     if (result) {
       gameState.coins += result.coins
       gameState.totalCoinsEarned += result.coins
-      gameState.itemsSold++
-      showFeedback('Sold for ' + result.coins + ' coins!', '#ffd700')
+      gameState.itemsSold += result.sold
+      QuestSystem.recordAction('sell', result.sold)
+      QuestSystem.recordAction('earn', result.coins)
+      SoundSystem.play('sell')
+      const soldMsg = result.sold > 1 ? 'Sold ' + result.sold + 'x for ' + result.coins + ' 🪙!' : 'Sold for ' + result.coins + ' 🪙!'
+      showFeedback(soldMsg, '#ffd700')
       updateHUD()
       renderInventoryUI()
       checkAchievements()
     }
+  }, (itemId, useEffect) => {
+    // Handle usable item consumption
+    if (!useEffect) return
+    const removed = removeItem(itemId, 1)
+    if (!removed) { showFeedback('No more ' + itemId + '!', '#ff4444'); return }
+    if (useEffect.restoreEnergy) {
+      const restored = Math.min(useEffect.restoreEnergy, gameState.maxEnergy - gameState.energy)
+      gameState.energy = Math.min(gameState.energy + useEffect.restoreEnergy, gameState.maxEnergy)
+      showFeedback('+' + restored + ' Energy!', '#5bc8f5')
+      showToast('Energy Restored', 'water', '+' + restored + ' energy (' + gameState.energy + '/' + gameState.maxEnergy + ')')
+      updateHUD()
+    }
+    renderInventoryUI()
   })
 }
 
 // ── Tooltip ──────────────────────────────────────────────────────────────────
-function showTooltip (title, info, px, py) {
+function showTooltip (title, info, px, py, progress) {
   if (!tooltipEl) return
   tooltipTitle.textContent = title
   tooltipInfo.textContent = info
   tooltipEl.style.left = (px + 15) + 'px'
   tooltipEl.style.top = (py + 15) + 'px'
   tooltipEl.style.display = 'block'
+  // progress: { pct: 0-100, label: string } or null
+  if (progress) {
+    tooltipProgressWrap.style.display = 'block'
+    tooltipProgressBar.style.width = progress.pct + '%'
+    // Color the bar: green when ready, yellow when close, blue for watered
+    if (progress.pct >= 100) {
+      tooltipProgressBar.style.background = 'linear-gradient(90deg, #ffd700, #ffeb3b)'
+    } else if (progress.watered) {
+      tooltipProgressBar.style.background = 'linear-gradient(90deg, #2196f3, #64b5f6)'
+    } else {
+      tooltipProgressBar.style.background = 'linear-gradient(90deg, #4caf50, #8bc34a)'
+    }
+    tooltipProgressLabel.textContent = progress.label
+  } else {
+    tooltipProgressWrap.style.display = 'none'
+    tooltipProgressLabel.textContent = ''
+  }
 }
 
 function hideTooltip () {
@@ -951,7 +1303,9 @@ function handlePlow (plot) {
   addXP(PLOW_XP)
   gameState.totalPlowed++
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
+  SoundSystem.play('plow')
   showFeedback('Plowed! -' + PLOW_COST + ' coins', '#daa520')
+  QuestSystem.recordAction('plow')
   checkAchievements()
   syncFarmStateNow()
 }
@@ -993,7 +1347,11 @@ function handlePlant (plot) {
 
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLANTED)
   gameState.totalPlanted++
+  gameState.lastUsedSeed = seedKey  // remember for auto-equip next time
+  createParticleEffect('planting', { x: plot.x, y: 0.1, z: plot.z })
+  SoundSystem.play('plant')
   showFeedback('Planted ' + cropDef.name + '! -' + cropDef.seedCost + ' coins', '#32cd32')
+  QuestSystem.recordAction('plant')
   checkAchievements()
   syncFarmStateNow()
 }
@@ -1015,7 +1373,11 @@ function handleWater (plot) {
 
   plot.crop.watered = true
   gameState.totalWatered++
+  terrainData.setPlotWatered(plot.row, plot.col, true)
+  createParticleEffect('watering', { x: plot.x, y: 0.1, z: plot.z })
+  SoundSystem.play('water')
   showFeedback('Watered! Growth speed 2x', '#4169e1')
+  QuestSystem.recordAction('water')
   checkAchievements()
 }
 
@@ -1056,17 +1418,33 @@ function handleHarvest (plot) {
   // Add harvested crop to inventory
   addItem(cropType, 1, { name: cropDef.name, type: 'crop', sellPrice: cropDef.sellPrice })
 
-  // Remove crop mesh
+  // Quest tracking
+  QuestSystem.recordAction('harvest', 1, { cropType })
+
+  // Animate harvest pop, then remove mesh
   if (plot.cropMesh) {
-    sceneData.scene.remove(plot.cropMesh)
+    const meshRef = plot.cropMesh
     plot.cropMesh = null
+    animateHarvestPop(meshRef, sceneData.scene, () => {
+      sceneData.scene.remove(meshRef)
+    })
   }
   plot.crop = null
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
 
+  // Particle burst + float-up text at harvest position
+  SoundSystem.play('harvest')
+  createParticleEffect('harvest', { x: plot.x, y: 0.1, z: plot.z })
+  createParticleEffect('coin', { x: plot.x, y: 0.3, z: plot.z })
+  const sc = worldToScreen(new THREE.Vector3(plot.x, 0.08, plot.z))
+  spawnFloatUp('+' + cropDef.sellPrice + ' 🪙', 'coins', sc.x, sc.y)
+  spawnFloatUp('+' + (cropDef.xp + masteryBonus) + ' XP', 'xp', sc.x, sc.y + 25)
+
   let feedbackText = 'Harvested ' + cropDef.name + '! +' + cropDef.sellPrice + ' coins, +' + (cropDef.xp + masteryBonus) + ' XP'
   if (masteryBonus > 0) feedbackText += ' (+' + masteryBonus + ' mastery)'
   showFeedback(feedbackText, '#ffd700')
+
+  if (!isDragBulk) showToast('Harvested ' + cropDef.name, 'harvest', '+' + cropDef.sellPrice + ' 🪙 · +' + (cropDef.xp + masteryBonus) + ' XP' + (masteryBonus > 0 ? ' (mastery bonus!)' : ''))
 
   checkAchievements()
   syncFarmStateNow()
@@ -1088,13 +1466,83 @@ function handleRemove (plot) {
   }
   plot.crop = null
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
+  SoundSystem.play('remove')
   showFeedback('Removed ' + name + ' (no refund)', '#ff6347')
+}
+
+// ── Quick bulk actions ───────────────────────────────────────────────────
+function harvestAll () {
+  if (!terrainData || !gameState.running) return
+  const allPlots = terrainData.getAllPlots()
+  let count = 0
+  let totalCoins = 0
+  for (const plot of allPlots) {
+    if (plot.state !== terrainData.PLOT_STATES.PLANTED || !plot.crop || plot.crop.withered) continue
+    const def = CROP_DEFINITIONS[plot.crop.type]
+    if (!def || plot.crop.stage < def.stages - 1) continue
+    if (!useEnergy(ENERGY_COST)) break  // stop if out of energy
+
+    const harvestCropType = plot.crop.type
+    gameState.coins += def.sellPrice
+    gameState.totalCoinsEarned += def.sellPrice
+    gameState.totalHarvests++
+    totalCoins += def.sellPrice
+    const masteryResult = recordHarvest(harvestCropType)
+    const masteryBonus = masteryResult ? masteryResult.xpBonus : 0
+    addXP(def.xp + masteryBonus)
+    addItem(harvestCropType, 1, { name: def.name, type: 'crop', sellPrice: def.sellPrice })
+    QuestSystem.recordAction('harvest', 1, { cropType: harvestCropType })
+    if (plot.cropMesh) { sceneData.scene.remove(plot.cropMesh); plot.cropMesh = null }
+    plot.crop = null
+    terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
+    createParticleEffect('harvest', { x: plot.x, y: 0.1, z: plot.z })
+    createParticleEffect('coin', { x: plot.x, y: 0.3, z: plot.z })
+    count++
+  }
+  if (count > 0) {
+    showFeedback('Harvested ' + count + ' crops! +' + totalCoins + ' coins', '#ffd700')
+    showToast('Harvest All: ' + count + ' crops', 'bulk', '+' + totalCoins + ' 🪙 coins earned')
+    checkAchievements()
+    syncFarmStateNow()
+    updateHUD()
+  } else {
+    showFeedback('No crops ready to harvest!', '#ffa500')
+  }
+}
+
+function waterAll () {
+  if (!terrainData || !gameState.running) return
+  const allPlots = terrainData.getAllPlots()
+  let count = 0
+  for (const plot of allPlots) {
+    if (plot.state !== terrainData.PLOT_STATES.PLANTED || !plot.crop || plot.crop.withered) continue
+    const def = CROP_DEFINITIONS[plot.crop.type]
+    if (!def || plot.crop.stage >= def.stages - 1) continue  // already mature, skip
+    if (plot.crop.watered) continue
+    if (!useEnergy(ENERGY_COST)) break  // stop if out of energy
+
+    plot.crop.watered = true
+    gameState.totalWatered++
+    terrainData.setPlotWatered(plot.row, plot.col, true)
+    createParticleEffect('watering', { x: plot.x, y: 0.1, z: plot.z })
+    QuestSystem.recordAction('water')
+    count++
+  }
+  if (count > 0) {
+    showFeedback('Watered ' + count + ' crops!', '#4169e1')
+    showToast('Water All: ' + count + ' crops watered', 'water', 'Growth speed doubled! 💧')
+    checkAchievements()
+    updateHUD()
+  } else {
+    showFeedback('No unwatered crops!', '#ffa500')
+  }
 }
 
 // ── Mouse tracking ───────────────────────────────────────────────────────────
 canvas.addEventListener('mousemove', (e) => {
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
+  const rect = canvas.getBoundingClientRect()
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
   mousePx.x = e.clientX
   mousePx.y = e.clientY
 
@@ -1103,12 +1551,76 @@ canvas.addEventListener('mousemove', (e) => {
     updateGhostPosition()
   }
 
+  // Drag-to-multi-action: act on each new plot while dragging
+  if (dragTool && gameState.running && terrainData && !placementMode) {
+    const plot = terrainData.getPlotFromRaycast(mouse, sceneData.camera)
+    if (plot) {
+      const key = plot.row + ',' + plot.col
+      if (!dragVisited.has(key)) {
+        dragVisited.add(key)
+        // isDragBulk suppresses per-plot feedback from the 2nd plot onward
+        isDragBulk = dragVisited.size > 1
+        dragDidMove = dragVisited.size > 1
+        handlePlotClick(plot)
+      }
+    }
+  }
+
   // Tooltip on hover over placed objects (when no tool/placement active)
   if (!placementMode && !gameState.selectedTool && gameState.running) {
     updateHoverTooltip()
+    if (terrainData) terrainData.clearHoverHighlight()
   } else {
     hideTooltip()
+    // Grid highlight: show colored overlay on hovered plot when a tool is active
+    if (terrainData && gameState.selectedTool && gameState.running && !placementMode) {
+      const hoverPlot = terrainData.getPlotFromRaycast(mouse, sceneData.camera)
+      if (hoverPlot) {
+        terrainData.setHoverHighlight(hoverPlot, gameState.selectedTool)
+      } else {
+        terrainData.clearHoverHighlight()
+      }
+    } else if (terrainData) {
+      terrainData.clearHoverHighlight()
+    }
   }
+})
+
+canvas.addEventListener('mouseleave', () => {
+  if (terrainData) terrainData.clearHoverHighlight()
+  hideTooltip()
+})
+
+// ── Drag-to-multi-action: start / finish ─────────────────────────────────────
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return
+  if (!gameState.running || !gameState.selectedTool || !terrainData || placementMode) return
+
+  dragTool = gameState.selectedTool
+  dragVisited.clear()
+  dragDidMove = false
+  isDragBulk = false
+  // Note: the first plot is acted on by mousemove (which fires on any movement)
+  // or by the click handler if the mouse never moves.
+})
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button !== 0 || !dragTool) return
+
+  const count = dragVisited.size
+  if (count > 1) {
+    // Show summary for bulk drag operations
+    const toolLabels = { plow: 'Plowed', plant: 'Planted', water: 'Watered', harvest: 'Harvested', remove: 'Removed' }
+    const label = toolLabels[dragTool] || dragTool
+    showToast(label + ' ' + count + ' plots', dragTool === 'harvest' ? 'harvest' : dragTool === 'water' ? 'water' : dragTool === 'plant' ? 'plant' : 'bulk')
+    updateHUD()
+  }
+
+  dragTool = null
+  isDragBulk = false
+  dragDidMove = false
+  // Clear dragVisited after the click event fires (click fires synchronously after mouseup)
+  setTimeout(() => { dragVisited.clear() }, 50)
 })
 
 function updateHoverTooltip () {
@@ -1142,7 +1654,19 @@ function updateHoverTooltip () {
   }
 
   const intersects = raycaster.intersectObjects(allMeshes, false)
-  if (intersects.length === 0) { hideTooltip(); return }
+
+  // If no placed objects hit, check if we're hovering a planted crop plot
+  if (intersects.length === 0) {
+    if (terrainData) {
+      const plot = terrainData.getPlotFromRaycast(new THREE.Vector2(mouse.x, mouse.y), sceneData.camera)
+      if (plot && plot.state === terrainData.PLOT_STATES.PLANTED && plot.crop && !plot.crop.withered) {
+        _showCropTooltip(plot, mousePx.x, mousePx.y)
+        return
+      }
+    }
+    hideTooltip()
+    return
+  }
 
   const obj = objectMap.get(intersects[0].object.id)
   if (!obj) { hideTooltip(); return }
@@ -1174,12 +1698,60 @@ function updateHoverTooltip () {
   showTooltip(title, info, mousePx.x, mousePx.y)
 }
 
+function _showCropTooltip (plot, px, py) {
+  const crop = plot.crop
+  const def = CROP_DEFINITIONS[crop.type]
+  if (!def) { hideTooltip(); return }
+
+  const maxStage = def.stages - 1
+  const isMature = crop.stage >= maxStage
+
+  let title = def.name
+  let info = ''
+  let progress = null
+
+  if (isMature) {
+    title = def.name + ' — Ready!'
+    info = 'Click to harvest  +' + def.sellPrice + ' coins  +' + def.xp + ' XP'
+    progress = { pct: 100, label: 'Stage ' + crop.stage + '/' + maxStage + ' — Ready to harvest!', watered: false }
+  } else {
+    const timePerStage = def.growTime / maxStage
+    const stageProgress = Math.min((crop.growthAccum || 0) / timePerStage, 1)
+    const overallPct = Math.round(((crop.stage + stageProgress) / maxStage) * 100)
+
+    // Estimate time remaining
+    const stagesLeft = maxStage - crop.stage
+    const accumLeft = timePerStage - (crop.growthAccum || 0)
+    const multiplier = crop.watered ? 2 : 1
+    const msLeft = (accumLeft + (stagesLeft - 1) * timePerStage) / multiplier
+    let timeLabel
+    if (msLeft < 60000) {
+      timeLabel = Math.ceil(msLeft / 1000) + 's'
+    } else if (msLeft < 3600000) {
+      timeLabel = Math.ceil(msLeft / 60000) + 'm'
+    } else {
+      timeLabel = (msLeft / 3600000).toFixed(1) + 'h'
+    }
+
+    const wateredNote = crop.watered ? '  · Watered (2x)' : '  · Water to speed up'
+    info = 'Stage ' + crop.stage + '/' + maxStage + wateredNote
+    const progressLabel = overallPct + '% grown  · ~' + timeLabel + ' remaining'
+    progress = { pct: overallPct, label: progressLabel, watered: crop.watered }
+  }
+
+  showTooltip(title, info, px, py, progress)
+}
+
 // ── Mouse click -> raycast to plot or object ─────────────────────────────────
 canvas.addEventListener('click', (e) => {
   if (!gameState.running || !terrainData) return
 
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1
+  // Skip click if any plots were already acted on during a drag gesture
+  if (dragVisited.size > 0) return
+
+  const rect = canvas.getBoundingClientRect()
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
 
   // If in placement mode, confirm placement
   if (placementMode) {
@@ -1217,6 +1789,7 @@ window.addEventListener('keydown', (e) => {
     else if (collectionsPanel && collectionsPanel.classList.contains('visible')) closePanelIfOpen(collectionsPanel)
     else if (achievementsPanel && achievementsPanel.classList.contains('visible')) closePanelIfOpen(achievementsPanel)
     else if (expansionPanel && expansionPanel.classList.contains('visible')) closePanelIfOpen(expansionPanel)
+    else if (statsPanel && statsPanel.classList.contains('visible')) closeStatsPanel()
     else deselectTool()
     return
   }
@@ -1226,9 +1799,17 @@ window.addEventListener('keydown', (e) => {
     if (gameState.running) toggleInventory()
     return
   }
+  if (e.key === 't' || e.key === 'T') {
+    if (gameState.running) toggleChat()
+    return
+  }
+  if (e.key === 'r' || e.key === 'R') {
+    if (gameState.running) resetCamera()
+    return
+  }
 
   // Phase 6: panel hotkeys
-  if (e.key === 'm' || e.key === 'M') {
+  if (e.key === 'u' || e.key === 'U') {
     if (gameState.running) openMasteryPanel()
     return
   }
@@ -1244,6 +1825,30 @@ window.addEventListener('keydown', (e) => {
     if (gameState.running) openExpansionPanel()
     return
   }
+  if (e.key === 'f' || e.key === 'F') {
+    if (gameState.running) toggleStatsPanel()
+    return
+  }
+
+  // H key for Harvest All, W key for Water All
+  if (e.key === 'h' || e.key === 'H') {
+    if (gameState.running) harvestAll()
+    return
+  }
+  if (e.key === 'w' || e.key === 'W') {
+    if (gameState.running) waterAll()
+    return
+  }
+  if (e.key === 'm' || e.key === 'M') {
+    if (gameState.running) toggleMinimap()
+    return
+  }
+
+  // ? key toggles shortcuts help panel
+  if (e.key === '?' || e.key === '/') {
+    toggleShortcutsPanel()
+    return
+  }
 
   // Number keys for quick tool select
   const toolKeys = { '1': 'plow', '2': 'plant', '3': 'water', '4': 'harvest', '5': 'remove' }
@@ -1253,6 +1858,8 @@ window.addEventListener('keydown', (e) => {
 })
 
 // Inventory button
+const harvestAllBtn = document.getElementById('harvest-all-btn')
+const waterAllBtn = document.getElementById('water-all-btn')
 const invBtn = document.getElementById('inventory-btn')
 if (invBtn) {
   invBtn.addEventListener('click', () => {
@@ -1268,6 +1875,41 @@ if (invCloseBtn) {
   })
 }
 
+// Harvest All button
+if (harvestAllBtn) {
+  harvestAllBtn.addEventListener('click', () => harvestAll())
+}
+
+// Water All button
+if (waterAllBtn) {
+  waterAllBtn.addEventListener('click', () => waterAll())
+}
+
+// Quest button
+const questBtn = document.getElementById('quest-btn')
+if (questBtn) {
+  questBtn.addEventListener('click', () => {
+    if (gameState.running) QuestSystem.openPanel()
+  })
+}
+const questCloseBtn = document.getElementById('quest-close-btn')
+if (questCloseBtn) {
+  questCloseBtn.addEventListener('click', () => QuestSystem.closePanel())
+}
+
+// Quest complete event — grant rewards
+window.addEventListener('quest-complete', (e) => {
+  const { quest, coins, xp, streak } = e.detail
+  gameState.coins += coins
+  addXP(xp)
+  SoundSystem.play('quest')
+  updateHUD()
+  showToast(
+    'Quest Complete: ' + quest.desc, 'quest',
+    '+' + coins + ' coins · +' + xp + ' XP' + (streak > 1 ? ' · 🔥' + streak + ' streak' : '')
+  )
+})
+
 // Crafting close button
 const craftCloseBtn = document.getElementById('crafting-close-btn')
 if (craftCloseBtn) {
@@ -1276,7 +1918,24 @@ if (craftCloseBtn) {
   })
 }
 
+// ── Sound toggle button ───────────────────────────────────────────────────────
+const soundToggleBtn = document.getElementById('sound-toggle-btn')
+if (soundToggleBtn) {
+  // Reflect initial state
+  soundToggleBtn.textContent = SoundSystem.enabled ? '🔊' : '🔇'
+  soundToggleBtn.title = SoundSystem.enabled ? 'Sound On (click to mute)' : 'Sound Off (click to unmute)'
+  soundToggleBtn.addEventListener('click', () => {
+    const on = SoundSystem.toggle()
+    soundToggleBtn.textContent = on ? '🔊' : '🔇'
+    soundToggleBtn.title = on ? 'Sound On (click to mute)' : 'Sound Off (click to unmute)'
+    if (on) SoundSystem.play('toast')
+  })
+}
+
 // ── Crop growth update ───────────────────────────────────────────────────────
+// Throttle wither warning toasts — batch into one toast per check interval
+let _witherWarnCooldown = 0
+
 function updateCrops (dtMs) {
   if (!terrainData) return
 
@@ -1284,7 +1943,12 @@ function updateCrops (dtMs) {
   const effects = getBuildingEffects(farmState.buildings)
   const growthMul = effects.cropGrowthMultiplier
 
+  _witherWarnCooldown = Math.max(0, _witherWarnCooldown - dtMs)
+
   const allPlots = terrainData.getAllPlots()
+  let witherWarnCount = 0
+  let justWitheredCount = 0
+
   for (const plot of allPlots) {
     if (!plot.crop || plot.state !== terrainData.PLOT_STATES.PLANTED) continue
 
@@ -1297,12 +1961,214 @@ function updateCrops (dtMs) {
 
       if (plot.crop.withered) {
         plot.cropMesh = createWitheredMesh(plot.crop.type)
+        justWitheredCount++
       } else {
+        const def = CROP_DEFINITIONS[plot.crop.type]
+        // Sparkle burst when crop first reaches final (ready-to-harvest) stage
+        if (def && plot.crop.stage >= def.stages - 1) {
+          createParticleEffect('harvest', { x: plot.x, y: 0.3, z: plot.z })
+        }
         plot.cropMesh = createCropMesh(plot.crop.type, plot.crop.stage)
       }
       plot.cropMesh.position.set(plot.x, 0.08, plot.z)
       sceneData.scene.add(plot.cropMesh)
     }
+
+    // Wither warning: mature crop past 75% of its wither window -> orange glow ring
+    if (plot.crop && !plot.crop.withered && plot.cropMesh) {
+      const def = CROP_DEFINITIONS[plot.crop.type]
+      if (def) {
+        const maxStage = def.stages - 1
+        if (plot.crop.stage >= maxStage) {
+          const elapsed = Date.now() - plot.crop.plantedAt
+          const warnThreshold = def.growTime * 2.5     // 75% into 2x wither window
+          if (elapsed >= warnThreshold) {
+            // Tint glow ring orange as a persistent visual warning
+            plot.cropMesh.traverse(child => {
+              if (child.userData.isGlowRing && child.material) {
+                child.material.color.setHex(0xff6600)
+              }
+            })
+            // Toast once per crop
+            if (!plot.crop.witherWarned) {
+              plot.crop.witherWarned = true
+              witherWarnCount++
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Batch wither warning toast (throttled to avoid spam)
+  if (witherWarnCount > 0 && _witherWarnCooldown <= 0) {
+    const label = witherWarnCount === 1 ? '1 crop is nearly withered!' : witherWarnCount + ' crops are nearly withered!'
+    showToast(label, 'error', 'Harvest now before they die!')
+    _witherWarnCooldown = 60000 // 60 s cooldown before next batch warning
+  }
+
+  // Wither event toast (immediate, one-shot per event)
+  if (justWitheredCount > 0) {
+    SoundSystem.play('wither')
+    const label = justWitheredCount === 1 ? '1 crop withered away' : justWitheredCount + ' crops withered'
+    showToast(label, 'error', 'Remove withered crops to free the plot')
+  }
+}
+
+// ── Ready-to-harvest pulse animation ────────────────────────────────────────
+function animateReadyCrops (time) {
+  if (!terrainData) return
+  const allPlots = terrainData.getAllPlots()
+  const glowOpacity = Math.sin(Date.now() * 0.004) * 0.5 + 0.5
+  for (const plot of allPlots) {
+    if (!plot.cropMesh) continue
+    if (plot.crop && !plot.crop.withered && plot.cropMesh.userData.isReady) {
+      // Gentle pulse: scale between 1.0 and 1.15 with a slow sine wave
+      const pulse = 1.0 + 0.15 * Math.sin(time * 0.003 + plot.x * 1.7 + plot.z * 2.3)
+      plot.cropMesh.scale.set(pulse, 1, pulse)
+      // Pulse glow ring opacity
+      plot.cropMesh.traverse(child => {
+        if (child.userData.isGlowRing && child.material) {
+          child.material.opacity = glowOpacity
+        }
+      })
+    } else {
+      // Reset scale for non-ready crops
+      plot.cropMesh.scale.set(1, 1, 1)
+    }
+  }
+}
+
+// ── Crop timer labels (world-to-screen DOM overlay) ──────────────────────────
+// Map from 'row,col' -> div element
+const _cropTimerEls = new Map()
+let _cropTimerThrottle = 0  // update every 500ms, not every frame
+
+function _fmtTimeRemaining (msLeft) {
+  if (msLeft <= 0) return 'Ready!'
+  if (msLeft < 60000) return Math.ceil(msLeft / 1000) + 's'
+  if (msLeft < 3600000) return Math.ceil(msLeft / 60000) + 'm'
+  return (msLeft / 3600000).toFixed(1) + 'h'
+}
+
+function updateCropTimers (time) {
+  if (!terrainData || !sceneData || !gameState.running) return
+
+  // Throttle: update label positions every frame but text only every 500ms
+  _cropTimerThrottle += 16  // approx per-frame ms
+  const updateText = _cropTimerThrottle >= 500
+  if (updateText) _cropTimerThrottle = 0
+
+  const container = document.getElementById('game-container')
+  if (!container) return
+
+  const seen = new Set()
+
+  for (const plot of terrainData.getAllPlots()) {
+    if (!plot.crop || plot.state !== terrainData.PLOT_STATES.PLANTED || plot.crop.withered) continue
+
+    const def = CROP_DEFINITIONS[plot.crop.type]
+    if (!def) continue
+
+    const maxStage = def.stages - 1
+    const key = plot.row + ',' + plot.col
+    seen.add(key)
+
+    // Get or create label element
+    let el = _cropTimerEls.get(key)
+    if (!el) {
+      el = document.createElement('div')
+      el.className = 'crop-timer'
+      container.appendChild(el)
+      _cropTimerEls.set(key, el)
+    }
+
+    // World-to-screen position (above the crop)
+    const worldPos = new THREE.Vector3(plot.x, 0.5, plot.z)
+    const sc = worldToScreen(worldPos)
+    el.style.left = sc.x + 'px'
+    el.style.top = (sc.y - 14) + 'px'
+
+    if (updateText) {
+      const isMature = plot.crop.stage >= maxStage
+      if (isMature) {
+        el.textContent = '★'
+        el.className = 'crop-timer ready'
+      } else {
+        const timePerStage = def.growTime / maxStage
+        const stagesLeft = maxStage - plot.crop.stage
+        const accumLeft = timePerStage - (plot.crop.growthAccum || 0)
+        const multiplier = plot.crop.watered ? 2 : 1
+        const msLeft = (accumLeft + (stagesLeft - 1) * timePerStage) / multiplier
+        el.textContent = _fmtTimeRemaining(msLeft)
+        el.className = 'crop-timer' + (plot.crop.watered ? ' watered' : '')
+      }
+    }
+  }
+
+  // Remove labels for plots that no longer have growing crops
+  for (const [key, el] of _cropTimerEls) {
+    if (!seen.has(key)) {
+      el.remove()
+      _cropTimerEls.delete(key)
+    }
+  }
+}
+
+// ── Animal product-ready indicators (DOM overlay) ────────────────────────────
+// Map from animal index -> div element
+const _animalProductEls = new Map()
+
+function updateAnimalProductIndicators () {
+  if (!sceneData || !gameState.running) return
+
+  const container = document.getElementById('game-container')
+  if (!container) return
+
+  const seen = new Set()
+
+  for (let i = 0; i < farmState.animals.length; i++) {
+    const animal = farmState.animals[i]
+    if (!animal.productReady || !animal.mesh) continue
+
+    seen.add(i)
+
+    let el = _animalProductEls.get(i)
+    if (!el) {
+      el = document.createElement('div')
+      el.className = 'animal-product-ready'
+      el.textContent = '★'
+      el.title = 'Product ready — click to collect!'
+      container.appendChild(el)
+      _animalProductEls.set(i, el)
+    }
+
+    // Position above the animal mesh
+    const worldPos = new THREE.Vector3(animal.x, 1.1, animal.z)
+    const sc = worldToScreen(worldPos)
+    el.style.left = sc.x + 'px'
+    el.style.top = sc.y + 'px'
+    el.style.display = 'block'
+  }
+
+  // Remove indicators for animals that no longer have ready products
+  for (const [i, el] of _animalProductEls) {
+    if (!seen.has(i)) {
+      el.remove()
+      _animalProductEls.delete(i)
+    }
+  }
+}
+
+// ── Decoration animations (windmill blade rotation) ──────────────────────────
+function updateDecorations (time) {
+  for (const deco of farmState.decorations) {
+    if (!deco.mesh) continue
+    deco.mesh.traverse(child => {
+      if (child.userData.isWindmillRotor) {
+        child.rotation.z = time * 0.0005
+      }
+    })
   }
 }
 
@@ -1515,6 +2381,98 @@ function syncFarmStateNow () {
   window.IPCBridge.sendFarmUpdate(serializeFarmState())
 }
 
+// ── Minimap ──────────────────────────────────────────────────────────────────
+const minimapWrap = document.getElementById('minimap-wrap')
+const minimapCanvas = document.getElementById('minimap-canvas')
+const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null
+let minimapVisible = true
+
+function toggleMinimap () {
+  minimapVisible = !minimapVisible
+  if (minimapWrap) minimapWrap.classList.toggle('minimap-hidden', !minimapVisible)
+}
+
+// Draw the minimap — called every ~10 frames for performance
+let minimapFrameCount = 0
+function drawMinimap () {
+  if (!minimapCtx || !terrainData || !gameState.running) return
+  minimapFrameCount++
+  if (minimapFrameCount % 10 !== 0) return  // update ~6fps
+
+  const COLS = 20
+  const ROWS = 20
+  const cw = minimapCanvas.width   // 120
+  const ch = minimapCanvas.height  // 120
+  const cellW = cw / COLS
+  const cellH = ch / ROWS
+
+  const plots = terrainData.getAllPlots()
+  const PS = terrainData.PLOT_STATES
+
+  minimapCtx.clearRect(0, 0, cw, ch)
+
+  for (const plot of plots) {
+    const x = plot.col * cellW
+    const y = plot.row * cellH
+
+    let color
+    if (plot.state === PS.GRASS) {
+      color = '#3d7a3d'
+    } else if (plot.state === PS.PLOWED) {
+      color = '#7a5c3d'
+    } else if (plot.state === PS.PLANTED) {
+      if (plot.crop && plot.crop.withered) {
+        color = '#5a3a2a'
+      } else if (plot.crop && plot.crop.stage >= 4) {
+        // Ready to harvest — gold
+        color = '#d4aa00'
+      } else if (plot.crop && plot.crop.watered) {
+        color = '#3a8fa0'
+      } else {
+        color = '#5aa05a'
+      }
+    } else {
+      color = '#3d7a3d'
+    }
+
+    minimapCtx.fillStyle = color
+    minimapCtx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(cellW), Math.ceil(cellH))
+  }
+
+  // Grid lines (subtle)
+  minimapCtx.strokeStyle = 'rgba(0,0,0,0.2)'
+  minimapCtx.lineWidth = 0.5
+  for (let c = 0; c <= COLS; c++) {
+    minimapCtx.beginPath()
+    minimapCtx.moveTo(c * cellW, 0)
+    minimapCtx.lineTo(c * cellW, ch)
+    minimapCtx.stroke()
+  }
+  for (let r = 0; r <= ROWS; r++) {
+    minimapCtx.beginPath()
+    minimapCtx.moveTo(0, r * cellH)
+    minimapCtx.lineTo(cw, r * cellH)
+    minimapCtx.stroke()
+  }
+
+  // Player dot
+  if (window.PlayerController) {
+    const pos = window.PlayerController.getPlayerPos()
+    // World coords: each cell is 2 units wide (PLOT_SIZE=2), grid is centered at 0
+    // Plot col = Math.floor((pos.x + ROWS) / 2) for a 20-col grid offset at -20
+    const WORLD_HALF = COLS  // 20 world units half-width
+    const px = ((pos.x + WORLD_HALF) / (WORLD_HALF * 2)) * cw
+    const py = ((pos.z + WORLD_HALF) / (WORLD_HALF * 2)) * ch
+    minimapCtx.beginPath()
+    minimapCtx.arc(px, py, 3, 0, Math.PI * 2)
+    minimapCtx.fillStyle = '#ffffff'
+    minimapCtx.fill()
+    minimapCtx.strokeStyle = 'rgba(0,0,0,0.6)'
+    minimapCtx.lineWidth = 1
+    minimapCtx.stroke()
+  }
+}
+
 // ── Game loop ────────────────────────────────────────────────────────────────
 function gameLoop (time) {
   requestAnimationFrame(gameLoop)
@@ -1533,18 +2491,31 @@ function gameLoop (time) {
   // Update player movement
   window.PlayerController.updatePlayer(clampedDt)
   window.PlayerController.updateCamera(sceneData.camera)
+  updateCamera()
 
   // Update systems
+  updateWeather(dtMs, sceneData.sunLight)
   updateCrops(dtMs)
+  animateReadyCrops(time)
+  updateCropTimers(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
+  updateAnimalProductIndicators()
   updateBuildings(dtMs)
+  updateDecorations(time)
+  updateParticles(dtMs)
 
   // Energy regen
   regenEnergy(dtMs)
 
+  // Season check (throttled to once per minute inside the function)
+  updateSeasonIfChanged()
+
   // P2P: sync farm state periodically
   syncFarmState()
+
+  // Auto-save
+  autoSave(dtMs)
 
   // P2P: update visiting state UI
   updateVisitingUI()
@@ -1554,6 +2525,7 @@ function gameLoop (time) {
 
   // Render
   renderScene()
+  drawMinimap()
 }
 
 // ── Setup screen logic ───────────────────────────────────────────────────────
@@ -1569,9 +2541,20 @@ function startGame () {
   gameState.running = true
   gameState.lastEnergyRegen = 0
 
+  // Load saved game state (restores coins, xp, level, etc.)
+  loadGame()
+  QuestSystem.init()
+
   setupScreen.style.display = 'none'
   hud.style.display = 'block'
+  if (minimapWrap) minimapWrap.style.display = 'block'
   chatPanel.style.display = 'flex'
+  // Restore minimized state (default: minimized)
+  const chatWasMinimized = localStorage.getItem('farmville-chat-minimized')
+  const startMinimized = chatWasMinimized === null ? true : chatWasMinimized === '1'
+  if (startMinimized) chatPanel.classList.add('minimized')
+  const chatToggleBtn = document.getElementById('chat-toggle-btn')
+  if (chatToggleBtn) chatToggleBtn.textContent = startMinimized ? '▲' : '▼'
 
   // Init player
   window.PlayerController.initPlayer(sceneData.scene)
@@ -1579,6 +2562,39 @@ function startGame () {
   // Update HUD
   updateHUD()
   updateVehicleStatus()
+
+  // Apply initial season colors
+  if (terrainData) {
+    terrainData.setSeasonColors(getSeasonFromDate())
+    _lastSeasonCheck = Date.now()
+    updateSeasonIfChanged()
+  }
+
+  // ── Initialize weather system ──────────────────────────────────────────────
+  initWeather(sceneData.scene, {
+    onAutoWater: rainAutoWaterCrops
+  })
+
+  // Register weather change listener → update HUD + toast
+  onWeatherChange((newWeather, oldWeather) => {
+    _updateWeatherHUD()
+    if (newWeather === 'rainy' || newWeather === 'stormy') {
+      showToast(
+        getWeatherIcon() + ' ' + getWeatherName() + ' is rolling in!',
+        'water',
+        'Rain will water your crops automatically'
+      )
+    } else if (oldWeather === 'rainy' || oldWeather === 'stormy') {
+      showToast(
+        getWeatherIcon() + ' ' + getWeatherName(),
+        'info',
+        'The rain has passed'
+      )
+    }
+  })
+
+  // Set initial weather HUD state
+  _updateWeatherHUD()
 
   // Initialize P2P
   if (window.IPCBridge && window.IPCBridge.available) {
@@ -1635,6 +2651,268 @@ window.addEventListener('keydown', (e) => {
   }
 })
 
+// ── Save/Load Persistence (localStorage) ────────────────────────────────────
+const SAVE_INTERVAL = 15000 // auto-save every 15s
+let lastSaveTime = 0
+
+function saveGame () {
+  try {
+    const plotData = []
+    if (terrainData) {
+      const allPlots = terrainData.getAllPlots()
+      for (const plot of allPlots) {
+        if (plot.state !== 'grass') {
+          plotData.push({
+            row: plot.row, col: plot.col,
+            x: plot.x, z: plot.z,
+            state: plot.state,
+            crop: plot.crop ? {
+              type: plot.crop.type, stage: plot.crop.stage,
+              watered: plot.crop.watered, withered: plot.crop.withered,
+              plantedAt: plot.crop.plantedAt, growthAccum: plot.crop.growthAccum,
+              witherWarned: plot.crop.witherWarned || false
+            } : null
+          })
+        }
+      }
+    }
+
+    const saveData = {
+      version: 2,
+      timestamp: Date.now(),
+      gameState: {
+        coins: gameState.coins,
+        totalXp: gameState.totalXp,
+        level: gameState.level,
+        energy: gameState.energy,
+        maxEnergy: gameState.maxEnergy,
+        farmName: gameState.farmName,
+        totalHarvests: gameState.totalHarvests,
+        totalPlanted: gameState.totalPlanted,
+        totalPlowed: gameState.totalPlowed,
+        totalWatered: gameState.totalWatered,
+        totalCoinsEarned: gameState.totalCoinsEarned,
+        itemsSold: gameState.itemsSold,
+        itemsCrafted: gameState.itemsCrafted,
+        sessionsPlayed: gameState.sessionsPlayed,
+        giftsSent: gameState.giftsSent,
+        tradesCompleted: gameState.tradesCompleted,
+        chatMessages: gameState.chatMessages,
+        coopCompleted: gameState.coopCompleted,
+        farmsVisited: gameState.farmsVisited,
+        animalsFed: gameState.animalsFed,
+        animalProductsCollected: gameState.animalProductsCollected,
+        lastUsedSeed: gameState.lastUsedSeed
+      },
+      farmState: {
+        ownedVehicles: farmState.ownedVehicles,
+        trees: farmState.trees.map(t => ({
+          type: t.type, x: t.x, z: t.z,
+          growthScale: t.growthScale, mature: t.mature,
+          plantedAt: t.plantedAt, lastHarvest: t.lastHarvest
+        })),
+        animals: farmState.animals.map(a => ({
+          type: a.type, x: a.x, z: a.z,
+          fed: a.fed, productReady: a.productReady,
+          lastFed: a.lastFed, fedAt: a.fedAt
+        })),
+        buildings: farmState.buildings.map(b => ({
+          type: b.type, x: b.x, z: b.z,
+          wallColor: b.wallColor, roofColor: b.roofColor,
+          width: b.width, height: b.height, depth: b.depth,
+          craftQueue: b.craftQueue
+        })),
+        decorations: farmState.decorations.map(d => ({
+          type: d.type, x: d.x, z: d.z, color: d.color
+        }))
+      },
+      plotData: plotData,
+      inventory: getInventory(),
+      mastery: getMasteryData(),
+      collections: getCollectionData(),
+      achievements: getAchievementState(),
+      expansion: {
+        tier: getCurrentTier()
+      }
+    }
+
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saveData))
+    console.log('[save] Game saved', new Date().toLocaleTimeString())
+  } catch (e) {
+    console.error('[save] Save error:', e)
+  }
+}
+
+function loadGame () {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY)
+    if (!raw) return false
+
+    const saveData = JSON.parse(raw)
+    if (!saveData) return false
+
+    // Migrate old saves: ensure version field is present
+    if (!saveData.version || saveData.version < 2) {
+      console.warn('[save] Migrating save from version', saveData.version ?? 'unknown', '→ 2')
+      saveData.version = 2
+    }
+
+    const gs = saveData.gameState
+    if (gs) {
+      gameState.coins = gs.coins ?? 500
+      gameState.totalXp = gs.totalXp ?? 0
+      gameState.level = gs.level ?? 1
+      gameState.energy = gs.energy ?? 30
+      gameState.maxEnergy = gs.maxEnergy ?? 30
+      gameState.farmName = gs.farmName ?? ''
+      gameState.totalHarvests = gs.totalHarvests ?? 0
+      gameState.totalPlanted = gs.totalPlanted ?? 0
+      gameState.totalPlowed = gs.totalPlowed ?? 0
+      gameState.totalWatered = gs.totalWatered ?? 0
+      gameState.totalCoinsEarned = gs.totalCoinsEarned ?? 0
+      gameState.itemsSold = gs.itemsSold ?? 0
+      gameState.itemsCrafted = gs.itemsCrafted ?? 0
+      gameState.sessionsPlayed = (gs.sessionsPlayed ?? 0) + 1
+      gameState.giftsSent = gs.giftsSent ?? 0
+      gameState.tradesCompleted = gs.tradesCompleted ?? 0
+      gameState.chatMessages = gs.chatMessages ?? 0
+      gameState.coopCompleted = gs.coopCompleted ?? 0
+      gameState.farmsVisited = gs.farmsVisited ?? 0
+      gameState.animalsFed = gs.animalsFed ?? 0
+      gameState.animalProductsCollected = gs.animalProductsCollected ?? 0
+      gameState.lastUsedSeed = gs.lastUsedSeed ?? null
+    }
+
+    // Restore farm name to input
+    if (gameState.farmName && farmNameInput) {
+      farmNameInput.value = gameState.farmName
+    }
+
+    // ── Restore plot data (tilled soil + crops) ───────────────────────────────
+    if (saveData.plotData && terrainData) {
+      for (const pd of saveData.plotData) {
+        const plot = terrainData.getPlotAt(pd.row, pd.col)
+        if (!plot) continue
+        if (pd.state !== 'grass') {
+          terrainData.setPlotState(plot, pd.state)
+        }
+        if (pd.crop) {
+          const cropMesh = createCropMesh(pd.crop.type, pd.crop.stage)
+          cropMesh.position.set(pd.x, 0.02, pd.z)
+          sceneData.scene.add(cropMesh)
+          plot.crop = {
+            type: pd.crop.type,
+            stage: pd.crop.stage,
+            watered: pd.crop.watered,
+            withered: pd.crop.withered || false,
+            plantedAt: pd.crop.plantedAt,
+            growthAccum: pd.crop.growthAccum || 0,
+            witherWarned: pd.crop.witherWarned || false,
+            mesh: cropMesh
+          }
+          plot.cropMesh = cropMesh
+          // Restore watered soil colour
+          if (pd.crop.watered) {
+            terrainData.setPlotWatered(plot.row, plot.col, true)
+          }
+        }
+      }
+    }
+
+    // ── Restore trees ─────────────────────────────────────────────────────────
+    if (saveData.farmState?.trees) {
+      for (const t of saveData.farmState.trees) {
+        const data = createTreeData(t.type, t.x, t.z)
+        const mesh = createTreeMesh(t.type, t.mature, t.growthScale || 0)
+        mesh.position.set(t.x, 0, t.z)
+        sceneData.scene.add(mesh)
+        data.mesh = mesh
+        data.growthScale = t.growthScale || 0
+        data.mature = t.mature || false
+        data.plantedAt = t.plantedAt || Date.now()
+        data.lastHarvest = t.lastHarvest || 0
+        farmState.trees.push(data)
+      }
+    }
+
+    // ── Restore animals ───────────────────────────────────────────────────────
+    if (saveData.farmState?.animals) {
+      for (const a of saveData.farmState.animals) {
+        const data = createAnimalData(a.type, a.x, a.z)
+        const mesh = createAnimalMesh(a.type)
+        mesh.position.set(a.x, 0, a.z)
+        sceneData.scene.add(mesh)
+        data.mesh = mesh
+        data.fed = a.fed || false
+        data.productReady = a.productReady || false
+        data.lastFed = a.lastFed || 0
+        data.fedAt = a.fedAt || 0
+        farmState.animals.push(data)
+      }
+    }
+
+    // ── Restore buildings ─────────────────────────────────────────────────────
+    if (saveData.farmState?.buildings) {
+      for (const b of saveData.farmState.buildings) {
+        const data = createBuildingData(b.type, b.x, b.z)
+        const mesh = createBuildingMesh(b.type)
+        mesh.position.set(b.x, 0, b.z)
+        sceneData.scene.add(mesh)
+        data.mesh = mesh
+        data.craftQueue = b.craftQueue || []
+        farmState.buildings.push(data)
+      }
+      const effects = getBuildingEffects(farmState.buildings)
+      setCapacityBonus(effects.storageBonus)
+    }
+
+    // ── Restore decorations ───────────────────────────────────────────────────
+    if (saveData.farmState?.decorations) {
+      for (const d of saveData.farmState.decorations) {
+        const data = createDecoData(d.type, d.x, d.z)
+        const mesh = createDecoMesh(d.type)
+        mesh.position.set(d.x, 0, d.z)
+        sceneData.scene.add(mesh)
+        data.mesh = mesh
+        data.color = d.color
+        farmState.decorations.push(data)
+      }
+    }
+
+    // ── Restore inventory ─────────────────────────────────────────────────────
+    if (saveData.inventory) {
+      for (const item of saveData.inventory) {
+        addItem(item.id, item.quantity, item.meta || {})
+      }
+    }
+
+    console.log('[save] Game loaded, session #' + gameState.sessionsPlayed)
+    return true
+  } catch (e) {
+    console.error('[save] Load error:', e)
+    return false
+  }
+}
+
+function deleteSave () {
+  localStorage.removeItem(SAVE_KEY)
+  console.log('[save] Save deleted')
+}
+window.deleteSave = deleteSave
+
+function autoSave (dtMs) {
+  lastSaveTime += dtMs
+  if (lastSaveTime >= SAVE_INTERVAL) {
+    lastSaveTime = 0
+    saveGame()
+  }
+}
+
+// Save before unload
+window.addEventListener('beforeunload', () => {
+  if (gameState.running) saveGame()
+})
+
 // Trigger immediate farm sync after crop actions
 function hookFarmSync (fn) {
   return function (...args) {
@@ -1644,5 +2922,63 @@ function hookFarmSync (fn) {
   }
 }
 
+// ── Keyboard Shortcuts Help Panel ────────────────────────────────────────────
+const shortcutsPanel = document.getElementById('shortcuts-panel')
+const shortcutsCloseBtn = document.getElementById('shortcuts-close-btn')
+
+function toggleShortcutsPanel () {
+  if (!shortcutsPanel) return
+  const visible = shortcutsPanel.style.display !== 'none'
+  shortcutsPanel.style.display = visible ? 'none' : ''
+}
+
+if (shortcutsCloseBtn) {
+  shortcutsCloseBtn.addEventListener('click', () => {
+    if (shortcutsPanel) shortcutsPanel.style.display = 'none'
+  })
+}
+
+// ── Farm Stats Panel ─────────────────────────────────────────────────────────
+const statsPanel = document.getElementById('stats-panel')
+const statsCloseBtn = document.getElementById('stats-close-btn')
+const statsBtnEl = document.getElementById('stats-btn')
+
+function openStatsPanel () {
+  if (!statsPanel || !gameState.running) return
+  // Populate all values from gameState
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = typeof val === 'number' ? val.toLocaleString() : val }
+  set('stat-harvests', gameState.totalHarvests)
+  set('stat-planted', gameState.totalPlanted)
+  set('stat-watered', gameState.totalWatered)
+  set('stat-plowed', gameState.totalPlowed)
+  set('stat-earned', gameState.totalCoinsEarned)
+  set('stat-sold', gameState.itemsSold)
+  set('stat-crafted', gameState.itemsCrafted)
+  set('stat-trades', gameState.tradesCompleted)
+  set('stat-messages', gameState.chatMessages)
+  set('stat-gifts', gameState.giftsSent)
+  set('stat-visits', gameState.farmsVisited)
+  set('stat-coops', gameState.coopCompleted)
+  set('stat-fed', gameState.animalsFed)
+  set('stat-products', gameState.animalProductsCollected)
+  set('stat-sessions', gameState.sessionsPlayed)
+  set('stat-level', gameState.level)
+  statsPanel.classList.add('visible')
+}
+
+function closeStatsPanel () {
+  if (statsPanel) statsPanel.classList.remove('visible')
+}
+
+function toggleStatsPanel () {
+  if (!statsPanel) return
+  if (statsPanel.classList.contains('visible')) closeStatsPanel()
+  else openStatsPanel()
+}
+
+if (statsCloseBtn) statsCloseBtn.addEventListener('click', closeStatsPanel)
+if (statsBtnEl) statsBtnEl.addEventListener('click', () => toggleStatsPanel())
+
 // Kick off render loop
+console.log('[app] starting game loop via requestAnimationFrame')
 requestAnimationFrame(gameLoop)

@@ -65,7 +65,9 @@ export function addItem (itemId, quantity, meta) {
       name: meta?.name || itemId,
       quantity,
       type: meta?.type || 'misc',
-      sellPrice: meta?.sellPrice || 0
+      sellPrice: meta?.sellPrice || 0,
+      usable: meta?.usable || false,
+      useEffect: meta?.useEffect || null  // e.g. { restoreEnergy: 10 }
     })
   }
 
@@ -137,8 +139,11 @@ export function sellItem (itemId, quantity) {
 
 /**
  * Render inventory panel UI
+ * @param {HTMLElement} panelEl
+ * @param {function} onSell  - called with (itemId, qty)
+ * @param {function} onUse   - called with (itemId, useEffect) for usable items
  */
-export function renderInventoryPanel (panelEl, onSell) {
+export function renderInventoryPanel (panelEl, onSell, onUse) {
   if (!panelEl) return
 
   const header = panelEl.querySelector('#inventory-header-info')
@@ -160,18 +165,39 @@ export function renderInventoryPanel (panelEl, onSell) {
     const card = document.createElement('div')
     card.className = 'inventory-item'
 
+    const totalValue = item.sellPrice > 0 ? item.sellPrice * item.quantity : 0
     card.innerHTML = `
       <div class="inv-item-name">${item.name}</div>
       <div class="inv-item-qty">x${item.quantity}</div>
       <div class="inv-item-type">${item.type}</div>
-      ${item.sellPrice > 0 ? `<button class="inv-sell-btn" data-item="${item.itemId}">Sell (${item.sellPrice} ea)</button>` : ''}
+      <div class="inv-item-actions">
+        ${item.usable ? `<button class="inv-use-btn" data-item="${item.itemId}">Use</button>` : ''}
+        ${item.sellPrice > 0 ? `<button class="inv-sell-btn" data-item="${item.itemId}" data-qty="1">Sell 1 (${item.sellPrice}🪙)</button>` : ''}
+        ${item.sellPrice > 0 && item.quantity > 1 ? `<button class="inv-sell-all-btn" data-item="${item.itemId}" data-qty="${item.quantity}">Sell All (${totalValue}🪙)</button>` : ''}
+      </div>
     `
+
+    const useBtn = card.querySelector('.inv-use-btn')
+    if (useBtn) {
+      useBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        if (onUse) onUse(item.itemId, item.useEffect)
+      })
+    }
 
     const sellBtn = card.querySelector('.inv-sell-btn')
     if (sellBtn) {
       sellBtn.addEventListener('click', (e) => {
         e.stopPropagation()
         if (onSell) onSell(item.itemId, 1)
+      })
+    }
+
+    const sellAllBtn = card.querySelector('.inv-sell-all-btn')
+    if (sellAllBtn) {
+      sellAllBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        if (onSell) onSell(item.itemId, item.quantity)
       })
     }
 

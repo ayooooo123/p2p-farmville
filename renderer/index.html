@@ -20,6 +20,7 @@
         </div>
         <div id="time-display" title="Game time">&#9728; 12:00</div>
         <div id="weather-display" title="Current weather">&#9728;&#65039; Clear</div>
+        <div id="season-display" title="Current season">&#127807; Spring</div>
         <div id="peer-count" style="display: none;">0 peers</div>
         <div id="vehicle-status" style="display: none;"></div>
         <div id="hud-social-btns">
@@ -32,26 +33,91 @@
       <!-- Toolbar -->
       <div id="toolbar">
         <button class="tool-btn" data-tool="plow" title="Plow (15 coins, 1 energy)">
-          <span class="tool-icon">&#128296;</span><span class="tool-label">Plow</span>
+          <span class="tool-key">1</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Pickaxe / hoe shape -->
+            <line x1="3" y1="21" x2="21" y2="3"/><path d="M18 3l3 3-9 9"/><line x1="3" y1="21" x2="9" y2="15"/>
+          </svg>
+          <span class="tool-label">Plow</span>
         </button>
         <button class="tool-btn" data-tool="plant" title="Plant seed on plowed soil">
-          <span class="tool-icon">&#127793;</span><span class="tool-label">Plant</span>
+          <span class="tool-key">2</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Seedling: stem + two leaves -->
+            <line x1="12" y1="22" x2="12" y2="10"/><path d="M12 10 C12 6 7 4 5 7 C7 7 10 9 12 10z"/><path d="M12 10 C12 6 17 4 19 7 C17 7 14 9 12 10z"/>
+          </svg>
+          <span class="tool-label">Plant</span>
         </button>
         <button class="tool-btn" data-tool="water" title="Water crop (2x growth speed)">
-          <span class="tool-icon">&#128167;</span><span class="tool-label">Water</span>
+          <span class="tool-key">3</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Watering can -->
+            <path d="M3 8h14a2 2 0 0 1 2 2v1"/><path d="M5 8V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3"/><line x1="19" y1="11" x2="21" y2="13"/><line x1="17" y1="13" x2="17" y2="16"/><line x1="19" y1="13" x2="19" y2="17"/><line x1="21" y1="13" x2="21" y2="16"/>
+          </svg>
+          <span class="tool-label">Water</span>
         </button>
         <button class="tool-btn" data-tool="harvest" title="Harvest mature crop">
-          <span class="tool-icon">&#127806;</span><span class="tool-label">Harvest</span>
+          <span class="tool-key">4</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Wheat / sickle -->
+            <path d="M2 22 L10 14"/><path d="M10 14 C13 8 20 5 22 2 C19 4 16 8 14 12z"/><line x1="14" y1="12" x2="10" y2="14"/>
+          </svg>
+          <span class="tool-label">Harvest</span>
         </button>
         <button class="tool-btn" data-tool="remove" title="Remove crop (no refund)">
-          <span class="tool-icon">&#10006;</span><span class="tool-label">Remove</span>
+          <span class="tool-key">5</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Trash icon -->
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </svg>
+          <span class="tool-label">Remove</span>
         </button>
         <div class="toolbar-spacer"></div>
+        <button id="harvest-all-btn" class="tool-btn tool-btn-harvest-all" title="Harvest All ready crops (H)" style="display:none;">
+          <span class="tool-key">H</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Double checkmark / batch harvest -->
+            <polyline points="20 6 9 17 4 12"/><polyline points="16 6 11 11"/>
+          </svg>
+          <span class="tool-label">Harvest All</span>
+        </button>
+        <button id="water-all-btn" class="tool-btn tool-btn-water-all" title="Water all unwatered crops (W)" style="display:none;">
+          <span class="tool-key">W</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Three water drops -->
+            <path d="M12 2 C12 2 7 9 7 13a5 5 0 0 0 10 0C17 9 12 2 12 2z"/>
+          </svg>
+          <span class="tool-label">Water All</span>
+        </button>
         <button id="inventory-btn" class="tool-btn tool-btn-inv" title="Inventory (I)">
-          <span class="tool-icon">&#128230;</span><span class="tool-label">Items</span>
+          <span class="tool-key">I</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Backpack / bag -->
+            <rect x="4" y="8" width="16" height="13" rx="2"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><line x1="4" y1="13" x2="20" y2="13"/>
+          </svg>
+          <span class="tool-label">Items</span>
+        </button>
+        <button id="quest-btn" class="tool-btn" title="Daily Quests">
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Checklist -->
+            <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/><polyline points="6 9 7 10 9 8"/>
+          </svg>
+          <span class="tool-label">Quests</span>
+        </button>
+        <button id="stats-btn" class="tool-btn" title="Farm Stats (F)">
+          <span class="tool-key">F</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Bar chart -->
+            <rect x="18" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="2" y="13" width="4" height="8"/>
+          </svg>
+          <span class="tool-label">Stats</span>
         </button>
         <button id="market-open-btn" class="tool-btn tool-btn-market" title="Open Market">
-          <span class="tool-icon">&#127978;</span><span class="tool-label">Market</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Shop/storefront -->
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          <span class="tool-label">Market</span>
         </button>
       </div>
 
@@ -77,11 +143,63 @@
       <div id="object-tooltip" style="display: none;">
         <div id="tooltip-title"></div>
         <div id="tooltip-info"></div>
+        <div id="tooltip-progress-wrap" style="display: none;">
+          <div id="tooltip-progress-bar"></div>
+        </div>
+        <div id="tooltip-progress-label"></div>
       </div>
     </div>
 
     <!-- FPS Counter (toggle with F3) -->
     <div id="fps-display" style="display: none;">60 FPS</div>
+
+    <!-- Keyboard Shortcuts Help Panel (toggle with ?) -->
+    <div id="shortcuts-panel" style="display: none;">
+      <div id="shortcuts-header">
+        <span>⌨ Keyboard Shortcuts</span>
+        <button id="shortcuts-close-btn" title="Close (?)">✕</button>
+      </div>
+      <div id="shortcuts-body">
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Tools</div>
+          <div class="shortcut-row"><kbd>1</kbd><span>Plow</span></div>
+          <div class="shortcut-row"><kbd>2</kbd><span>Plant</span></div>
+          <div class="shortcut-row"><kbd>3</kbd><span>Water</span></div>
+          <div class="shortcut-row"><kbd>4</kbd><span>Harvest</span></div>
+          <div class="shortcut-row"><kbd>5</kbd><span>Remove</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Actions</div>
+          <div class="shortcut-row"><kbd>H</kbd><span>Harvest All ready crops</span></div>
+          <div class="shortcut-row"><kbd>W</kbd><span>Water All unwatered crops</span></div>
+          <div class="shortcut-row"><kbd>Esc</kbd><span>Cancel / close panel</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Panels</div>
+          <div class="shortcut-row"><kbd>I</kbd><span>Inventory</span></div>
+          <div class="shortcut-row"><kbd>T</kbd><span>Trade / Chat</span></div>
+          <div class="shortcut-row"><kbd>M</kbd><span>Minimap</span></div>
+          <div class="shortcut-row"><kbd>F</kbd><span>Farm Stats</span></div>
+          <div class="shortcut-row"><kbd>U</kbd><span>Crop Mastery</span></div>
+          <div class="shortcut-row"><kbd>J</kbd><span>Collections</span></div>
+          <div class="shortcut-row"><kbd>K</kbd><span>Achievements</span></div>
+          <div class="shortcut-row"><kbd>X</kbd><span>Farm Expansion</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Camera</div>
+          <div class="shortcut-row"><kbd>Scroll</kbd><span>Zoom in / out</span></div>
+          <div class="shortcut-row"><kbd>RMB drag</kbd><span>Pan camera</span></div>
+          <div class="shortcut-row"><kbd>F3</kbd><span>FPS counter</span></div>
+        </div>
+      </div>
+      <div id="shortcuts-footer">Press <kbd>?</kbd> to toggle this panel</div>
+    </div>
+
+    <!-- Minimap (toggle with M) -->
+    <div id="minimap-wrap" title="Farm Overview — M to toggle">
+      <canvas id="minimap-canvas" width="120" height="120"></canvas>
+      <div id="minimap-label">MAP</div>
+    </div>
 
     <!-- Market Panel -->
     <div id="market-panel">
@@ -121,13 +239,24 @@
     <!-- Visitor Action Toolbar -->
     <div id="visitor-toolbar" style="display: none;">
       <button class="visitor-btn" data-action="fertilize" title="Fertilize a crop">
-        <span class="tool-icon">&#127807;</span><span class="tool-label">Fertilize</span>
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Sprout with sparkle — fertilize -->
+          <line x1="12" y1="22" x2="12" y2="11"/><path d="M12 11 C12 7 7 5 5 8 C7 8 10 10 12 11z"/><path d="M12 11 C12 7 17 5 19 8 C17 8 14 10 12 11z"/><line x1="19" y1="5" x2="20" y2="4"/><line x1="21" y1="3" x2="21" y2="2"/><line x1="21" y1="5" x2="22" y2="5"/>
+        </svg>
+        <span class="tool-label">Fertilize</span>
       </button>
       <button class="visitor-btn" data-action="water" title="Water a crop">
-        <span class="tool-icon">&#128167;</span><span class="tool-label">Water</span>
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2 C12 2 7 9 7 13a5 5 0 0 0 10 0C17 9 12 2 12 2z"/>
+        </svg>
+        <span class="tool-label">Water</span>
       </button>
       <button class="visitor-btn" data-action="feed" title="Feed an animal">
-        <span class="tool-icon">&#127822;</span><span class="tool-label">Feed</span>
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Bowl / feeding dish -->
+          <path d="M4 11h16"/><path d="M5 11 C5 16 7 19 12 19 C17 19 19 16 19 11z"/><line x1="12" y1="7" x2="12" y2="11"/><line x1="9" y1="8" x2="9" y2="11"/><line x1="15" y1="8" x2="15" y2="11"/>
+        </svg>
+        <span class="tool-label">Feed</span>
       </button>
     </div>
 
@@ -230,6 +359,16 @@
       <div id="coop-mission-list"></div>
     </div>
 
+    <!-- Quest Panel -->
+    <div id="quest-panel">
+      <div id="quest-header">
+        <h2>Daily Quests</h2>
+        <button id="quest-close-btn" class="panel-close-btn">&#215;</button>
+      </div>
+      <div id="quest-streak" class="quest-streak-bar"></div>
+      <div id="quest-list" class="quest-list"></div>
+    </div>
+
     <!-- Credits / About Modal -->
     <div id="credits-modal" style="display: none;">
       <div id="credits-content">
@@ -239,7 +378,7 @@
           <h3>Technology</h3>
           <p>Three.js - 3D Rendering</p>
           <p>Hyperswarm - P2P Networking</p>
-          <p>Electron + Pear Runtime</p>
+          <p>Electrobun - Desktop Framework</p>
           <p>Web Audio API - Procedural Sound</p>
         </div>
         <div class="credits-section">
@@ -254,6 +393,95 @@
       </div>
     </div>
 
+    <!-- Phase 6: Mastery Panel -->
+    <div id="mastery-panel">
+      <div id="mastery-header">
+        <h2>Crop Mastery</h2>
+        <button id="mastery-close-btn" class="panel-close-btn">X</button>
+      </div>
+      <div id="mastery-content"></div>
+    </div>
+
+    <!-- Phase 6: Collections Panel -->
+    <div id="collections-panel">
+      <div id="collections-header">
+        <h2>Collections</h2>
+        <span id="collections-progress">0/0 sets complete</span>
+        <button id="collections-close-btn" class="panel-close-btn">X</button>
+      </div>
+      <div id="collections-content"></div>
+    </div>
+
+    <!-- Phase 6: Achievements Panel -->
+    <div id="achievements-panel">
+      <div id="achievements-header">
+        <h2>Achievements</h2>
+        <span id="achievements-progress">0/0 unlocked</span>
+        <button id="achievements-close-btn" class="panel-close-btn">X</button>
+      </div>
+      <div id="achievements-tabs"></div>
+      <div id="achievements-content"></div>
+    </div>
+
+    <!-- Phase 6: Expansion Panel -->
+    <div id="expansion-panel">
+      <div id="expansion-header">
+        <h2>Farm Expansion</h2>
+        <button id="expansion-close-btn" class="panel-close-btn">X</button>
+      </div>
+      <div id="expansion-current">Current: 20x20</div>
+      <div id="expansion-content"></div>
+    </div>
+
+    <!-- Farm Stats Panel -->
+    <div id="stats-panel">
+      <div id="stats-header">
+        <h2>Farm Stats</h2>
+        <button id="stats-close-btn" class="panel-close-btn">X</button>
+      </div>
+      <div id="stats-content">
+        <div class="stats-section">
+          <div class="stats-section-title">Farming</div>
+          <div class="stats-grid">
+            <div class="stat-item"><span class="stat-icon">🌾</span><span class="stat-label">Harvests</span><span class="stat-value" id="stat-harvests">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🌱</span><span class="stat-label">Planted</span><span class="stat-value" id="stat-planted">0</span></div>
+            <div class="stat-item"><span class="stat-icon">💧</span><span class="stat-label">Watered</span><span class="stat-value" id="stat-watered">0</span></div>
+            <div class="stat-item"><span class="stat-icon">⛏</span><span class="stat-label">Plowed</span><span class="stat-value" id="stat-plowed">0</span></div>
+          </div>
+        </div>
+        <div class="stats-section">
+          <div class="stats-section-title">Economy</div>
+          <div class="stats-grid">
+            <div class="stat-item"><span class="stat-icon">🪙</span><span class="stat-label">Earned</span><span class="stat-value" id="stat-earned">0</span></div>
+            <div class="stat-item"><span class="stat-icon">📦</span><span class="stat-label">Sold</span><span class="stat-value" id="stat-sold">0</span></div>
+            <div class="stat-item"><span class="stat-icon">⚒</span><span class="stat-label">Crafted</span><span class="stat-value" id="stat-crafted">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🔄</span><span class="stat-label">Trades</span><span class="stat-value" id="stat-trades">0</span></div>
+          </div>
+        </div>
+        <div class="stats-section">
+          <div class="stats-section-title">Social</div>
+          <div class="stats-grid">
+            <div class="stat-item"><span class="stat-icon">💬</span><span class="stat-label">Messages</span><span class="stat-value" id="stat-messages">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🎁</span><span class="stat-label">Gifts Sent</span><span class="stat-value" id="stat-gifts">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🚜</span><span class="stat-label">Visits</span><span class="stat-value" id="stat-visits">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🤝</span><span class="stat-label">Co-ops</span><span class="stat-value" id="stat-coops">0</span></div>
+          </div>
+        </div>
+        <div class="stats-section">
+          <div class="stats-section-title">Animals</div>
+          <div class="stats-grid">
+            <div class="stat-item"><span class="stat-icon">🐔</span><span class="stat-label">Fed</span><span class="stat-value" id="stat-fed">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🥚</span><span class="stat-label">Products</span><span class="stat-value" id="stat-products">0</span></div>
+            <div class="stat-item"><span class="stat-icon">📅</span><span class="stat-label">Sessions</span><span class="stat-value" id="stat-sessions">0</span></div>
+            <div class="stat-item"><span class="stat-icon">⭐</span><span class="stat-label">Level</span><span class="stat-value" id="stat-level">1</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase 6: Progress Notification Area (top-right toasts) -->
+    <div id="progress-notification-area"></div>
+
     <!-- Setup Screen -->
     <div id="setup-screen">
       <h1>P2P FarmVille</h1>
@@ -264,6 +492,10 @@
 
     <!-- Chat Panel (enhanced with tabs) -->
     <div id="chat-panel" style="display: none;">
+      <div id="chat-header">
+        <span>💬 Chat</span>
+        <button id="chat-toggle-btn" title="Toggle Chat (T)">▲</button>
+      </div>
       <!-- Tabs inserted by chat.js -->
       <div id="chat-messages"></div>
       <form id="chat-form">
@@ -273,14 +505,16 @@
     </div>
   </div>
 
-  <!-- Scripts -->
+  <!-- Electrobun view entrypoint (compiled from src/game/index.ts) - sets up window.IPCBridge via RPC -->
   <script src="js/ipc-bridge.js"></script>
+  <!-- Game scripts (use window.IPCBridge for P2P communication) -->
   <script src="js/player.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/trade.js"></script>
   <script src="js/gift.js"></script>
   <script src="js/coop.js"></script>
   <script src="js/neighbor-panel.js"></script>
+  <!-- Main app (ES module - imports Three.js and other modules) -->
   <script src="app.js" type="module"></script>
 </body>
 </html>

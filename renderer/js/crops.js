@@ -389,10 +389,19 @@ export const CROP_DEFINITIONS = {
   }
 }
 
-// ── Procedural 3D crop mesh generation ───────────────────────────────────────
+// ── Flat top-down crop mesh generation ───────────────────────────────────────
+
+// Size mapping for growth stages (fraction of plot, as circle radius)
+const STAGE_SIZES = {
+  0: 0.1,   // seed: tiny dot
+  1: 0.2,   // sprout: small circle
+  2: 0.35,  // growing: medium circle
+  3: 0.5,   // maturing: larger circle
+  4: 0.6    // fully mature: full-sized circle
+}
 
 /**
- * Create a 3D mesh group for a crop at a specific growth stage
+ * Create a flat circle mesh for a crop at a specific growth stage (top-down view)
  * @param {string} cropType - key in CROP_DEFINITIONS
  * @param {number} stage - growth stage index (0 = seed, last = mature)
  * @returns {THREE.Group}
@@ -403,421 +412,105 @@ export function createCropMesh (cropType, stage) {
 
   const clampedStage = Math.min(stage, def.stages - 1)
   const color = def.colors[clampedStage]
-  const height = def.heights[clampedStage]
+  const maxStage = def.stages - 1
+  const isReady = clampedStage >= maxStage
   const group = new THREE.Group()
 
+  // Calculate circle radius based on stage progression
+  const stageKey = Math.min(clampedStage, 4)
+  const radius = STAGE_SIZES[stageKey] || 0.5
+
   if (clampedStage === 0) {
-    // Stage 0: seed mound - small brown bumps
-    const moundGeo = new THREE.SphereGeometry(0.15, 6, 4, 0, Math.PI * 2, 0, Math.PI / 2)
-    const moundMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
-    const mound = new THREE.Mesh(moundGeo, moundMat)
-    mound.position.y = 0
-    group.add(mound)
-
-    // Tiny seed dots
-    for (let i = 0; i < 3; i++) {
-      const seedGeo = new THREE.SphereGeometry(0.04, 4, 4)
-      const seedMat = new THREE.MeshStandardMaterial({ color: 0x5c4a1e })
-      const seed = new THREE.Mesh(seedGeo, seedMat)
-      seed.position.set((i - 1) * 0.08, 0.05, 0)
-      group.add(seed)
-    }
+    // Seed: tiny dark dot in center
+    const dotGeo = new THREE.CircleGeometry(radius, 8)
+    const dotMat = new THREE.MeshStandardMaterial({ color: 0x5c4a1e })
+    const dot = new THREE.Mesh(dotGeo, dotMat)
+    dot.rotation.x = -Math.PI / 2
+    dot.position.y = 0.02
+    group.add(dot)
   } else if (clampedStage === 1) {
-    // Stage 1: sprout - thin stem with small leaf
-    const stemGeo = new THREE.CylinderGeometry(0.03, 0.04, height, 5)
-    const stemMat = new THREE.MeshStandardMaterial({ color: 0x228b22 })
-    const stem = new THREE.Mesh(stemGeo, stemMat)
-    stem.position.y = height / 2
-    stem.castShadow = true
-    group.add(stem)
-
-    // Small leaf
-    const leafGeo = new THREE.ConeGeometry(0.08, 0.15, 4)
-    const leafMat = new THREE.MeshStandardMaterial({ color })
-    const leaf = new THREE.Mesh(leafGeo, leafMat)
-    leaf.position.set(0.06, height * 0.7, 0)
-    leaf.rotation.z = -0.5
-    group.add(leaf)
-  } else if (clampedStage === 2 || (clampedStage === 2 && def.stages === 3)) {
-    // Stage 2: growing - taller stem, multiple leaves
-    const stemGeo = new THREE.CylinderGeometry(0.04, 0.06, height, 6)
-    const stemMat = new THREE.MeshStandardMaterial({ color: 0x228b22 })
-    const stem = new THREE.Mesh(stemGeo, stemMat)
-    stem.position.y = height / 2
-    stem.castShadow = true
-    group.add(stem)
-
-    // Multiple leaves
-    for (let i = 0; i < 4; i++) {
-      const angle = (i / 4) * Math.PI * 2
-      const leafGeo = new THREE.ConeGeometry(0.1, 0.2, 4)
-      const leafMat = new THREE.MeshStandardMaterial({ color })
-      const leaf = new THREE.Mesh(leafGeo, leafMat)
-      leaf.position.set(Math.cos(angle) * 0.1, height * 0.6, Math.sin(angle) * 0.1)
-      leaf.rotation.z = -Math.cos(angle) * 0.6
-      leaf.rotation.x = -Math.sin(angle) * 0.6
-      group.add(leaf)
-    }
+    // Small green circle
+    const circleGeo = new THREE.CircleGeometry(radius, 12)
+    const circleMat = new THREE.MeshStandardMaterial({ color: 0x228b22 })
+    const circle = new THREE.Mesh(circleGeo, circleMat)
+    circle.rotation.x = -Math.PI / 2
+    circle.position.y = 0.02
+    group.add(circle)
+  } else if (!isReady) {
+    // Medium growing circle, starts blending toward product color
+    const circleGeo = new THREE.CircleGeometry(radius, 16)
+    const circleMat = new THREE.MeshStandardMaterial({ color })
+    const circle = new THREE.Mesh(circleGeo, circleMat)
+    circle.rotation.x = -Math.PI / 2
+    circle.position.y = 0.02
+    group.add(circle)
   } else {
-    // Stage 3+ (mature): crop-specific shapes
-    _buildMatureCrop(group, cropType, def, clampedStage, color, height)
+    // Ready to harvest: full-sized circle in final product color
+    const circleGeo = new THREE.CircleGeometry(radius, 20)
+    const circleMat = new THREE.MeshStandardMaterial({ color })
+    const circle = new THREE.Mesh(circleGeo, circleMat)
+    circle.rotation.x = -Math.PI / 2
+    circle.position.y = 0.02
+    group.add(circle)
+
+    // Inner accent circle for visual distinction
+    const innerGeo = new THREE.CircleGeometry(radius * 0.5, 12)
+    const innerColor = new THREE.Color(color)
+    innerColor.multiplyScalar(1.3) // brighter inner
+    const innerMat = new THREE.MeshStandardMaterial({ color: innerColor })
+    const inner = new THREE.Mesh(innerGeo, innerMat)
+    inner.rotation.x = -Math.PI / 2
+    inner.position.y = 0.025
+    group.add(inner)
+
+    // Pulsing glow ring for mature crops
+    const ringInner = radius + 0.05
+    const ringOuter = radius + 0.2
+    const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 32)
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffee44, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+    const ring = new THREE.Mesh(ringGeo, ringMat)
+    ring.rotation.x = -Math.PI / 2
+    ring.position.y = 0.03
+    ring.userData.isGlowRing = true
+    group.add(ring)
+  }
+
+  // Progress arc for growing (non-seed, non-mature) crops
+  if (clampedStage > 0 && !isReady) {
+    const arcInner = radius + 0.05
+    const arcOuter = radius + 0.12
+    const arcLen = 2 * Math.PI * (clampedStage / maxStage)
+    const arcGeo = new THREE.RingGeometry(arcInner, arcOuter, 32, 1, -Math.PI / 2, arcLen)
+    const arcMat = new THREE.MeshBasicMaterial({ color: 0x44ff88, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+    const arc = new THREE.Mesh(arcGeo, arcMat)
+    arc.rotation.x = -Math.PI / 2
+    arc.position.y = 0.03
+    arc.userData.isProgressArc = true
+    group.add(arc)
   }
 
   group.userData.cropType = cropType
   group.userData.stage = clampedStage
+  group.userData.isReady = isReady
   return group
 }
 
-function _buildMatureCrop (group, cropType, def, stage, color, height) {
-  // Stem (common to most crops)
-  const stemGeo = new THREE.CylinderGeometry(0.04, 0.07, height * 0.8, 6)
-  const stemMat = new THREE.MeshStandardMaterial({ color: 0x228b22 })
-  const stem = new THREE.Mesh(stemGeo, stemMat)
-  stem.position.y = height * 0.4
-  stem.castShadow = true
-  group.add(stem)
-
-  // Leaves around stem
-  const leafCount = stage >= 3 ? 5 : 3
-  for (let i = 0; i < leafCount; i++) {
-    const angle = (i / leafCount) * Math.PI * 2
-    const leafGeo = new THREE.ConeGeometry(0.1, 0.2, 4)
-    const leafMat = new THREE.MeshStandardMaterial({ color: 0x32cd32 })
-    const leaf = new THREE.Mesh(leafGeo, leafMat)
-    leaf.position.set(Math.cos(angle) * 0.12, height * 0.4, Math.sin(angle) * 0.12)
-    leaf.rotation.z = -Math.cos(angle) * 0.7
-    leaf.rotation.x = -Math.sin(angle) * 0.7
-    group.add(leaf)
-  }
-
-  // Crop-specific top / fruit
-  switch (cropType) {
-    case 'wheat':
-    case 'golden_wheat':
-    case 'rice': {
-      // Stalks with grain head
-      for (let i = 0; i < 5; i++) {
-        const sx = (Math.random() - 0.5) * 0.2
-        const sz = (Math.random() - 0.5) * 0.2
-        const stalkGeo = new THREE.CylinderGeometry(0.02, 0.02, height, 4)
-        const stalkMat = new THREE.MeshStandardMaterial({ color })
-        const stalk = new THREE.Mesh(stalkGeo, stalkMat)
-        stalk.position.set(sx, height / 2, sz)
-        stalk.castShadow = true
-        group.add(stalk)
-        // Grain head
-        const grainGeo = new THREE.CylinderGeometry(0.05, 0.03, 0.15, 5)
-        const grain = new THREE.Mesh(grainGeo, new THREE.MeshStandardMaterial({ color }))
-        grain.position.set(sx, height + 0.05, sz)
-        group.add(grain)
-      }
-      break
-    }
-
-    case 'strawberry':
-    case 'blueberry':
-    case 'raspberry':
-    case 'blackberry':
-    case 'cranberry':
-    case 'crystal_berry': {
-      // Small berries clustered
-      const berryCount = 4 + stage
-      for (let i = 0; i < berryCount; i++) {
-        const angle = (i / berryCount) * Math.PI * 2
-        const r = 0.12 + Math.random() * 0.05
-        const berryGeo = new THREE.SphereGeometry(0.06, 6, 6)
-        const berryMat = new THREE.MeshStandardMaterial({ color })
-        const berry = new THREE.Mesh(berryGeo, berryMat)
-        berry.position.set(Math.cos(angle) * r, height * 0.65 + Math.random() * 0.1, Math.sin(angle) * r)
-        berry.castShadow = true
-        group.add(berry)
-      }
-      break
-    }
-
-    case 'tomato':
-    case 'pepper':
-    case 'phoenix_pepper': {
-      // Round fruits hanging
-      const fruitCount = 2 + Math.floor(stage / 2)
-      for (let i = 0; i < fruitCount; i++) {
-        const angle = (i / fruitCount) * Math.PI * 2
-        const fruitGeo = new THREE.SphereGeometry(0.1, 8, 8)
-        const fruitMat = new THREE.MeshStandardMaterial({ color })
-        const fruit = new THREE.Mesh(fruitGeo, fruitMat)
-        fruit.position.set(Math.cos(angle) * 0.15, height * 0.5 + i * 0.08, Math.sin(angle) * 0.15)
-        fruit.castShadow = true
-        group.add(fruit)
-      }
-      break
-    }
-
-    case 'eggplant': {
-      // Elongated purple fruit
-      const eggGeo = new THREE.CapsuleGeometry(0.08, 0.2, 4, 8)
-      const eggMat = new THREE.MeshStandardMaterial({ color })
-      const egg = new THREE.Mesh(eggGeo, eggMat)
-      egg.position.set(0.12, height * 0.5, 0)
-      egg.rotation.z = 0.3
-      egg.castShadow = true
-      group.add(egg)
-      break
-    }
-
-    case 'corn': {
-      // Tall stalk with corn cob
-      const cornCobGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.25, 8)
-      const cornCobMat = new THREE.MeshStandardMaterial({ color })
-      const cornCob = new THREE.Mesh(cornCobGeo, cornCobMat)
-      cornCob.position.set(0.1, height * 0.6, 0)
-      cornCob.rotation.z = 0.3
-      cornCob.castShadow = true
-      group.add(cornCob)
-      // Husk leaves
-      const huskGeo = new THREE.ConeGeometry(0.12, 0.3, 4)
-      const huskMat = new THREE.MeshStandardMaterial({ color: 0x9acd32 })
-      const husk = new THREE.Mesh(huskGeo, huskMat)
-      husk.position.set(0.1, height * 0.6, 0)
-      husk.rotation.z = 0.3
-      group.add(husk)
-      break
-    }
-
-    case 'pumpkin': {
-      // Large orange sphere on ground
-      const pumpGeo = new THREE.SphereGeometry(0.3, 10, 8)
-      const pumpMat = new THREE.MeshStandardMaterial({ color })
-      const pump = new THREE.Mesh(pumpGeo, pumpMat)
-      pump.scale.y = 0.7
-      pump.position.y = 0.2
-      pump.castShadow = true
-      group.add(pump)
-      // Stem on top
-      const pStemGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.12, 4)
-      const pStemMat = new THREE.MeshStandardMaterial({ color: 0x228b22 })
-      const pStem = new THREE.Mesh(pStemGeo, pStemMat)
-      pStem.position.y = 0.4
-      group.add(pStem)
-      break
-    }
-
-    case 'watermelon': {
-      // Large green ellipsoid on ground
-      const wmGeo = new THREE.SphereGeometry(0.28, 10, 8)
-      const wmMat = new THREE.MeshStandardMaterial({ color })
-      const wm = new THREE.Mesh(wmGeo, wmMat)
-      wm.scale.set(1.3, 0.7, 1.0)
-      wm.position.y = 0.15
-      wm.castShadow = true
-      group.add(wm)
-      break
-    }
-
-    case 'sunflower':
-    case 'moonflower':
-    case 'starbloom': {
-      // Tall stem with flower head
-      const headGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.06, 12)
-      const headMat = new THREE.MeshStandardMaterial({ color })
-      const head = new THREE.Mesh(headGeo, headMat)
-      head.position.y = height
-      head.castShadow = true
-      group.add(head)
-      // Center
-      const centerGeo = new THREE.SphereGeometry(0.1, 8, 8)
-      const centerMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 })
-      const center = new THREE.Mesh(centerGeo, centerMat)
-      center.position.y = height + 0.04
-      group.add(center)
-      // Petals
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2
-        const petalGeo = new THREE.BoxGeometry(0.08, 0.02, 0.12)
-        const petalMat = new THREE.MeshStandardMaterial({ color })
-        const petal = new THREE.Mesh(petalGeo, petalMat)
-        petal.position.set(Math.cos(a) * 0.2, height, Math.sin(a) * 0.2)
-        petal.rotation.y = -a
-        group.add(petal)
-      }
-      break
-    }
-
-    case 'potato':
-    case 'onion':
-    case 'garlic':
-    case 'beet':
-    case 'turnip':
-    case 'ginger':
-    case 'turmeric':
-    case 'truffle': {
-      // Root vegetables - bulge at ground level
-      const bulbGeo = new THREE.SphereGeometry(0.12, 8, 6)
-      const bulbMat = new THREE.MeshStandardMaterial({ color })
-      const bulb = new THREE.Mesh(bulbGeo, bulbMat)
-      bulb.position.y = 0.05
-      bulb.scale.y = 0.8
-      bulb.castShadow = true
-      group.add(bulb)
-      // Tops (green leaves sticking up)
-      for (let i = 0; i < 3; i++) {
-        const topGeo = new THREE.ConeGeometry(0.03, height * 0.6, 4)
-        const topMat = new THREE.MeshStandardMaterial({ color: 0x32cd32 })
-        const top = new THREE.Mesh(topGeo, topMat)
-        top.position.set((i - 1) * 0.06, height * 0.4, 0)
-        group.add(top)
-      }
-      break
-    }
-
-    case 'carrot': {
-      // Orange cone root + green top
-      const rootGeo = new THREE.ConeGeometry(0.06, 0.25, 6)
-      const rootMat = new THREE.MeshStandardMaterial({ color })
-      const root = new THREE.Mesh(rootGeo, rootMat)
-      root.position.y = 0.05
-      root.rotation.x = Math.PI
-      root.castShadow = true
-      group.add(root)
-      // Feathery greens
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2
-        const fGeo = new THREE.ConeGeometry(0.04, 0.3, 3)
-        const fMat = new THREE.MeshStandardMaterial({ color: 0x32cd32 })
-        const f = new THREE.Mesh(fGeo, fMat)
-        f.position.set(Math.cos(a) * 0.04, height * 0.5, Math.sin(a) * 0.04)
-        group.add(f)
-      }
-      break
-    }
-
-    case 'cotton': {
-      // White fluffy balls on stems
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2
-        const fluffGeo = new THREE.SphereGeometry(0.09, 6, 6)
-        const fluffMat = new THREE.MeshStandardMaterial({ color })
-        const fluff = new THREE.Mesh(fluffGeo, fluffMat)
-        fluff.position.set(Math.cos(a) * 0.12, height * 0.7 + i * 0.05, Math.sin(a) * 0.12)
-        fluff.castShadow = true
-        group.add(fluff)
-      }
-      break
-    }
-
-    case 'sugarcane':
-    case 'asparagus':
-    case 'celery': {
-      // Tall stalks cluster
-      for (let i = 0; i < 4; i++) {
-        const sx = (Math.random() - 0.5) * 0.15
-        const sz = (Math.random() - 0.5) * 0.15
-        const sGeo = new THREE.CylinderGeometry(0.03, 0.04, height, 6)
-        const sMat = new THREE.MeshStandardMaterial({ color })
-        const s = new THREE.Mesh(sGeo, sMat)
-        s.position.set(sx, height / 2, sz)
-        s.castShadow = true
-        group.add(s)
-      }
-      break
-    }
-
-    case 'grape':
-    case 'passion_fruit': {
-      // Cluster of small fruits hanging from vine
-      const clusterGeo = new THREE.Group()
-      for (let i = 0; i < 8; i++) {
-        const gx = (Math.random() - 0.5) * 0.15
-        const gy = Math.random() * 0.2
-        const gz = (Math.random() - 0.5) * 0.15
-        const gGeo = new THREE.SphereGeometry(0.05, 6, 6)
-        const gMat = new THREE.MeshStandardMaterial({ color })
-        const g = new THREE.Mesh(gGeo, gMat)
-        g.position.set(gx, gy, gz)
-        clusterGeo.add(g)
-      }
-      clusterGeo.position.y = height * 0.55
-      group.add(clusterGeo)
-      break
-    }
-
-    case 'dragon_fruit':
-    case 'durian': {
-      // Spiky exotic fruit
-      const exoGeo = new THREE.SphereGeometry(0.15, 8, 8)
-      const exoMat = new THREE.MeshStandardMaterial({ color })
-      const exo = new THREE.Mesh(exoGeo, exoMat)
-      exo.position.y = height * 0.55
-      exo.castShadow = true
-      group.add(exo)
-      // Spikes
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2
-        const spikeGeo = new THREE.ConeGeometry(0.03, 0.1, 4)
-        const spikeMat = new THREE.MeshStandardMaterial({ color })
-        const spike = new THREE.Mesh(spikeGeo, spikeMat)
-        spike.position.set(Math.cos(a) * 0.15, height * 0.55, Math.sin(a) * 0.15)
-        spike.rotation.z = -Math.cos(a) * 1.2
-        spike.rotation.x = -Math.sin(a) * 1.2
-        group.add(spike)
-      }
-      break
-    }
-
-    case 'lychee':
-    case 'starfruit': {
-      // Round-ish exotic fruit
-      const lfGeo = new THREE.SphereGeometry(0.1, 8, 8)
-      const lfMat = new THREE.MeshStandardMaterial({ color })
-      const lf = new THREE.Mesh(lfGeo, lfMat)
-      lf.position.y = height * 0.6
-      lf.castShadow = true
-      group.add(lf)
-      break
-    }
-
-    default: {
-      // Generic: leafy bush top
-      const bushGeo = new THREE.SphereGeometry(0.18, 8, 6)
-      const bushMat = new THREE.MeshStandardMaterial({ color })
-      const bush = new THREE.Mesh(bushGeo, bushMat)
-      bush.position.y = height * 0.7
-      bush.castShadow = true
-      group.add(bush)
-      break
-    }
-  }
-}
-
 /**
- * Create a withered version of a crop mesh (gray/droopy)
+ * Create a withered version of a crop mesh (gray circle)
  */
 export function createWitheredMesh (cropType) {
   const def = CROP_DEFINITIONS[cropType]
   if (!def) return new THREE.Group()
 
   const group = new THREE.Group()
-  const height = def.heights[def.stages - 1] * 0.7 // Shorter/droopy
 
-  // Wilted stem
-  const stemGeo = new THREE.CylinderGeometry(0.04, 0.07, height * 0.6, 6)
-  const stemMat = new THREE.MeshStandardMaterial({ color: 0x696969 })
-  const stem = new THREE.Mesh(stemGeo, stemMat)
-  stem.position.y = height * 0.3
-  stem.rotation.z = 0.2 // Leaning
-  stem.castShadow = true
-  group.add(stem)
-
-  // Droopy gray leaves
-  for (let i = 0; i < 3; i++) {
-    const angle = (i / 3) * Math.PI * 2
-    const leafGeo = new THREE.ConeGeometry(0.1, 0.2, 4)
-    const leafMat = new THREE.MeshStandardMaterial({ color: 0x808080 })
-    const leaf = new THREE.Mesh(leafGeo, leafMat)
-    leaf.position.set(Math.cos(angle) * 0.1, height * 0.25, Math.sin(angle) * 0.1)
-    leaf.rotation.z = Math.cos(angle) * 1.2 // Drooping down
-    leaf.rotation.x = Math.sin(angle) * 1.2
-    group.add(leaf)
-  }
+  // Gray circle for withered crop
+  const circleGeo = new THREE.CircleGeometry(0.4, 16)
+  const circleMat = new THREE.MeshStandardMaterial({ color: 0x808080 })
+  const circle = new THREE.Mesh(circleGeo, circleMat)
+  circle.rotation.x = -Math.PI / 2
+  circle.position.y = 0.02
+  group.add(circle)
 
   group.userData.cropType = cropType
   group.userData.withered = true
@@ -868,4 +561,46 @@ export function updateCropGrowth (cropPlot, deltaTime) {
   return false
 }
 
-window.CropSystem = { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth }
+/**
+ * Animate a harvest pop: scale 1.0 → 1.4 → 0 over 400ms with brief upward Y translation.
+ * Calls onComplete() when done so the caller can remove the mesh from the scene.
+ * @param {THREE.Object3D} mesh
+ * @param {THREE.Scene} scene
+ * @param {function} onComplete
+ */
+export function animateHarvestPop (mesh, scene, onComplete) {
+  const startTime = performance.now()
+  const duration = 400
+  const baseY = mesh.position.y
+
+  function animate () {
+    const elapsed = performance.now() - startTime
+    const t = Math.min(elapsed / duration, 1)
+
+    let scale, yOffset
+    if (t < 0.4) {
+      // Scale up phase: 1.0 → 1.4, Y 0 → 0.3
+      const p = t / 0.4
+      scale = 1.0 + 0.4 * p
+      yOffset = 0.3 * p
+    } else {
+      // Scale down phase: 1.4 → 0
+      const p = (t - 0.4) / 0.6
+      scale = 1.4 * (1 - p)
+      yOffset = 0.3
+    }
+
+    mesh.scale.set(scale, scale, scale)
+    mesh.position.y = baseY + yOffset
+
+    if (t < 1) {
+      requestAnimationFrame(animate)
+    } else {
+      onComplete()
+    }
+  }
+
+  requestAnimationFrame(animate)
+}
+
+window.CropSystem = { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop }

@@ -384,24 +384,23 @@ function _buildWindmill (g) {
   roof.position.y = 3.9
   roof.castShadow = true
   g.add(roof)
-  // Blades hub
+  // Rotor group — hub + blades, rotated by game loop via userData.isWindmillRotor
+  const rotor = new THREE.Group()
+  rotor.position.set(0, 3.0, -0.55)
+  rotor.userData.isWindmillRotor = true
+  g.add(rotor)
   const hubGeo = new THREE.SphereGeometry(0.15, 6, 4)
-  const hub = new THREE.Mesh(hubGeo, mat)
-  hub.position.set(0, 3.0, -0.55)
-  g.add(hub)
-  // Blades
+  rotor.add(new THREE.Mesh(hubGeo, mat))
+  // 4 blades radiating outward from rotor pivot
   const bladeMat = new THREE.MeshStandardMaterial({ color: 0xdeb887 })
   for (let i = 0; i < 4; i++) {
     const bladeGeo = new THREE.BoxGeometry(0.15, 1.5, 0.03)
     const blade = new THREE.Mesh(bladeGeo, bladeMat)
-    blade.position.set(0, 3.0, -0.65)
-    blade.rotation.z = (Math.PI / 2) * i
-    // Offset from center along rotation
     const angle = (Math.PI / 2) * i
-    blade.position.x += Math.cos(angle) * 0.75
-    blade.position.y += Math.sin(angle) * 0.75
+    blade.position.set(Math.cos(angle) * 0.75, Math.sin(angle) * 0.75, -0.10)
+    blade.rotation.z = angle
     blade.castShadow = true
-    g.add(blade)
+    rotor.add(blade)
   }
 }
 
