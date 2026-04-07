@@ -1166,10 +1166,11 @@ function renderInventoryUI () {
     if (result) {
       gameState.coins += result.coins
       gameState.totalCoinsEarned += result.coins
-      gameState.itemsSold++
-      QuestSystem.recordAction('sell', qty)
+      gameState.itemsSold += result.sold
+      QuestSystem.recordAction('sell', result.sold)
       QuestSystem.recordAction('earn', result.coins)
-      showFeedback('Sold for ' + result.coins + ' coins!', '#ffd700')
+      const soldMsg = result.sold > 1 ? 'Sold ' + result.sold + 'x for ' + result.coins + ' 🪙!' : 'Sold for ' + result.coins + ' 🪙!'
+      showFeedback(soldMsg, '#ffd700')
       updateHUD()
       renderInventoryUI()
       checkAchievements()

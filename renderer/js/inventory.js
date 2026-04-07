@@ -165,13 +165,15 @@ export function renderInventoryPanel (panelEl, onSell, onUse) {
     const card = document.createElement('div')
     card.className = 'inventory-item'
 
+    const totalValue = item.sellPrice > 0 ? item.sellPrice * item.quantity : 0
     card.innerHTML = `
       <div class="inv-item-name">${item.name}</div>
       <div class="inv-item-qty">x${item.quantity}</div>
       <div class="inv-item-type">${item.type}</div>
       <div class="inv-item-actions">
         ${item.usable ? `<button class="inv-use-btn" data-item="${item.itemId}">Use</button>` : ''}
-        ${item.sellPrice > 0 ? `<button class="inv-sell-btn" data-item="${item.itemId}">Sell (${item.sellPrice})</button>` : ''}
+        ${item.sellPrice > 0 ? `<button class="inv-sell-btn" data-item="${item.itemId}" data-qty="1">Sell 1 (${item.sellPrice}🪙)</button>` : ''}
+        ${item.sellPrice > 0 && item.quantity > 1 ? `<button class="inv-sell-all-btn" data-item="${item.itemId}" data-qty="${item.quantity}">Sell All (${totalValue}🪙)</button>` : ''}
       </div>
     `
 
@@ -188,6 +190,14 @@ export function renderInventoryPanel (panelEl, onSell, onUse) {
       sellBtn.addEventListener('click', (e) => {
         e.stopPropagation()
         if (onSell) onSell(item.itemId, 1)
+      })
+    }
+
+    const sellAllBtn = card.querySelector('.inv-sell-all-btn')
+    if (sellAllBtn) {
+      sellAllBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        if (onSell) onSell(item.itemId, item.quantity)
       })
     }
 

@@ -884,6 +884,24 @@ body {
   color: #fff;
 }
 
+.inv-sell-all-btn {
+  padding: 3px 8px;
+  border: 1px solid #ff9800;
+  border-radius: 4px;
+  background: rgba(255, 152, 0, 0.18);
+  color: #ff9800;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.inv-sell-all-btn:hover {
+  background: rgba(255, 152, 0, 0.4);
+  color: #fff;
+  transform: scale(1.05);
+}
+
 /* ── Consumable item cards in market ─────────────────────────────────────── */
 .market-consumable-card .consumable-icon {
   width: 32px;
