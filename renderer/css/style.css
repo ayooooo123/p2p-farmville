@@ -2195,6 +2195,110 @@ body {
 }
 .quest-reward { color: #ffd700; }
 
+/* ── Keyboard Shortcuts Panel ────────────────────────────────────────────────── */
+#shortcuts-panel {
+  position: fixed;
+  bottom: 160px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 12, 6, 0.93);
+  border: 1px solid rgba(255, 200, 100, 0.35);
+  border-radius: 10px;
+  padding: 0;
+  z-index: 900;
+  min-width: 320px;
+  max-width: 480px;
+  font-size: 12px;
+  color: #e8d8b0;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  animation: shortcutsFadeIn 0.18s ease-out;
+  pointer-events: all;
+}
+@keyframes shortcutsFadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+#shortcuts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid rgba(255,200,100,0.2);
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffd070;
+}
+#shortcuts-close-btn {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+#shortcuts-close-btn:hover { color: #fff; }
+#shortcuts-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 8px 12px 6px;
+}
+.shortcuts-section {
+  padding: 4px 8px 6px 0;
+}
+.shortcuts-section:nth-child(even) {
+  padding-left: 12px;
+  border-left: 1px solid rgba(255,200,100,0.15);
+}
+.shortcuts-section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #b8943a;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  color: #d4c090;
+}
+.shortcut-row span {
+  font-size: 11px;
+  color: #c8b880;
+}
+#shortcuts-panel kbd {
+  background: rgba(255,220,120,0.15);
+  border: 1px solid rgba(255,200,80,0.4);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: monospace;
+  color: #ffd070;
+  white-space: nowrap;
+  min-width: 20px;
+  text-align: center;
+}
+#shortcuts-footer {
+  text-align: center;
+  padding: 5px 12px 8px;
+  border-top: 1px solid rgba(255,200,100,0.15);
+  font-size: 10px;
+  color: #786040;
+}
+#shortcuts-footer kbd {
+  background: rgba(255,220,120,0.1);
+  border: 1px solid rgba(255,200,80,0.3);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-family: monospace;
+  color: #b8943a;
+}
+
 /* ── Minimap ────────────────────────────────────────────────────────────────── */
 #minimap-wrap {
   position: fixed;

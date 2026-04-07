@@ -1793,6 +1793,12 @@ window.addEventListener('keydown', (e) => {
     return
   }
 
+  // ? key toggles shortcuts help panel
+  if (e.key === '?' || e.key === '/') {
+    toggleShortcutsPanel()
+    return
+  }
+
   // Number keys for quick tool select
   const toolKeys = { '1': 'plow', '2': 'plant', '3': 'water', '4': 'harvest', '5': 'remove' }
   if (toolKeys[e.key] && gameState.running) {
@@ -2692,6 +2698,22 @@ function hookFarmSync (fn) {
     syncFarmStateNow()
     return result
   }
+}
+
+// ── Keyboard Shortcuts Help Panel ────────────────────────────────────────────
+const shortcutsPanel = document.getElementById('shortcuts-panel')
+const shortcutsCloseBtn = document.getElementById('shortcuts-close-btn')
+
+function toggleShortcutsPanel () {
+  if (!shortcutsPanel) return
+  const visible = shortcutsPanel.style.display !== 'none'
+  shortcutsPanel.style.display = visible ? 'none' : ''
+}
+
+if (shortcutsCloseBtn) {
+  shortcutsCloseBtn.addEventListener('click', () => {
+    if (shortcutsPanel) shortcutsPanel.style.display = 'none'
+  })
 }
 
 // Kick off render loop

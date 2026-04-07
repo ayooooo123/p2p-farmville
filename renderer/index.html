@@ -145,6 +145,47 @@
     <!-- FPS Counter (toggle with F3) -->
     <div id="fps-display" style="display: none;">60 FPS</div>
 
+    <!-- Keyboard Shortcuts Help Panel (toggle with ?) -->
+    <div id="shortcuts-panel" style="display: none;">
+      <div id="shortcuts-header">
+        <span>⌨ Keyboard Shortcuts</span>
+        <button id="shortcuts-close-btn" title="Close (?)">✕</button>
+      </div>
+      <div id="shortcuts-body">
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Tools</div>
+          <div class="shortcut-row"><kbd>1</kbd><span>Plow</span></div>
+          <div class="shortcut-row"><kbd>2</kbd><span>Plant</span></div>
+          <div class="shortcut-row"><kbd>3</kbd><span>Water</span></div>
+          <div class="shortcut-row"><kbd>4</kbd><span>Harvest</span></div>
+          <div class="shortcut-row"><kbd>5</kbd><span>Remove</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Actions</div>
+          <div class="shortcut-row"><kbd>H</kbd><span>Harvest All ready crops</span></div>
+          <div class="shortcut-row"><kbd>W</kbd><span>Water All unwatered crops</span></div>
+          <div class="shortcut-row"><kbd>Esc</kbd><span>Cancel / close panel</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Panels</div>
+          <div class="shortcut-row"><kbd>I</kbd><span>Inventory</span></div>
+          <div class="shortcut-row"><kbd>T</kbd><span>Trade</span></div>
+          <div class="shortcut-row"><kbd>R</kbd><span>Riddles / Quests</span></div>
+          <div class="shortcut-row"><kbd>M</kbd><span>Minimap</span></div>
+          <div class="shortcut-row"><kbd>J</kbd><span>Journal</span></div>
+          <div class="shortcut-row"><kbd>K</kbd><span>Collections</span></div>
+          <div class="shortcut-row"><kbd>X</kbd><span>Achievements</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <div class="shortcuts-section-title">Camera</div>
+          <div class="shortcut-row"><kbd>Scroll</kbd><span>Zoom in / out</span></div>
+          <div class="shortcut-row"><kbd>RMB drag</kbd><span>Pan camera</span></div>
+          <div class="shortcut-row"><kbd>F3</kbd><span>FPS counter</span></div>
+        </div>
+      </div>
+      <div id="shortcuts-footer">Press <kbd>?</kbd> to toggle this panel</div>
+    </div>
+
     <!-- Minimap (toggle with M) -->
     <div id="minimap-wrap" title="Farm Overview — M to toggle">
       <canvas id="minimap-canvas" width="120" height="120"></canvas>
