@@ -764,6 +764,7 @@ function updateVehicleStatus () {
 function handleMarketBuy ({ category, key, def }) {
   if (gameState.coins < def.cost) {
     showFeedback('Not enough coins! (need ' + def.cost + ')', '#ff4444')
+    SoundSystem.play('error')
     return
   }
 
@@ -776,6 +777,7 @@ function handleMarketBuy ({ category, key, def }) {
     farmState.ownedVehicles.push(key)
     updateVehicleStatus()
     addXP(10)
+    SoundSystem.play('buy')
     showFeedback('Bought ' + def.name + '!', '#32cd32')
     hideMarket()
     updateHUD()
@@ -791,6 +793,7 @@ function handleMarketBuy ({ category, key, def }) {
       usable: true,
       useEffect: def.useEffect
     })
+    SoundSystem.play('buy')
     showFeedback('Bought ' + def.name + '!', '#5bc8f5')
     showToast(def.name, 'harvest', 'Added to inventory — use it from your pack!')
     updateHUD()
@@ -798,6 +801,7 @@ function handleMarketBuy ({ category, key, def }) {
   }
 
   // Trees, Animals, Buildings, Decorations -> enter placement mode
+  SoundSystem.play('buy')
   enterPlacementMode(category, key, def)
   hideMarket()
 }
@@ -1074,6 +1078,7 @@ function handleAnimalInteract (animal) {
     if (result) {
       gameState.animalsFed++
       gameState.coins -= result.feedCost
+      SoundSystem.play('feed')
       showFeedback('Fed ' + def.name + '! -' + result.feedCost + ' coins', '#32cd32')
     }
   } else {
@@ -1200,6 +1205,7 @@ function renderInventoryUI () {
       gameState.itemsSold += result.sold
       QuestSystem.recordAction('sell', result.sold)
       QuestSystem.recordAction('earn', result.coins)
+      SoundSystem.play('sell')
       const soldMsg = result.sold > 1 ? 'Sold ' + result.sold + 'x for ' + result.coins + ' 🪙!' : 'Sold for ' + result.coins + ' 🪙!'
       showFeedback(soldMsg, '#ffd700')
       updateHUD()
@@ -1891,6 +1897,7 @@ window.addEventListener('quest-complete', (e) => {
   const { quest, coins, xp, streak } = e.detail
   gameState.coins += coins
   addXP(xp)
+  SoundSystem.play('quest')
   updateHUD()
   showToast(
     'Quest Complete: ' + quest.desc, 'quest',

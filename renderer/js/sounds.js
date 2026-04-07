@@ -166,6 +166,33 @@ export const SoundSystem = {
         // Notification chime
         this._tone('sine', 880, 0.10, 0.10, 1100)
         break
+
+      case 'buy':
+        // Satisfying coin-click purchase sound
+        this._tone('sine', 523, 0.15, 0.08, 784)
+        setTimeout(() => this._tone('sine', 784, 0.12, 0.10, 1046), 70)
+        break
+
+      case 'sell':
+        // Coins clinking — two quick descending tones
+        this._tone('sine', 1046, 0.18, 0.10, 659)
+        setTimeout(() => this._tone('sine', 784, 0.14, 0.10, 523), 90)
+        break
+
+      case 'quest':
+        // Short triumphant fanfare — 3 rising notes
+        this._sequence('sine', 0.22, [
+          [0.00, 659, 0.14],
+          [0.14, 784, 0.14],
+          [0.28, 1047, 0.32]
+        ])
+        break
+
+      case 'feed':
+        // Happy animal chirp — quick wobble
+        this._tone('sine', 480, 0.15, 0.12, 600)
+        setTimeout(() => this._tone('sine', 580, 0.10, 0.10, 480), 100)
+        break
     }
   }
 }
