@@ -1861,6 +1861,9 @@ if (craftCloseBtn) {
 }
 
 // ── Crop growth update ───────────────────────────────────────────────────────
+// Throttle wither warning toasts — batch into one toast per check interval
+let _witherWarnCooldown = 0
+
 function updateCrops (dtMs) {
   if (!terrainData) return
 
@@ -1868,7 +1871,12 @@ function updateCrops (dtMs) {
   const effects = getBuildingEffects(farmState.buildings)
   const growthMul = effects.cropGrowthMultiplier
 
+  _witherWarnCooldown = Math.max(0, _witherWarnCooldown - dtMs)
+
   const allPlots = terrainData.getAllPlots()
+  let witherWarnCount = 0
+  let justWitheredCount = 0
+
   for (const plot of allPlots) {
     if (!plot.crop || plot.state !== terrainData.PLOT_STATES.PLANTED) continue
 
@@ -1881,12 +1889,51 @@ function updateCrops (dtMs) {
 
       if (plot.crop.withered) {
         plot.cropMesh = createWitheredMesh(plot.crop.type)
+        justWitheredCount++
       } else {
         plot.cropMesh = createCropMesh(plot.crop.type, plot.crop.stage)
       }
       plot.cropMesh.position.set(plot.x, 0.08, plot.z)
       sceneData.scene.add(plot.cropMesh)
     }
+
+    // Wither warning: mature crop past 75% of its wither window -> orange glow ring
+    if (plot.crop && !plot.crop.withered && plot.cropMesh) {
+      const def = CROP_DEFINITIONS[plot.crop.type]
+      if (def) {
+        const maxStage = def.stages - 1
+        if (plot.crop.stage >= maxStage) {
+          const elapsed = Date.now() - plot.crop.plantedAt
+          const warnThreshold = def.growTime * 2.5     // 75% into 2x wither window
+          if (elapsed >= warnThreshold) {
+            // Tint glow ring orange as a persistent visual warning
+            plot.cropMesh.traverse(child => {
+              if (child.userData.isGlowRing && child.material) {
+                child.material.color.setHex(0xff6600)
+              }
+            })
+            // Toast once per crop
+            if (!plot.crop.witherWarned) {
+              plot.crop.witherWarned = true
+              witherWarnCount++
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Batch wither warning toast (throttled to avoid spam)
+  if (witherWarnCount > 0 && _witherWarnCooldown <= 0) {
+    const label = witherWarnCount === 1 ? '1 crop is nearly withered!' : witherWarnCount + ' crops are nearly withered!'
+    showToast(label, 'error', 'Harvest now before they die!')
+    _witherWarnCooldown = 60000 // 60 s cooldown before next batch warning
+  }
+
+  // Wither event toast (immediate, one-shot per event)
+  if (justWitheredCount > 0) {
+    const label = justWitheredCount === 1 ? '1 crop withered away' : justWitheredCount + ' crops withered'
+    showToast(label, 'error', 'Remove withered crops to free the plot')
   }
 }
 
@@ -2394,7 +2441,8 @@ function saveGame () {
             crop: plot.crop ? {
               type: plot.crop.type, stage: plot.crop.stage,
               watered: plot.crop.watered, withered: plot.crop.withered,
-              plantedAt: plot.crop.plantedAt, growthAccum: plot.crop.growthAccum
+              plantedAt: plot.crop.plantedAt, growthAccum: plot.crop.growthAccum,
+              witherWarned: plot.crop.witherWarned || false
             } : null
           })
         }
@@ -2531,6 +2579,7 @@ function loadGame () {
             withered: pd.crop.withered || false,
             plantedAt: pd.crop.plantedAt,
             growthAccum: pd.crop.growthAccum || 0,
+            witherWarned: pd.crop.witherWarned || false,
             mesh: cropMesh
           }
           plot.cropMesh = cropMesh
