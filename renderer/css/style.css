@@ -150,6 +150,18 @@ body {
   white-space: nowrap;
 }
 
+/* ── Season display ───────────────────────────────────────────────────────── */
+#season-display {
+  color: #c8f0b0;
+  font-size: 13px;
+  padding: 2px 10px;
+  background: rgba(100, 200, 80, 0.1);
+  border-radius: 10px;
+  border: 1px solid rgba(100, 200, 80, 0.25);
+  white-space: nowrap;
+  transition: color 1.5s ease, background 1.5s ease, border-color 1.5s ease;
+}
+
 /* ── Phase 7: Sound Toggle ─────────────────────────────────────────────────── */
 .hud-icon-btn {
   width: 34px;

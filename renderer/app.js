@@ -107,6 +107,7 @@ const startBtn = document.getElementById('start-btn')
 const coinDisplay = document.getElementById('coin-display')
 const xpDisplay = document.getElementById('xp-display')
 const energyDisplay = document.getElementById('energy-display')
+const seasonDisplay = document.getElementById('season-display')
 const energyBarFill = document.getElementById('energy-bar-fill')
 const toolbar = document.getElementById('toolbar')
 const seedStrip = document.getElementById('seed-strip')
@@ -299,6 +300,51 @@ if (window.IPCBridge && window.IPCBridge.available) {
 
 // ── Initialize NeighborRenderer ─────────────────────────────────────────────
 NeighborRenderer.init(sceneData.scene)
+
+// ── Season system ─────────────────────────────────────────────────────────────
+// Seasons cycle based on real-world week-of-year: 13 weeks each (spring/summer/autumn/winter)
+// Using a repeating 52-week cycle so it feels alive without requiring a save field.
+const SEASON_INFO = {
+  spring: { icon: '🌸', label: 'Spring', weekStart: 0  },
+  summer: { icon: '☀️', label: 'Summer', weekStart: 13 },
+  autumn: { icon: '🍂', label: 'Autumn', weekStart: 26 },
+  winter: { icon: '❄️', label: 'Winter', weekStart: 39 }
+}
+
+function getSeasonFromDate () {
+  const now = new Date()
+  const startOfYear = new Date(now.getFullYear(), 0, 1)
+  const weekOfYear = Math.floor((now - startOfYear) / (7 * 24 * 60 * 60 * 1000))
+  const w = weekOfYear % 52
+  if (w < 13) return 'spring'
+  if (w < 26) return 'summer'
+  if (w < 39) return 'autumn'
+  return 'winter'
+}
+
+let _lastSeasonCheck = 0
+
+function updateSeasonIfChanged () {
+  const now = Date.now()
+  if (now - _lastSeasonCheck < 60000) return  // check at most once per minute
+  _lastSeasonCheck = now
+
+  const season = getSeasonFromDate()
+  if (terrainData && terrainData.getCurrentSeason() !== season) {
+    terrainData.setSeasonColors(season)
+    showToast(SEASON_INFO[season].label + ' has arrived!', 'level',
+      season === 'spring' ? 'Flowers bloom across the farm' :
+      season === 'summer' ? 'Long sunny days ahead' :
+      season === 'autumn' ? 'Harvest time — leaves turn golden' :
+      'A blanket of frost settles on the fields')
+  }
+
+  // Update season HUD
+  if (seasonDisplay) {
+    const info = SEASON_INFO[season] || SEASON_INFO.summer
+    seasonDisplay.textContent = info.icon + ' ' + info.label
+  }
+}
 
 // ── HUD update ───────────────────────────────────────────────────────────────
 function updateHUD () {
@@ -2181,6 +2227,9 @@ function gameLoop (time) {
   // Energy regen
   regenEnergy(dtMs)
 
+  // Season check (throttled to once per minute inside the function)
+  updateSeasonIfChanged()
+
   // P2P: sync farm state periodically
   syncFarmState()
 
@@ -2232,6 +2281,13 @@ function startGame () {
   // Update HUD
   updateHUD()
   updateVehicleStatus()
+
+  // Apply initial season colors
+  if (terrainData) {
+    terrainData.setSeasonColors(getSeasonFromDate())
+    _lastSeasonCheck = Date.now()
+    updateSeasonIfChanged()
+  }
 
   // Initialize P2P
   if (window.IPCBridge && window.IPCBridge.available) {

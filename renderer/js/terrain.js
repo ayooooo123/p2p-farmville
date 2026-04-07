@@ -22,6 +22,17 @@ const COLORS = {
   path: 0xc2a66e
 }
 
+// Season grass palettes: [primary, alt, baseTerrain]
+const SEASON_GRASS = {
+  spring: [0x5aad2e, 0x4d9e26, 0x4d9426],   // bright spring green
+  summer: [0x4a7c2e, 0x3f7028, 0x3d6b24],   // deep summer green (default)
+  autumn: [0x7a7228, 0x6b621e, 0x5e5518],   // golden-brown harvest hues
+  winter: [0x8ab0a0, 0x7da098, 0x6e9088]    // pale frosty green-grey
+}
+
+let currentSeason = 'summer'
+let baseTerrainMesh = null  // ref to the large background plane
+
 let plotGrid = []
 let plotMeshes = []
 let raycaster = null
@@ -50,6 +61,7 @@ function createPlotGrid (sceneRef) {
   terrain.position.y = -0.05
   terrain.name = 'baseTerrain'
   scene.add(terrain)
+  baseTerrainMesh = terrain
 
   // Path borders around farm
   _createPaths(scene)
@@ -97,6 +109,8 @@ function createPlotGrid (sceneRef) {
     setPlotWatered,
     getPlotFromRaycast,
     getAllPlots,
+    setSeasonColors,
+    getCurrentSeason,
     PLOT_STATES
   }
 }
@@ -262,5 +276,40 @@ function getPlotFromRaycast (mouseNDC, camera) {
   return null
 }
 
-window.TerrainSystem = { createPlotGrid, PLOT_STATES }
-export { createPlotGrid, PLOT_STATES, getPlotAt, getPlotFromRaycast, getAllPlots, setPlotWatered }
+/**
+ * Update grass plot colours to match the given season.
+ * Only affects GRASS-state plots (plowed/planted plots keep their soil colours).
+ * @param {string} season - 'spring' | 'summer' | 'autumn' | 'winter'
+ */
+function setSeasonColors (season) {
+  if (!SEASON_GRASS[season] || season === currentSeason) return
+  currentSeason = season
+
+  const [primary, alt, base] = SEASON_GRASS[season]
+
+  // Update the large background terrain plane
+  if (baseTerrainMesh) {
+    baseTerrainMesh.material.color.setHex(base)
+  }
+
+  // Update every grass-state plot
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      const plot = plotGrid[row][col]
+      if (plot && plot.state === PLOT_STATES.GRASS) {
+        plot.mesh.material.color.setHex((row + col) % 2 === 0 ? primary : alt)
+      }
+    }
+  }
+
+  // Also update the grass-colour reference so setPlotState restores the right colour
+  COLORS.grass = primary
+  COLORS.grassAlt = alt
+}
+
+function getCurrentSeason () {
+  return currentSeason
+}
+
+window.TerrainSystem = { createPlotGrid, PLOT_STATES, setSeasonColors, getCurrentSeason }
+export { createPlotGrid, PLOT_STATES, getPlotAt, getPlotFromRaycast, getAllPlots, setPlotWatered, setSeasonColors, getCurrentSeason }
