@@ -144,6 +144,18 @@ let lastTime = 0
 const mouse = { x: 0, y: 0 }
 const mousePx = { x: 0, y: 0 }
 
+// ── HUD height tracking — keeps canvas below toolbar so farm isn't occluded ──
+function _updateHudHeight () {
+  const h = hud ? hud.getBoundingClientRect().height : 0
+  document.documentElement.style.setProperty('--hud-h', h + 'px')
+}
+// Observe HUD for size changes (seed strip toggling changes its height)
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(_updateHudHeight).observe(hud || document.body)
+}
+// Also recompute on window resize
+window.addEventListener('resize', _updateHudHeight)
+
 // ── Initialize Three.js scene ────────────────────────────────────────────────
 sceneData = initScene(canvas)
 terrainData = sceneData.terrainData
@@ -569,9 +581,10 @@ function showFloatingCoin (worldX, worldZ, text) {
 function worldToScreen (worldPos) {
   if (!sceneData || !sceneData.camera) return { x: 0, y: 0 }
   const vec = worldPos.clone().project(sceneData.camera)
+  const rect = canvas.getBoundingClientRect()
   return {
-    x: (vec.x * 0.5 + 0.5) * window.innerWidth,
-    y: (-vec.y * 0.5 + 0.5) * window.innerHeight
+    x: (vec.x * 0.5 + 0.5) * rect.width + rect.left,
+    y: (-vec.y * 0.5 + 0.5) * rect.height + rect.top
   }
 }
 

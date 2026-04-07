@@ -19,9 +19,9 @@ body {
 
 #game-canvas {
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--hud-h, 0px));
   position: absolute;
-  top: 0;
+  top: var(--hud-h, 0px);
   left: 0;
   display: block;
   z-index: 1;
