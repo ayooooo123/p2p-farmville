@@ -10,6 +10,7 @@ let selectedSeed = null
 let onSeedSelect = null
 let onBuyItem = null
 let activeTab = 'seeds'
+let marketSearch = ''
 
 const TABS = [
   { id: 'seeds', label: 'Seeds' },
@@ -111,30 +112,84 @@ function _ensureTabs () {
   }
 }
 
+function _ensureSearchBar (playerLevel) {
+  if (marketPanel.querySelector('#market-search-wrap')) return
+
+  const wrap = document.createElement('div')
+  wrap.id = 'market-search-wrap'
+
+  const input = document.createElement('input')
+  input.id = 'market-search'
+  input.type = 'search'
+  input.placeholder = 'Search...'
+  input.value = marketSearch
+  input.autocomplete = 'off'
+
+  const clear = document.createElement('button')
+  clear.id = 'market-search-clear'
+  clear.textContent = 'x'
+  clear.title = 'Clear search'
+  clear.style.display = marketSearch ? '' : 'none'
+
+  input.addEventListener('input', () => {
+    marketSearch = input.value.trim().toLowerCase()
+    clear.style.display = marketSearch ? '' : 'none'
+    const level = window._gameState ? window._gameState.level : playerLevel
+    _setTab(activeTab, level)
+    // Restore focus after re-render (which rebuilds the search bar node)
+    const newInput = marketPanel.querySelector('#market-search')
+    if (newInput) { newInput.focus(); newInput.selectionStart = newInput.selectionEnd = newInput.value.length }
+  })
+
+  clear.addEventListener('click', () => {
+    marketSearch = ''
+    const level = window._gameState ? window._gameState.level : playerLevel
+    _setTab(activeTab, level)
+  })
+
+  wrap.appendChild(input)
+  wrap.appendChild(clear)
+
+  const tabBar = marketPanel.querySelector('#market-tabs')
+  if (tabBar) tabBar.after(wrap)
+}
+
 function _setTab (tabId, playerLevel) {
   // Update tab buttons
   const tabBtns = marketPanel.querySelectorAll('.market-tab-btn')
   tabBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId))
 
+  // Rebuild search bar each render so it reflects current search state
+  const oldWrap = marketPanel.querySelector('#market-search-wrap')
+  if (oldWrap) oldWrap.remove()
+  _ensureSearchBar(playerLevel)
+
   const seedGrid = document.getElementById('market-seed-grid')
   if (!seedGrid) return
   seedGrid.innerHTML = ''
 
+  const q = marketSearch
   switch (tabId) {
-    case 'seeds': _renderSeeds(seedGrid, playerLevel); break
-    case 'trees': _renderCategoryItems(seedGrid, TREE_DEFINITIONS, 'tree', playerLevel); break
-    case 'animals': _renderCategoryItems(seedGrid, ANIMAL_DEFINITIONS, 'animal', playerLevel); break
-    case 'buildings': _renderCategoryItems(seedGrid, BUILDING_DEFINITIONS, 'building', playerLevel); break
-    case 'decorations': _renderCategoryItems(seedGrid, DECO_DEFINITIONS, 'decoration', playerLevel); break
-    case 'vehicles': _renderCategoryItems(seedGrid, VEHICLE_DEFINITIONS, 'vehicle', playerLevel); break
-    case 'items': _renderConsumables(seedGrid, playerLevel); break
+    case 'seeds': _renderSeeds(seedGrid, playerLevel, q); break
+    case 'trees': _renderCategoryItems(seedGrid, TREE_DEFINITIONS, 'tree', playerLevel, q); break
+    case 'animals': _renderCategoryItems(seedGrid, ANIMAL_DEFINITIONS, 'animal', playerLevel, q); break
+    case 'buildings': _renderCategoryItems(seedGrid, BUILDING_DEFINITIONS, 'building', playerLevel, q); break
+    case 'decorations': _renderCategoryItems(seedGrid, DECO_DEFINITIONS, 'decoration', playerLevel, q); break
+    case 'vehicles': _renderCategoryItems(seedGrid, VEHICLE_DEFINITIONS, 'vehicle', playerLevel, q); break
+    case 'items': _renderConsumables(seedGrid, playerLevel, q); break
   }
 }
 
-function _renderSeeds (grid, playerLevel) {
+function _renderSeeds (grid, playerLevel, q = '') {
   const sortedCrops = Object.entries(CROP_DEFINITIONS)
     .filter(([, def]) => def.level <= playerLevel)
+    .filter(([, def]) => !q || def.name.toLowerCase().includes(q))
     .sort((a, b) => a[1].level - b[1].level || a[1].seedCost - b[1].seedCost)
+
+  if (sortedCrops.length === 0) {
+    grid.innerHTML = '<div class="market-empty">' + (q ? 'No results for "' + q + '"' : 'No seeds available at your level') + '</div>'
+    return
+  }
 
   for (const [key, def] of sortedCrops) {
     const card = document.createElement('div')
@@ -168,13 +223,14 @@ function _renderSeeds (grid, playerLevel) {
   }
 }
 
-function _renderCategoryItems (grid, definitions, category, playerLevel) {
+function _renderCategoryItems (grid, definitions, category, playerLevel, q = '') {
   const sorted = Object.entries(definitions)
     .filter(([, def]) => def.level <= playerLevel)
+    .filter(([, def]) => !q || def.name.toLowerCase().includes(q))
     .sort((a, b) => a[1].level - b[1].level || a[1].cost - b[1].cost)
 
   if (sorted.length === 0) {
-    grid.innerHTML = '<div class="market-empty">No items available at your level</div>'
+    grid.innerHTML = '<div class="market-empty">' + (q ? 'No results for "' + q + '"' : 'No items available at your level') + '</div>'
     return
   }
 
@@ -213,13 +269,14 @@ function _renderCategoryItems (grid, definitions, category, playerLevel) {
   }
 }
 
-function _renderConsumables (grid, playerLevel) {
+function _renderConsumables (grid, playerLevel, q = '') {
   const available = Object.entries(CONSUMABLE_DEFINITIONS)
     .filter(([, def]) => def.level <= playerLevel)
+    .filter(([, def]) => !q || def.name.toLowerCase().includes(q))
     .sort((a, b) => a[1].cost - b[1].cost)
 
   if (available.length === 0) {
-    grid.innerHTML = '<div class="market-empty">No items available at your level</div>'
+    grid.innerHTML = '<div class="market-empty">' + (q ? 'No results for "' + q + '"' : 'No items available at your level') + '</div>'
     return
   }
 
