@@ -17,8 +17,33 @@ const TABS = [
   { id: 'animals', label: 'Animals' },
   { id: 'buildings', label: 'Buildings' },
   { id: 'decorations', label: 'Decor' },
-  { id: 'vehicles', label: 'Vehicles' }
+  { id: 'vehicles', label: 'Vehicles' },
+  { id: 'items', label: 'Items' }
 ]
+
+// ── Consumable / Usable Items ──────────────────────────────────────────────
+const CONSUMABLE_DEFINITIONS = {
+  energy_potion: {
+    name: 'Energy Potion',
+    description: 'Restores 10 energy instantly.',
+    cost: 50,
+    level: 1,
+    icon: '#5bc8f5',
+    usable: true,
+    useEffect: { restoreEnergy: 10 },
+    sellPrice: 0
+  },
+  energy_potion_large: {
+    name: 'Super Energy Potion',
+    description: 'Restores 25 energy instantly.',
+    cost: 110,
+    level: 5,
+    icon: '#2288ff',
+    usable: true,
+    useEffect: { restoreEnergy: 25 },
+    sellPrice: 0
+  }
+}
 
 /**
  * Initialize the market UI
@@ -102,6 +127,7 @@ function _setTab (tabId, playerLevel) {
     case 'buildings': _renderCategoryItems(seedGrid, BUILDING_DEFINITIONS, 'building', playerLevel); break
     case 'decorations': _renderCategoryItems(seedGrid, DECO_DEFINITIONS, 'decoration', playerLevel); break
     case 'vehicles': _renderCategoryItems(seedGrid, VEHICLE_DEFINITIONS, 'vehicle', playerLevel); break
+    case 'items': _renderConsumables(seedGrid, playerLevel); break
   }
 }
 
@@ -187,6 +213,42 @@ function _renderCategoryItems (grid, definitions, category, playerLevel) {
   }
 }
 
+function _renderConsumables (grid, playerLevel) {
+  const available = Object.entries(CONSUMABLE_DEFINITIONS)
+    .filter(([, def]) => def.level <= playerLevel)
+    .sort((a, b) => a[1].cost - b[1].cost)
+
+  if (available.length === 0) {
+    grid.innerHTML = '<div class="market-empty">No items available at your level</div>'
+    return
+  }
+
+  for (const [key, def] of available) {
+    const card = document.createElement('div')
+    card.className = 'market-seed-card market-item-card market-consumable-card'
+    card.dataset.itemKey = key
+
+    card.innerHTML = `
+      <div class="consumable-icon" style="background: ${def.icon};"></div>
+      <div class="seed-name">${def.name}</div>
+      <div class="consumable-desc">${def.description}</div>
+      <div class="seed-stats">
+        <span class="seed-cost">${def.cost} coins</span>
+        <span class="seed-level">Lv.${def.level}</span>
+      </div>
+      <button class="market-buy-btn">Buy</button>
+    `
+
+    const buyBtn = card.querySelector('.market-buy-btn')
+    buyBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (onBuyItem) onBuyItem({ category: 'consumable', key, def })
+    })
+
+    grid.appendChild(card)
+  }
+}
+
 function hideMarket () {
   if (marketPanel) marketPanel.classList.remove('visible')
 }
@@ -245,5 +307,5 @@ function updateSeedStrip (playerLevel, stripEl, onSelect) {
   }
 }
 
-window.MarketSystem = { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip }
-export { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip }
+window.MarketSystem = { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, CONSUMABLE_DEFINITIONS }
+export { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, CONSUMABLE_DEFINITIONS }

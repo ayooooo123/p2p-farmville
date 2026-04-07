@@ -1,7 +1,7 @@
 import * as THREE from './js/three.module.min.js'
 import { initScene, animate as renderScene, initCameraControls, updateCamera, resetCamera } from './js/scene.js'
 import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop } from './js/crops.js'
-import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip } from './js/market.js'
+import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, CONSUMABLE_DEFINITIONS } from './js/market.js'
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
 import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildingEffects, updateCraftingQueue, startCrafting } from './js/buildings.js'
@@ -706,6 +706,21 @@ function handleMarketBuy ({ category, key, def }) {
     return
   }
 
+  if (category === 'consumable') {
+    gameState.coins -= def.cost
+    addItem(key, 1, {
+      name: def.name,
+      type: 'consumable',
+      sellPrice: def.sellPrice || 0,
+      usable: true,
+      useEffect: def.useEffect
+    })
+    showFeedback('Bought ' + def.name + '!', '#5bc8f5')
+    showToast(def.name, 'harvest', 'Added to inventory — use it from your pack!')
+    updateHUD()
+    return
+  }
+
   // Trees, Animals, Buildings, Decorations -> enter placement mode
   enterPlacementMode(category, key, def)
   hideMarket()
@@ -1113,6 +1128,19 @@ function renderInventoryUI () {
       renderInventoryUI()
       checkAchievements()
     }
+  }, (itemId, useEffect) => {
+    // Handle usable item consumption
+    if (!useEffect) return
+    const removed = removeItem(itemId, 1)
+    if (!removed) { showFeedback('No more ' + itemId + '!', '#ff4444'); return }
+    if (useEffect.restoreEnergy) {
+      const restored = Math.min(useEffect.restoreEnergy, gameState.maxEnergy - gameState.energy)
+      gameState.energy = Math.min(gameState.energy + useEffect.restoreEnergy, gameState.maxEnergy)
+      showFeedback('+' + restored + ' Energy!', '#5bc8f5')
+      showToast('Energy Restored', 'water', '+' + restored + ' energy (' + gameState.energy + '/' + gameState.maxEnergy + ')')
+      updateHUD()
+    }
+    renderInventoryUI()
   })
 }
 
