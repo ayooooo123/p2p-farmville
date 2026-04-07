@@ -17,6 +17,8 @@ import { initParticles, createParticleEffect, updateParticles } from './js/parti
 import { FarmActions } from './js/farm-actions.js'
 import { showToast } from './js/toasts.js'
 import { QuestSystem } from './js/quests.js'
+import { SoundSystem } from './js/sounds.js'
+import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -301,6 +303,32 @@ if (window.IPCBridge && window.IPCBridge.available) {
 // ── Initialize NeighborRenderer ─────────────────────────────────────────────
 NeighborRenderer.init(sceneData.scene)
 
+// ── Weather HUD + Rain auto-water ─────────────────────────────────────────────
+const weatherDisplay = document.getElementById('weather-display')
+
+function _updateWeatherHUD () {
+  if (!weatherDisplay) return
+  const icon = getWeatherIcon()
+  const name = getWeatherName()
+  weatherDisplay.textContent = icon + ' ' + name
+}
+
+function rainAutoWaterCrops () {
+  if (!terrainData || !gameState.running) return
+  const allPlots = terrainData.getAllPlots()
+  let count = 0
+  for (const plot of allPlots) {
+    if (plot.state !== terrainData.PLOT_STATES.PLANTED || !plot.crop || plot.crop.withered || plot.crop.watered) continue
+    terrainData.setPlotWatered(plot.row, plot.col, true)
+    count++
+  }
+  if (count > 0) {
+    showToast('Rain watered ' + count + ' crop' + (count === 1 ? '' : 's') + '!', 'water', 'Growth speed doubled! 💧')
+    SoundSystem.play('water')
+    QuestSystem.recordAction('water', count)
+  }
+}
+
 // ── Season system ─────────────────────────────────────────────────────────────
 // Seasons cycle based on real-world week-of-year: 13 weeks each (spring/summer/autumn/winter)
 // Using a repeating 52-week cycle so it feels alive without requiring a save field.
@@ -482,6 +510,7 @@ function addXP (amount) {
 }
 
 function showLevelUp (level) {
+  SoundSystem.play('levelup')
   levelUpDetail.textContent = 'You reached Level ' + level + '!'
   levelUpNotif.style.display = 'flex'
   levelUpNotif.classList.add('show')
@@ -1030,6 +1059,7 @@ function handleAnimalInteract (animal) {
       addItem(animal.type + '_product', 1, { name: reward.product, type: 'animal product', sellPrice: reward.coins })
       createParticleEffect('harvest', { x: animal.x, y: 0.3, z: animal.z })
       showFloatingCoin(animal.x, animal.z, '+' + reward.coins)
+      SoundSystem.play('collect')
       showFeedback('Collected ' + reward.product + '! +' + reward.coins + ' coins', '#ffd700')
       checkAchievements()
     }
@@ -1262,6 +1292,7 @@ function handlePlow (plot) {
   addXP(PLOW_XP)
   gameState.totalPlowed++
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
+  SoundSystem.play('plow')
   showFeedback('Plowed! -' + PLOW_COST + ' coins', '#daa520')
   QuestSystem.recordAction('plow')
   checkAchievements()
@@ -1307,6 +1338,7 @@ function handlePlant (plot) {
   gameState.totalPlanted++
   gameState.lastUsedSeed = seedKey  // remember for auto-equip next time
   createParticleEffect('planting', { x: plot.x, y: 0.1, z: plot.z })
+  SoundSystem.play('plant')
   showFeedback('Planted ' + cropDef.name + '! -' + cropDef.seedCost + ' coins', '#32cd32')
   QuestSystem.recordAction('plant')
   checkAchievements()
@@ -1332,6 +1364,7 @@ function handleWater (plot) {
   gameState.totalWatered++
   terrainData.setPlotWatered(plot.row, plot.col, true)
   createParticleEffect('watering', { x: plot.x, y: 0.1, z: plot.z })
+  SoundSystem.play('water')
   showFeedback('Watered! Growth speed 2x', '#4169e1')
   QuestSystem.recordAction('water')
   checkAchievements()
@@ -1389,6 +1422,7 @@ function handleHarvest (plot) {
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
 
   // Particle burst + float-up text at harvest position
+  SoundSystem.play('harvest')
   createParticleEffect('harvest', { x: plot.x, y: 0.1, z: plot.z })
   createParticleEffect('coin', { x: plot.x, y: 0.3, z: plot.z })
   const sc = worldToScreen(new THREE.Vector3(plot.x, 0.08, plot.z))
@@ -1421,6 +1455,7 @@ function handleRemove (plot) {
   }
   plot.crop = null
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
+  SoundSystem.play('remove')
   showFeedback('Removed ' + name + ' (no refund)', '#ff6347')
 }
 
@@ -1871,6 +1906,20 @@ if (craftCloseBtn) {
   })
 }
 
+// ── Sound toggle button ───────────────────────────────────────────────────────
+const soundToggleBtn = document.getElementById('sound-toggle-btn')
+if (soundToggleBtn) {
+  // Reflect initial state
+  soundToggleBtn.textContent = SoundSystem.enabled ? '🔊' : '🔇'
+  soundToggleBtn.title = SoundSystem.enabled ? 'Sound On (click to mute)' : 'Sound Off (click to unmute)'
+  soundToggleBtn.addEventListener('click', () => {
+    const on = SoundSystem.toggle()
+    soundToggleBtn.textContent = on ? '🔊' : '🔇'
+    soundToggleBtn.title = on ? 'Sound On (click to mute)' : 'Sound Off (click to unmute)'
+    if (on) SoundSystem.play('toast')
+  })
+}
+
 // ── Crop growth update ───────────────────────────────────────────────────────
 // Throttle wither warning toasts — batch into one toast per check interval
 let _witherWarnCooldown = 0
@@ -1943,6 +1992,7 @@ function updateCrops (dtMs) {
 
   // Wither event toast (immediate, one-shot per event)
   if (justWitheredCount > 0) {
+    SoundSystem.play('wither')
     const label = justWitheredCount === 1 ? '1 crop withered away' : justWitheredCount + ' crops withered'
     showToast(label, 'error', 'Remove withered crops to free the plot')
   }
@@ -2382,6 +2432,7 @@ function gameLoop (time) {
   updateCamera()
 
   // Update systems
+  updateWeather(dtMs, sceneData.sunLight)
   updateCrops(dtMs)
   animateReadyCrops(time)
   updateCropTimers(time)
@@ -2455,6 +2506,32 @@ function startGame () {
     _lastSeasonCheck = Date.now()
     updateSeasonIfChanged()
   }
+
+  // ── Initialize weather system ──────────────────────────────────────────────
+  initWeather(sceneData.scene, {
+    onAutoWater: rainAutoWaterCrops
+  })
+
+  // Register weather change listener → update HUD + toast
+  onWeatherChange((newWeather, oldWeather) => {
+    _updateWeatherHUD()
+    if (newWeather === 'rainy' || newWeather === 'stormy') {
+      showToast(
+        getWeatherIcon() + ' ' + getWeatherName() + ' is rolling in!',
+        'water',
+        'Rain will water your crops automatically'
+      )
+    } else if (oldWeather === 'rainy' || oldWeather === 'stormy') {
+      showToast(
+        getWeatherIcon() + ' ' + getWeatherName(),
+        'info',
+        'The rain has passed'
+      )
+    }
+  })
+
+  // Set initial weather HUD state
+  _updateWeatherHUD()
 
   // Initialize P2P
   if (window.IPCBridge && window.IPCBridge.available) {
