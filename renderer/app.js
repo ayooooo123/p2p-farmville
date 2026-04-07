@@ -515,6 +515,11 @@ function showLevelUp (level) {
   levelUpNotif.style.display = 'flex'
   levelUpNotif.classList.add('show')
 
+  // Burst level-up particles at farm center
+  createParticleEffect('levelup', { x: 0, y: 0.5, z: 0 })
+  createParticleEffect('levelup', { x: -3, y: 0.5, z: -3 })
+  createParticleEffect('levelup', { x: 3, y: 0.5, z: 3 })
+
   showToast('Level Up! You are now level ' + level, 'level', 'New crops and items unlocked!')
 
   setTimeout(() => {
@@ -1958,6 +1963,11 @@ function updateCrops (dtMs) {
         plot.cropMesh = createWitheredMesh(plot.crop.type)
         justWitheredCount++
       } else {
+        const def = CROP_DEFINITIONS[plot.crop.type]
+        // Sparkle burst when crop first reaches final (ready-to-harvest) stage
+        if (def && plot.crop.stage >= def.stages - 1) {
+          createParticleEffect('harvest', { x: plot.x, y: 0.3, z: plot.z })
+        }
         plot.cropMesh = createCropMesh(plot.crop.type, plot.crop.stage)
       }
       plot.cropMesh.position.set(plot.x, 0.08, plot.z)
