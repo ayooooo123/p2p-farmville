@@ -282,6 +282,7 @@ body {
 }
 
 .tool-btn {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -295,6 +296,26 @@ body {
   font-size: 12px;
   transition: all 0.15s ease;
   user-select: none;
+}
+
+.tool-key {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: monospace;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  padding: 1px 3px;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.tool-btn:hover .tool-key,
+.tool-btn.active .tool-key {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .tool-btn:hover {
