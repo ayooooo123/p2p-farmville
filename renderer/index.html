@@ -104,6 +104,14 @@
           </svg>
           <span class="tool-label">Quests</span>
         </button>
+        <button id="stats-btn" class="tool-btn" title="Farm Stats (F)">
+          <span class="tool-key">F</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Bar chart -->
+            <rect x="18" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="2" y="13" width="4" height="8"/>
+          </svg>
+          <span class="tool-label">Stats</span>
+        </button>
         <button id="market-open-btn" class="tool-btn tool-btn-market" title="Open Market">
           <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <!-- Shop/storefront -->
@@ -169,12 +177,13 @@
         <div class="shortcuts-section">
           <div class="shortcuts-section-title">Panels</div>
           <div class="shortcut-row"><kbd>I</kbd><span>Inventory</span></div>
-          <div class="shortcut-row"><kbd>T</kbd><span>Trade</span></div>
-          <div class="shortcut-row"><kbd>R</kbd><span>Riddles / Quests</span></div>
+          <div class="shortcut-row"><kbd>T</kbd><span>Trade / Chat</span></div>
           <div class="shortcut-row"><kbd>M</kbd><span>Minimap</span></div>
-          <div class="shortcut-row"><kbd>J</kbd><span>Journal</span></div>
-          <div class="shortcut-row"><kbd>K</kbd><span>Collections</span></div>
-          <div class="shortcut-row"><kbd>X</kbd><span>Achievements</span></div>
+          <div class="shortcut-row"><kbd>F</kbd><span>Farm Stats</span></div>
+          <div class="shortcut-row"><kbd>U</kbd><span>Crop Mastery</span></div>
+          <div class="shortcut-row"><kbd>J</kbd><span>Collections</span></div>
+          <div class="shortcut-row"><kbd>K</kbd><span>Achievements</span></div>
+          <div class="shortcut-row"><kbd>X</kbd><span>Farm Expansion</span></div>
         </div>
         <div class="shortcuts-section">
           <div class="shortcuts-section-title">Camera</div>
@@ -422,6 +431,52 @@
       </div>
       <div id="expansion-current">Current: 20x20</div>
       <div id="expansion-content"></div>
+    </div>
+
+    <!-- Farm Stats Panel -->
+    <div id="stats-panel">
+      <div id="stats-header">
+        <h2>Farm Stats</h2>
+        <button id="stats-close-btn" class="panel-close-btn">X</button>
+      </div>
+      <div id="stats-content">
+        <div class="stats-section">
+          <div class="stats-section-title">Farming</div>
+          <div class="stats-grid">
+            <div class="stat-item"><span class="stat-icon">🌾</span><span class="stat-label">Harvests</span><span class="stat-value" id="stat-harvests">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🌱</span><span class="stat-label">Planted</span><span class="stat-value" id="stat-planted">0</span></div>
+            <div class="stat-item"><span class="stat-icon">💧</span><span class="stat-label">Watered</span><span class="stat-value" id="stat-watered">0</span></div>
+            <div class="stat-item"><span class="stat-icon">⛏</span><span class="stat-label">Plowed</span><span class="stat-value" id="stat-plowed">0</span></div>
+          </div>
+        </div>
+        <div class="stats-section">
+          <div class="stats-section-title">Economy</div>
+          <div class="stats-grid">
+            <div class="stat-item"><span class="stat-icon">🪙</span><span class="stat-label">Earned</span><span class="stat-value" id="stat-earned">0</span></div>
+            <div class="stat-item"><span class="stat-icon">📦</span><span class="stat-label">Sold</span><span class="stat-value" id="stat-sold">0</span></div>
+            <div class="stat-item"><span class="stat-icon">⚒</span><span class="stat-label">Crafted</span><span class="stat-value" id="stat-crafted">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🔄</span><span class="stat-label">Trades</span><span class="stat-value" id="stat-trades">0</span></div>
+          </div>
+        </div>
+        <div class="stats-section">
+          <div class="stats-section-title">Social</div>
+          <div class="stats-grid">
+            <div class="stat-item"><span class="stat-icon">💬</span><span class="stat-label">Messages</span><span class="stat-value" id="stat-messages">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🎁</span><span class="stat-label">Gifts Sent</span><span class="stat-value" id="stat-gifts">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🚜</span><span class="stat-label">Visits</span><span class="stat-value" id="stat-visits">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🤝</span><span class="stat-label">Co-ops</span><span class="stat-value" id="stat-coops">0</span></div>
+          </div>
+        </div>
+        <div class="stats-section">
+          <div class="stats-section-title">Animals</div>
+          <div class="stats-grid">
+            <div class="stat-item"><span class="stat-icon">🐔</span><span class="stat-label">Fed</span><span class="stat-value" id="stat-fed">0</span></div>
+            <div class="stat-item"><span class="stat-icon">🥚</span><span class="stat-label">Products</span><span class="stat-value" id="stat-products">0</span></div>
+            <div class="stat-item"><span class="stat-icon">📅</span><span class="stat-label">Sessions</span><span class="stat-value" id="stat-sessions">0</span></div>
+            <div class="stat-item"><span class="stat-icon">⭐</span><span class="stat-label">Level</span><span class="stat-value" id="stat-level">1</span></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Phase 6: Progress Notification Area (top-right toasts) -->

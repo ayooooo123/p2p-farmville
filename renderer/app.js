@@ -1743,6 +1743,7 @@ window.addEventListener('keydown', (e) => {
     else if (collectionsPanel && collectionsPanel.classList.contains('visible')) closePanelIfOpen(collectionsPanel)
     else if (achievementsPanel && achievementsPanel.classList.contains('visible')) closePanelIfOpen(achievementsPanel)
     else if (expansionPanel && expansionPanel.classList.contains('visible')) closePanelIfOpen(expansionPanel)
+    else if (statsPanel && statsPanel.classList.contains('visible')) closeStatsPanel()
     else deselectTool()
     return
   }
@@ -1762,7 +1763,7 @@ window.addEventListener('keydown', (e) => {
   }
 
   // Phase 6: panel hotkeys
-  if (e.key === 'm' || e.key === 'M') {
+  if (e.key === 'u' || e.key === 'U') {
     if (gameState.running) openMasteryPanel()
     return
   }
@@ -1776,6 +1777,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.key === 'x' || e.key === 'X') {
     if (gameState.running) openExpansionPanel()
+    return
+  }
+  if (e.key === 'f' || e.key === 'F') {
+    if (gameState.running) toggleStatsPanel()
     return
   }
 
@@ -2715,6 +2720,47 @@ if (shortcutsCloseBtn) {
     if (shortcutsPanel) shortcutsPanel.style.display = 'none'
   })
 }
+
+// ── Farm Stats Panel ─────────────────────────────────────────────────────────
+const statsPanel = document.getElementById('stats-panel')
+const statsCloseBtn = document.getElementById('stats-close-btn')
+const statsBtnEl = document.getElementById('stats-btn')
+
+function openStatsPanel () {
+  if (!statsPanel || !gameState.running) return
+  // Populate all values from gameState
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = typeof val === 'number' ? val.toLocaleString() : val }
+  set('stat-harvests', gameState.totalHarvests)
+  set('stat-planted', gameState.totalPlanted)
+  set('stat-watered', gameState.totalWatered)
+  set('stat-plowed', gameState.totalPlowed)
+  set('stat-earned', gameState.totalCoinsEarned)
+  set('stat-sold', gameState.itemsSold)
+  set('stat-crafted', gameState.itemsCrafted)
+  set('stat-trades', gameState.tradesCompleted)
+  set('stat-messages', gameState.chatMessages)
+  set('stat-gifts', gameState.giftsSent)
+  set('stat-visits', gameState.farmsVisited)
+  set('stat-coops', gameState.coopCompleted)
+  set('stat-fed', gameState.animalsFed)
+  set('stat-products', gameState.animalProductsCollected)
+  set('stat-sessions', gameState.sessionsPlayed)
+  set('stat-level', gameState.level)
+  statsPanel.classList.add('visible')
+}
+
+function closeStatsPanel () {
+  if (statsPanel) statsPanel.classList.remove('visible')
+}
+
+function toggleStatsPanel () {
+  if (!statsPanel) return
+  if (statsPanel.classList.contains('visible')) closeStatsPanel()
+  else openStatsPanel()
+}
+
+if (statsCloseBtn) statsCloseBtn.addEventListener('click', closeStatsPanel)
+if (statsBtnEl) statsBtnEl.addEventListener('click', () => toggleStatsPanel())
 
 // Kick off render loop
 console.log('[app] starting game loop via requestAnimationFrame')
