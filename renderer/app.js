@@ -2115,6 +2115,51 @@ function updateCropTimers (time) {
   }
 }
 
+// ── Animal product-ready indicators (DOM overlay) ────────────────────────────
+// Map from animal index -> div element
+const _animalProductEls = new Map()
+
+function updateAnimalProductIndicators () {
+  if (!sceneData || !gameState.running) return
+
+  const container = document.getElementById('game-container')
+  if (!container) return
+
+  const seen = new Set()
+
+  for (let i = 0; i < farmState.animals.length; i++) {
+    const animal = farmState.animals[i]
+    if (!animal.productReady || !animal.mesh) continue
+
+    seen.add(i)
+
+    let el = _animalProductEls.get(i)
+    if (!el) {
+      el = document.createElement('div')
+      el.className = 'animal-product-ready'
+      el.textContent = '★'
+      el.title = 'Product ready — click to collect!'
+      container.appendChild(el)
+      _animalProductEls.set(i, el)
+    }
+
+    // Position above the animal mesh
+    const worldPos = new THREE.Vector3(animal.x, 1.1, animal.z)
+    const sc = worldToScreen(worldPos)
+    el.style.left = sc.x + 'px'
+    el.style.top = sc.y + 'px'
+    el.style.display = 'block'
+  }
+
+  // Remove indicators for animals that no longer have ready products
+  for (const [i, el] of _animalProductEls) {
+    if (!seen.has(i)) {
+      el.remove()
+      _animalProductEls.delete(i)
+    }
+  }
+}
+
 // ── Decoration animations (windmill blade rotation) ──────────────────────────
 function updateDecorations (time) {
   for (const deco of farmState.decorations) {
@@ -2455,6 +2500,7 @@ function gameLoop (time) {
   updateCropTimers(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
+  updateAnimalProductIndicators()
   updateBuildings(dtMs)
   updateDecorations(time)
   updateParticles(dtMs)
