@@ -1695,6 +1695,10 @@ window.addEventListener('keydown', (e) => {
     if (gameState.running) waterAll()
     return
   }
+  if (e.key === 'm' || e.key === 'M') {
+    if (gameState.running) toggleMinimap()
+    return
+  }
 
   // Number keys for quick tool select
   const toolKeys = { '1': 'plow', '2': 'plant', '3': 'water', '4': 'harvest', '5': 'remove' }
@@ -2026,6 +2030,98 @@ function syncFarmStateNow () {
   window.IPCBridge.sendFarmUpdate(serializeFarmState())
 }
 
+// ── Minimap ──────────────────────────────────────────────────────────────────
+const minimapWrap = document.getElementById('minimap-wrap')
+const minimapCanvas = document.getElementById('minimap-canvas')
+const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null
+let minimapVisible = true
+
+function toggleMinimap () {
+  minimapVisible = !minimapVisible
+  if (minimapWrap) minimapWrap.classList.toggle('minimap-hidden', !minimapVisible)
+}
+
+// Draw the minimap — called every ~10 frames for performance
+let minimapFrameCount = 0
+function drawMinimap () {
+  if (!minimapCtx || !terrainData || !gameState.running) return
+  minimapFrameCount++
+  if (minimapFrameCount % 10 !== 0) return  // update ~6fps
+
+  const COLS = 20
+  const ROWS = 20
+  const cw = minimapCanvas.width   // 120
+  const ch = minimapCanvas.height  // 120
+  const cellW = cw / COLS
+  const cellH = ch / ROWS
+
+  const plots = terrainData.getAllPlots()
+  const PS = terrainData.PLOT_STATES
+
+  minimapCtx.clearRect(0, 0, cw, ch)
+
+  for (const plot of plots) {
+    const x = plot.col * cellW
+    const y = plot.row * cellH
+
+    let color
+    if (plot.state === PS.GRASS) {
+      color = '#3d7a3d'
+    } else if (plot.state === PS.PLOWED) {
+      color = '#7a5c3d'
+    } else if (plot.state === PS.PLANTED) {
+      if (plot.crop && plot.crop.withered) {
+        color = '#5a3a2a'
+      } else if (plot.crop && plot.crop.stage >= 4) {
+        // Ready to harvest — gold
+        color = '#d4aa00'
+      } else if (plot.crop && plot.crop.watered) {
+        color = '#3a8fa0'
+      } else {
+        color = '#5aa05a'
+      }
+    } else {
+      color = '#3d7a3d'
+    }
+
+    minimapCtx.fillStyle = color
+    minimapCtx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(cellW), Math.ceil(cellH))
+  }
+
+  // Grid lines (subtle)
+  minimapCtx.strokeStyle = 'rgba(0,0,0,0.2)'
+  minimapCtx.lineWidth = 0.5
+  for (let c = 0; c <= COLS; c++) {
+    minimapCtx.beginPath()
+    minimapCtx.moveTo(c * cellW, 0)
+    minimapCtx.lineTo(c * cellW, ch)
+    minimapCtx.stroke()
+  }
+  for (let r = 0; r <= ROWS; r++) {
+    minimapCtx.beginPath()
+    minimapCtx.moveTo(0, r * cellH)
+    minimapCtx.lineTo(cw, r * cellH)
+    minimapCtx.stroke()
+  }
+
+  // Player dot
+  if (window.PlayerController) {
+    const pos = window.PlayerController.getPlayerPos()
+    // World coords: each cell is 2 units wide (PLOT_SIZE=2), grid is centered at 0
+    // Plot col = Math.floor((pos.x + ROWS) / 2) for a 20-col grid offset at -20
+    const WORLD_HALF = COLS  // 20 world units half-width
+    const px = ((pos.x + WORLD_HALF) / (WORLD_HALF * 2)) * cw
+    const py = ((pos.z + WORLD_HALF) / (WORLD_HALF * 2)) * ch
+    minimapCtx.beginPath()
+    minimapCtx.arc(px, py, 3, 0, Math.PI * 2)
+    minimapCtx.fillStyle = '#ffffff'
+    minimapCtx.fill()
+    minimapCtx.strokeStyle = 'rgba(0,0,0,0.6)'
+    minimapCtx.lineWidth = 1
+    minimapCtx.stroke()
+  }
+}
+
 // ── Game loop ────────────────────────────────────────────────────────────────
 function gameLoop (time) {
   requestAnimationFrame(gameLoop)
@@ -2071,6 +2167,7 @@ function gameLoop (time) {
 
   // Render
   renderScene()
+  drawMinimap()
 }
 
 // ── Setup screen logic ───────────────────────────────────────────────────────
@@ -2092,6 +2189,7 @@ function startGame () {
 
   setupScreen.style.display = 'none'
   hud.style.display = 'block'
+  if (minimapWrap) minimapWrap.style.display = 'block'
   chatPanel.style.display = 'flex'
   // Restore minimized state (default: minimized)
   const chatWasMinimized = localStorage.getItem('farmville-chat-minimized')
