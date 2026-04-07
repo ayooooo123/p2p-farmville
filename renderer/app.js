@@ -78,6 +78,12 @@ const farmState = {
 let placementMode = null // { category, key, def, ghostMesh }
 let activeCraftingBuilding = null
 
+// ── Drag-to-multi-action state ───────────────────────────────────────────────
+let isDragBulk = false          // suppress per-plot feedback during drag
+let dragTool = null             // which tool is being dragged
+let dragVisited = new Set()     // 'row,col' keys of plots acted on this drag
+let dragDidMove = false         // true once mouse moved to a second plot
+
 // ── P2P state ───────────────────────────────────────────────────────────────
 const p2pState = {
   initialized: false,
@@ -437,6 +443,7 @@ function showLevelUp (level) {
 
 // ── Action feedback ──────────────────────────────────────────────────────────
 function showFeedback (text, color) {
+  if (isDragBulk) return
   actionFeedback.textContent = text
   actionFeedback.style.color = color || '#fff'
   actionFeedback.style.display = 'block'
@@ -1309,7 +1316,7 @@ function handleHarvest (plot) {
   if (masteryBonus > 0) feedbackText += ' (+' + masteryBonus + ' mastery)'
   showFeedback(feedbackText, '#ffd700')
 
-  showToast('Harvested ' + cropDef.name, 'harvest', '+' + cropDef.sellPrice + ' 🪙 · +' + (cropDef.xp + masteryBonus) + ' XP' + (masteryBonus > 0 ? ' (mastery bonus!)' : ''))
+  if (!isDragBulk) showToast('Harvested ' + cropDef.name, 'harvest', '+' + cropDef.sellPrice + ' 🪙 · +' + (cropDef.xp + masteryBonus) + ' XP' + (masteryBonus > 0 ? ' (mastery bonus!)' : ''))
 
   checkAchievements()
   syncFarmStateNow()
@@ -1415,12 +1422,59 @@ canvas.addEventListener('mousemove', (e) => {
     updateGhostPosition()
   }
 
+  // Drag-to-multi-action: act on each new plot while dragging
+  if (dragTool && gameState.running && terrainData && !placementMode) {
+    const plot = terrainData.getPlotFromRaycast(mouse, sceneData.camera)
+    if (plot) {
+      const key = plot.row + ',' + plot.col
+      if (!dragVisited.has(key)) {
+        dragVisited.add(key)
+        // isDragBulk suppresses per-plot feedback from the 2nd plot onward
+        isDragBulk = dragVisited.size > 1
+        dragDidMove = dragVisited.size > 1
+        handlePlotClick(plot)
+      }
+    }
+  }
+
   // Tooltip on hover over placed objects (when no tool/placement active)
   if (!placementMode && !gameState.selectedTool && gameState.running) {
     updateHoverTooltip()
   } else {
     hideTooltip()
   }
+})
+
+// ── Drag-to-multi-action: start / finish ─────────────────────────────────────
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return
+  if (!gameState.running || !gameState.selectedTool || !terrainData || placementMode) return
+
+  dragTool = gameState.selectedTool
+  dragVisited.clear()
+  dragDidMove = false
+  isDragBulk = false
+  // Note: the first plot is acted on by mousemove (which fires on any movement)
+  // or by the click handler if the mouse never moves.
+})
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button !== 0 || !dragTool) return
+
+  const count = dragVisited.size
+  if (count > 1) {
+    // Show summary for bulk drag operations
+    const toolLabels = { plow: 'Plowed', plant: 'Planted', water: 'Watered', harvest: 'Harvested', remove: 'Removed' }
+    const label = toolLabels[dragTool] || dragTool
+    showToast(label + ' ' + count + ' plots', dragTool === 'harvest' ? 'harvest' : dragTool === 'water' ? 'water' : dragTool === 'plant' ? 'plant' : 'bulk')
+    updateHUD()
+  }
+
+  dragTool = null
+  isDragBulk = false
+  dragDidMove = false
+  // Clear dragVisited after the click event fires (click fires synchronously after mouseup)
+  setTimeout(() => { dragVisited.clear() }, 50)
 })
 
 function updateHoverTooltip () {
@@ -1545,6 +1599,9 @@ function _showCropTooltip (plot, px, py) {
 // ── Mouse click -> raycast to plot or object ─────────────────────────────────
 canvas.addEventListener('click', (e) => {
   if (!gameState.running || !terrainData) return
+
+  // Skip click if any plots were already acted on during a drag gesture
+  if (dragVisited.size > 0) return
 
   const rect = canvas.getBoundingClientRect()
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
