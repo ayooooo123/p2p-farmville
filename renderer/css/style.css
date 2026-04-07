@@ -2438,3 +2438,30 @@ body {
   color: #e8f5e9;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Crop timer labels (world-space overlay) ─────────────────────────────── */
+.crop-timer {
+  position: absolute;
+  pointer-events: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+  padding: 1px 4px;
+  white-space: nowrap;
+  z-index: 50;
+  transform: translate(-50%, -50%);
+  letter-spacing: 0.02em;
+  text-shadow: none;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+.crop-timer.watered {
+  color: #88ccff;
+}
+.crop-timer.ready {
+  color: #ffd700;
+  background: rgba(0, 0, 0, 0.70);
+  font-size: 11px;
+}

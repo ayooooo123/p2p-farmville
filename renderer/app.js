@@ -1972,6 +1972,82 @@ function animateReadyCrops (time) {
   }
 }
 
+// ── Crop timer labels (world-to-screen DOM overlay) ──────────────────────────
+// Map from 'row,col' -> div element
+const _cropTimerEls = new Map()
+let _cropTimerThrottle = 0  // update every 500ms, not every frame
+
+function _fmtTimeRemaining (msLeft) {
+  if (msLeft <= 0) return 'Ready!'
+  if (msLeft < 60000) return Math.ceil(msLeft / 1000) + 's'
+  if (msLeft < 3600000) return Math.ceil(msLeft / 60000) + 'm'
+  return (msLeft / 3600000).toFixed(1) + 'h'
+}
+
+function updateCropTimers (time) {
+  if (!terrainData || !sceneData || !gameState.running) return
+
+  // Throttle: update label positions every frame but text only every 500ms
+  _cropTimerThrottle += 16  // approx per-frame ms
+  const updateText = _cropTimerThrottle >= 500
+  if (updateText) _cropTimerThrottle = 0
+
+  const container = document.getElementById('game-container')
+  if (!container) return
+
+  const seen = new Set()
+
+  for (const plot of terrainData.getAllPlots()) {
+    if (!plot.crop || plot.state !== terrainData.PLOT_STATES.PLANTED || plot.crop.withered) continue
+
+    const def = CROP_DEFINITIONS[plot.crop.type]
+    if (!def) continue
+
+    const maxStage = def.stages - 1
+    const key = plot.row + ',' + plot.col
+    seen.add(key)
+
+    // Get or create label element
+    let el = _cropTimerEls.get(key)
+    if (!el) {
+      el = document.createElement('div')
+      el.className = 'crop-timer'
+      container.appendChild(el)
+      _cropTimerEls.set(key, el)
+    }
+
+    // World-to-screen position (above the crop)
+    const worldPos = new THREE.Vector3(plot.x, 0.5, plot.z)
+    const sc = worldToScreen(worldPos)
+    el.style.left = sc.x + 'px'
+    el.style.top = (sc.y - 14) + 'px'
+
+    if (updateText) {
+      const isMature = plot.crop.stage >= maxStage
+      if (isMature) {
+        el.textContent = '★'
+        el.className = 'crop-timer ready'
+      } else {
+        const timePerStage = def.growTime / maxStage
+        const stagesLeft = maxStage - plot.crop.stage
+        const accumLeft = timePerStage - (plot.crop.growthAccum || 0)
+        const multiplier = plot.crop.watered ? 2 : 1
+        const msLeft = (accumLeft + (stagesLeft - 1) * timePerStage) / multiplier
+        el.textContent = _fmtTimeRemaining(msLeft)
+        el.className = 'crop-timer' + (plot.crop.watered ? ' watered' : '')
+      }
+    }
+  }
+
+  // Remove labels for plots that no longer have growing crops
+  for (const [key, el] of _cropTimerEls) {
+    if (!seen.has(key)) {
+      el.remove()
+      _cropTimerEls.delete(key)
+    }
+  }
+}
+
 // ── Decoration animations (windmill blade rotation) ──────────────────────────
 function updateDecorations (time) {
   for (const deco of farmState.decorations) {
@@ -2308,6 +2384,7 @@ function gameLoop (time) {
   // Update systems
   updateCrops(dtMs)
   animateReadyCrops(time)
+  updateCropTimers(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
   updateBuildings(dtMs)
