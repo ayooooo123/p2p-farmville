@@ -1686,19 +1686,50 @@ function updateHoverTooltip () {
 
   let title = ''
   let info = ''
+  let progress = null
   switch (obj.type) {
     case 'tree': {
       const def = TREE_DEFINITIONS[obj.data.type]
       title = def ? def.name : obj.data.type
-      info = isTreeReady(obj.data) ? 'Click to harvest!' : 'Growing...'
+      const tree = obj.data
+      if (isTreeReady(tree)) {
+        info = 'Click to harvest!  +' + (def ? def.sellPrice : '?') + ' coins  +' + (def ? def.xp : '?') + ' XP'
+        progress = { pct: 100, label: 'Ready to harvest!', watered: false }
+      } else if (def) {
+        const elapsed = Date.now() - (tree.lastHarvest || tree.plantedAt)
+        const pct = Math.min(100, Math.round((elapsed / def.harvestTime) * 100))
+        const msLeft = Math.max(0, def.harvestTime - elapsed)
+        let timeLabel
+        if (msLeft < 60000) timeLabel = Math.ceil(msLeft / 1000) + 's'
+        else if (msLeft < 3600000) timeLabel = Math.ceil(msLeft / 60000) + 'm'
+        else timeLabel = (msLeft / 3600000).toFixed(1) + 'h'
+        info = 'Growing  · ~' + timeLabel + ' to harvest'
+        progress = { pct, label: pct + '% ready  · ~' + timeLabel + ' remaining', watered: false }
+      } else {
+        info = 'Growing...'
+      }
       break
     }
     case 'animal': {
       const def = ANIMAL_DEFINITIONS[obj.data.type]
       title = def ? def.name : obj.data.type
-      if (obj.data.productReady) info = 'Click to collect ' + (def ? def.product : 'product') + '!'
-      else if (obj.data.fed) info = 'Producing...'
-      else info = 'Click to feed'
+      const animal = obj.data
+      if (animal.productReady) {
+        info = 'Click to collect ' + (def ? def.product : 'product') + '!  +' + (def ? def.sellPrice : '?') + ' coins'
+        progress = { pct: 100, label: 'Product ready to collect!', watered: false }
+      } else if (animal.fed && def) {
+        const elapsed = Date.now() - animal.lastFed
+        const pct = Math.min(100, Math.round((elapsed / def.harvestTime) * 100))
+        const msLeft = Math.max(0, def.harvestTime - elapsed)
+        let timeLabel
+        if (msLeft < 60000) timeLabel = Math.ceil(msLeft / 1000) + 's'
+        else if (msLeft < 3600000) timeLabel = Math.ceil(msLeft / 60000) + 'm'
+        else timeLabel = (msLeft / 3600000).toFixed(1) + 'h'
+        info = 'Producing ' + (def.product || 'product') + '  · ~' + timeLabel + ' remaining'
+        progress = { pct, label: pct + '% complete  · ~' + timeLabel + ' remaining', watered: true }
+      } else {
+        info = 'Click to feed  (costs ' + (def ? def.feedCost : '?') + ' coins)'
+      }
       break
     }
     case 'building': {
@@ -1708,7 +1739,7 @@ function updateHoverTooltip () {
       break
     }
   }
-  showTooltip(title, info, mousePx.x, mousePx.y)
+  showTooltip(title, info, mousePx.x, mousePx.y, progress)
 }
 
 function _showCropTooltip (plot, px, py) {
