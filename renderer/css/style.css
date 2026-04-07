@@ -346,6 +346,9 @@ body {
 .tool-icon {
   font-size: 20px;
   line-height: 1;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 
 .tool-label {

@@ -33,35 +33,83 @@
       <!-- Toolbar -->
       <div id="toolbar">
         <button class="tool-btn" data-tool="plow" title="Plow (15 coins, 1 energy)">
-          <span class="tool-key">1</span><span class="tool-icon">&#128296;</span><span class="tool-label">Plow</span>
+          <span class="tool-key">1</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Pickaxe / hoe shape -->
+            <line x1="3" y1="21" x2="21" y2="3"/><path d="M18 3l3 3-9 9"/><line x1="3" y1="21" x2="9" y2="15"/>
+          </svg>
+          <span class="tool-label">Plow</span>
         </button>
         <button class="tool-btn" data-tool="plant" title="Plant seed on plowed soil">
-          <span class="tool-key">2</span><span class="tool-icon">&#127793;</span><span class="tool-label">Plant</span>
+          <span class="tool-key">2</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Seedling: stem + two leaves -->
+            <line x1="12" y1="22" x2="12" y2="10"/><path d="M12 10 C12 6 7 4 5 7 C7 7 10 9 12 10z"/><path d="M12 10 C12 6 17 4 19 7 C17 7 14 9 12 10z"/>
+          </svg>
+          <span class="tool-label">Plant</span>
         </button>
         <button class="tool-btn" data-tool="water" title="Water crop (2x growth speed)">
-          <span class="tool-key">3</span><span class="tool-icon">&#128167;</span><span class="tool-label">Water</span>
+          <span class="tool-key">3</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Watering can -->
+            <path d="M3 8h14a2 2 0 0 1 2 2v1"/><path d="M5 8V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3"/><line x1="19" y1="11" x2="21" y2="13"/><line x1="17" y1="13" x2="17" y2="16"/><line x1="19" y1="13" x2="19" y2="17"/><line x1="21" y1="13" x2="21" y2="16"/>
+          </svg>
+          <span class="tool-label">Water</span>
         </button>
         <button class="tool-btn" data-tool="harvest" title="Harvest mature crop">
-          <span class="tool-key">4</span><span class="tool-icon">&#127806;</span><span class="tool-label">Harvest</span>
+          <span class="tool-key">4</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Wheat / sickle -->
+            <path d="M2 22 L10 14"/><path d="M10 14 C13 8 20 5 22 2 C19 4 16 8 14 12z"/><line x1="14" y1="12" x2="10" y2="14"/>
+          </svg>
+          <span class="tool-label">Harvest</span>
         </button>
         <button class="tool-btn" data-tool="remove" title="Remove crop (no refund)">
-          <span class="tool-key">5</span><span class="tool-icon">&#10006;</span><span class="tool-label">Remove</span>
+          <span class="tool-key">5</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Trash icon -->
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </svg>
+          <span class="tool-label">Remove</span>
         </button>
         <div class="toolbar-spacer"></div>
         <button id="harvest-all-btn" class="tool-btn tool-btn-harvest-all" title="Harvest All ready crops (H)" style="display:none;">
-          <span class="tool-key">H</span><span class="tool-icon">&#127807;</span><span class="tool-label">Harvest All</span>
+          <span class="tool-key">H</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Double checkmark / batch harvest -->
+            <polyline points="20 6 9 17 4 12"/><polyline points="16 6 11 11"/>
+          </svg>
+          <span class="tool-label">Harvest All</span>
         </button>
         <button id="water-all-btn" class="tool-btn tool-btn-water-all" title="Water all unwatered crops (W)" style="display:none;">
-          <span class="tool-key">W</span><span class="tool-icon">&#127754;</span><span class="tool-label">Water All</span>
+          <span class="tool-key">W</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Three water drops -->
+            <path d="M12 2 C12 2 7 9 7 13a5 5 0 0 0 10 0C17 9 12 2 12 2z"/>
+          </svg>
+          <span class="tool-label">Water All</span>
         </button>
         <button id="inventory-btn" class="tool-btn tool-btn-inv" title="Inventory (I)">
-          <span class="tool-key">I</span><span class="tool-icon">&#128230;</span><span class="tool-label">Items</span>
+          <span class="tool-key">I</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Backpack / bag -->
+            <rect x="4" y="8" width="16" height="13" rx="2"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><line x1="4" y1="13" x2="20" y2="13"/>
+          </svg>
+          <span class="tool-label">Items</span>
         </button>
         <button id="quest-btn" class="tool-btn" title="Daily Quests">
-          <span class="tool-icon">&#128203;</span><span class="tool-label">Quests</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Checklist -->
+            <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/><polyline points="6 9 7 10 9 8"/>
+          </svg>
+          <span class="tool-label">Quests</span>
         </button>
         <button id="market-open-btn" class="tool-btn tool-btn-market" title="Open Market">
-          <span class="tool-icon">&#127978;</span><span class="tool-label">Market</span>
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Shop/storefront -->
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          <span class="tool-label">Market</span>
         </button>
       </div>
 
@@ -141,13 +189,24 @@
     <!-- Visitor Action Toolbar -->
     <div id="visitor-toolbar" style="display: none;">
       <button class="visitor-btn" data-action="fertilize" title="Fertilize a crop">
-        <span class="tool-icon">&#127807;</span><span class="tool-label">Fertilize</span>
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Sprout with sparkle — fertilize -->
+          <line x1="12" y1="22" x2="12" y2="11"/><path d="M12 11 C12 7 7 5 5 8 C7 8 10 10 12 11z"/><path d="M12 11 C12 7 17 5 19 8 C17 8 14 10 12 11z"/><line x1="19" y1="5" x2="20" y2="4"/><line x1="21" y1="3" x2="21" y2="2"/><line x1="21" y1="5" x2="22" y2="5"/>
+        </svg>
+        <span class="tool-label">Fertilize</span>
       </button>
       <button class="visitor-btn" data-action="water" title="Water a crop">
-        <span class="tool-icon">&#128167;</span><span class="tool-label">Water</span>
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2 C12 2 7 9 7 13a5 5 0 0 0 10 0C17 9 12 2 12 2z"/>
+        </svg>
+        <span class="tool-label">Water</span>
       </button>
       <button class="visitor-btn" data-action="feed" title="Feed an animal">
-        <span class="tool-icon">&#127822;</span><span class="tool-label">Feed</span>
+        <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Bowl / feeding dish -->
+          <path d="M4 11h16"/><path d="M5 11 C5 16 7 19 12 19 C17 19 19 16 19 11z"/><line x1="12" y1="7" x2="12" y2="11"/><line x1="9" y1="8" x2="9" y2="11"/><line x1="15" y1="8" x2="15" y2="11"/>
+        </svg>
+        <span class="tool-label">Feed</span>
       </button>
     </div>
 
