@@ -1,14 +1,10 @@
 /* global __rpc */
 
-// IPC Bridge - Electrobun RPC version
-// Replaces the Electron contextBridge IPC with Electrobun's typed RPC
-// The RPC is set up by src/views/game.ts and exposed on window.__rpc
-
-const WORKER_PATH = '/workers/main.js'
+// IPC Bridge - supports Electron (window.ElectronIPCBridge) and Electrobun (window.__rpc)
 
 const IPCBridge = {
-  // Check availability: Electrobun RPC is available when __rpc is set
-  available: typeof window !== 'undefined' && !!window.__rpc,
+  // Available in Electron mode or Electrobun mode
+  available: typeof window !== 'undefined' && (!!window.ElectronIPCBridge || !!window.__rpc),
 
   _listeners: {
     neighbors: [],
@@ -55,25 +51,31 @@ const IPCBridge = {
 
   // ── Worker lifecycle ───────────────────────────────────────────────────
   startWorker () {
-    if (!this.available) {
-      console.warn('[ipc-bridge] window.__rpc not available')
+    if (window.ElectronIPCBridge) {
+      // Worker already spawned by Electron main process; wire up the listener
+      window.ElectronIPCBridge.onMessage(msg => this._routeMessage(msg))
+      return Promise.resolve({ ok: true })
+    }
+    if (!window.__rpc) {
+      console.warn('[ipc-bridge] no IPC transport available')
       return Promise.resolve({ ok: false })
     }
     return window.__rpc.startWorker()
   },
 
   sendToWorker (msg) {
-    if (!this.available) return
+    if (window.ElectronIPCBridge) {
+      const data = typeof msg === 'string' ? JSON.parse(msg) : msg
+      window.ElectronIPCBridge.send(data)
+      return
+    }
+    if (!window.__rpc) return
     const data = typeof msg === 'string' ? msg : JSON.stringify(msg)
     window.__rpc.sendToWorker(data)
   },
 
-  // Backward compat: these are no-ops in Electrobun since we handle
-  // stdout/stderr/message via RPC event handlers in the view entrypoint
   onWorkerMessage (cb) {
-    // Messages arrive via _emitWorkerMessage, which calls _routeMessage
-    // This is now a no-op since routing happens in the view entrypoint
-    // But we keep it for any code that calls it directly
+    // No-op: messages are routed via _routeMessage
   },
 
   onWorkerStdout (cb) {
