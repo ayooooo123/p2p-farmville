@@ -473,7 +473,9 @@ function updateHUD () {
     const allPlots = terrainData.getAllPlots()
     let readyCount = 0
     let unwateredCount = 0
+    let plowedCount = 0
     for (const p of allPlots) {
+      if (p.state === terrainData.PLOT_STATES.PLOWED) plowedCount++
       if (p.state === terrainData.PLOT_STATES.PLANTED && p.crop && !p.crop.withered) {
         const def = CROP_DEFINITIONS[p.crop.type]
         if (def && p.crop.stage >= def.stages - 1) readyCount++
@@ -500,6 +502,16 @@ function updateHUD () {
       if (hungryCount > 0) {
         const label = feedAllBtn.querySelector('.tool-label')
         if (label) label.textContent = 'Feed (' + hungryCount + ')'
+      }
+    }
+    // Plant All: show when there are plowed plots and a seed is selected
+    const activeSeed = gameState.selectedSeed || getSelectedSeed()
+    if (plantAllBtn) {
+      const showPlantAll = plowedCount > 0 && !!activeSeed
+      plantAllBtn.style.display = showPlantAll ? '' : 'none'
+      if (showPlantAll) {
+        const label = plantAllBtn.querySelector('.tool-label')
+        if (label) label.textContent = 'Plant (' + plowedCount + ')'
       }
     }
   }
@@ -1734,6 +1746,60 @@ function feedAll () {
   }
 }
 
+function plantAll () {
+  if (!terrainData || !gameState.running) return
+  const seedKey = gameState.selectedSeed || getSelectedSeed()
+  if (!seedKey) {
+    showFeedback('Select a seed first!', '#ffa500')
+    return
+  }
+  const cropDef = CROP_DEFINITIONS[seedKey]
+  if (!cropDef) return
+
+  const allPlots = terrainData.getAllPlots()
+  let count = 0
+  let totalCost = 0
+  for (const plot of allPlots) {
+    if (plot.state !== terrainData.PLOT_STATES.PLOWED) continue
+    if (gameState.coins < cropDef.seedCost) break  // stop if can't afford
+    if (!useEnergy(effectiveEnergyCost('plant', ENERGY_COST))) break  // stop if out of energy
+
+    gameState.coins -= cropDef.seedCost
+    totalCost += cropDef.seedCost
+
+    plot.crop = {
+      type: seedKey,
+      plantedAt: Date.now(),
+      watered: false,
+      stage: 0,
+      withered: false,
+      growthAccum: 0
+    }
+
+    const cropMesh = createCropMesh(seedKey, 0)
+    cropMesh.position.set(plot.x, 0.08, plot.z)
+    sceneData.scene.add(cropMesh)
+    plot.cropMesh = cropMesh
+
+    terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLANTED)
+    gameState.totalPlanted++
+    createParticleEffect('planting', { x: plot.x, y: 0.1, z: plot.z })
+    QuestSystem.recordAction('plant')
+    count++
+  }
+  gameState.lastUsedSeed = seedKey
+  if (count > 0) {
+    SoundSystem.play('bulk_water')  // reuse the satisfying multi-action sound
+    showFeedback('Planted ' + count + ' ' + cropDef.name + '! -' + totalCost + ' coins', '#32cd32')
+    showToast('Plant All: ' + count + ' ' + cropDef.name + ' planted', 'plant', '-' + totalCost + ' 🪙 seeds purchased')
+    checkAchievements()
+    syncFarmStateNow()
+    updateHUD()
+  } else {
+    showFeedback('No plowed plots or not enough coins/energy!', '#ffa500')
+  }
+}
+
 // ── Mouse tracking ───────────────────────────────────────────────────────────
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect()
@@ -2084,6 +2150,10 @@ window.addEventListener('keydown', (e) => {
     if (gameState.running) feedAll()
     return
   }
+  if (e.key === 'p' || e.key === 'P') {
+    if (gameState.running) plantAll()
+    return
+  }
   if (e.key === 'm' || e.key === 'M') {
     if (gameState.running) toggleMinimap()
     return
@@ -2119,6 +2189,7 @@ window.addEventListener('keydown', (e) => {
 const harvestAllBtn = document.getElementById('harvest-all-btn')
 const waterAllBtn = document.getElementById('water-all-btn')
 const feedAllBtn = document.getElementById('feed-all-btn')
+const plantAllBtn = document.getElementById('plant-all-btn')
 const invBtn = document.getElementById('inventory-btn')
 if (invBtn) {
   invBtn.addEventListener('click', () => {
@@ -2147,6 +2218,11 @@ if (waterAllBtn) {
 // Feed All button
 if (feedAllBtn) {
   feedAllBtn.addEventListener('click', () => feedAll())
+}
+
+// Plant All button
+if (plantAllBtn) {
+  plantAllBtn.addEventListener('click', () => { if (gameState.running) plantAll() })
 }
 
 // Quest button
@@ -2212,6 +2288,8 @@ function updateCrops (dtMs) {
   const allPlots = terrainData.getAllPlots()
   let witherWarnCount = 0
   let justWitheredCount = 0
+  let justRipenedCount = 0
+  let justRipenedName = ''
 
   for (const plot of allPlots) {
     if (!plot.crop || plot.state !== terrainData.PLOT_STATES.PLANTED) continue
@@ -2231,6 +2309,8 @@ function updateCrops (dtMs) {
         // Sparkle burst when crop first reaches final (ready-to-harvest) stage
         if (def && plot.crop.stage >= def.stages - 1) {
           createParticleEffect('harvest', { x: plot.x, y: 0.3, z: plot.z })
+          justRipenedCount++
+          justRipenedName = def.name
         }
         plot.cropMesh = createCropMesh(plot.crop.type, plot.crop.stage)
       }
@@ -2276,6 +2356,15 @@ function updateCrops (dtMs) {
     SoundSystem.play('wither')
     const label = justWitheredCount === 1 ? '1 crop withered away' : justWitheredCount + ' crops withered'
     showToast(label, 'error', 'Remove withered crops to free the plot')
+  }
+
+  // Ripened crops toast + sound (one-shot per batch)
+  if (justRipenedCount > 0) {
+    SoundSystem.play('crop_ready')
+    const label = justRipenedCount === 1
+      ? justRipenedName + ' is ready to harvest!'
+      : justRipenedCount + ' crops are ready to harvest!'
+    showToast(label, 'harvest', 'Click to harvest or press H for Harvest All')
   }
 }
 

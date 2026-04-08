@@ -207,6 +207,12 @@ export const SoundSystem = {
         setTimeout(() => this._noise(900, 3, 0.12, 0.12), 60)
         setTimeout(() => this._noise(600, 2, 0.10, 0.10), 130)
         break
+
+      case 'crop_ready':
+        // Gentle two-note chime: soft bell rising interval
+        this._tone('sine', 880, 0.12, 0.18, 880)
+        setTimeout(() => this._tone('sine', 1320, 0.15, 0.30, 1320), 120)
+        break
     }
   }
 }

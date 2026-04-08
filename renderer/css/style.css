@@ -471,6 +471,24 @@ body {
   color: #fff;
 }
 
+.tool-btn-plant-all {
+  border-color: rgba(144, 238, 144, 0.5);
+  background: rgba(50, 180, 50, 0.12);
+  color: #90ee90;
+  animation: plant-all-pulse 2.2s ease-in-out infinite;
+}
+
+.tool-btn-plant-all:hover {
+  border-color: rgba(144, 238, 144, 0.9);
+  background: rgba(50, 180, 50, 0.28);
+  color: #fff;
+}
+
+@keyframes plant-all-pulse {
+  0%, 100% { box-shadow: 0 0 5px rgba(144, 238, 144, 0.35); }
+  50% { box-shadow: 0 0 12px rgba(144, 238, 144, 0.7); }
+}
+
 /* ── Seed Selector Strip ────────────────────────────────────────────────────── */
 #seed-strip {
   display: flex;
