@@ -193,6 +193,20 @@ export const SoundSystem = {
         this._tone('sine', 480, 0.15, 0.12, 600)
         setTimeout(() => this._tone('sine', 580, 0.10, 0.10, 480), 100)
         break
+
+      case 'bulk_harvest':
+        // Triple rising coin ding — satisfying bulk reward cascade
+        this._tone('sine', 660, 0.20, 0.10, 990)
+        setTimeout(() => this._tone('sine', 880, 0.18, 0.10, 1320), 80)
+        setTimeout(() => this._tone('sine', 1047, 0.22, 0.22, 1568), 160)
+        break
+
+      case 'bulk_water':
+        // Water rush — overlapping burble burst
+        this._noise(700, 2, 0.15, 0.14)
+        setTimeout(() => this._noise(900, 3, 0.12, 0.12), 60)
+        setTimeout(() => this._noise(600, 2, 0.10, 0.10), 130)
+        break
     }
   }
 }

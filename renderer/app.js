@@ -1513,6 +1513,7 @@ function harvestAll () {
     count++
   }
   if (count > 0) {
+    SoundSystem.play('bulk_harvest')
     showFeedback('Harvested ' + count + ' crops! +' + totalCoins + ' coins', '#ffd700')
     showToast('Harvest All: ' + count + ' crops', 'bulk', '+' + totalCoins + ' 🪙 coins earned')
     checkAchievements()
@@ -1542,9 +1543,11 @@ function waterAll () {
     count++
   }
   if (count > 0) {
+    SoundSystem.play('bulk_water')
     showFeedback('Watered ' + count + ' crops!', '#4169e1')
     showToast('Water All: ' + count + ' crops watered', 'water', 'Growth speed doubled! 💧')
     checkAchievements()
+    syncFarmStateNow()
     updateHUD()
   } else {
     showFeedback('No unwatered crops!', '#ffa500')
