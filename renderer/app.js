@@ -1,7 +1,7 @@
 import * as THREE from './js/three.module.min.js'
 import { initScene, animate as renderScene, initCameraControls, updateCamera, resetCamera } from './js/scene.js'
 import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop } from './js/crops.js'
-import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, CONSUMABLE_DEFINITIONS } from './js/market.js'
+import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, loadPinnedSeeds, pinSeedToSlot, getPinnedSeeds, renderSeedHotbar, CONSUMABLE_DEFINITIONS } from './js/market.js'
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
 import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildingEffects, updateCraftingQueue, startCrafting } from './js/buildings.js'
@@ -113,6 +113,7 @@ const seasonDisplay = document.getElementById('season-display')
 const energyBarFill = document.getElementById('energy-bar-fill')
 const toolbar = document.getElementById('toolbar')
 const seedStrip = document.getElementById('seed-strip')
+const seedHotbar = document.getElementById('seed-hotbar')
 const levelUpNotif = document.getElementById('level-up-notification')
 const levelUpDetail = document.getElementById('level-up-detail')
 const actionFeedback = document.getElementById('action-feedback')
@@ -491,6 +492,14 @@ function updateHUD () {
 }
 
 // ── Tool system ──────────────────────────────────────────────────────────────
+function refreshHotbar () {
+  renderSeedHotbar(seedHotbar, (cropKey) => {
+    gameState.selectedSeed = cropKey
+    setSelectedSeed(cropKey)
+    selectTool('plant')
+  })
+}
+
 function selectTool (toolName) {
   cancelPlacement()
   gameState.selectedTool = toolName
@@ -508,10 +517,25 @@ function selectTool (toolName) {
     }
     updateSeedStrip(gameState.level, seedStrip, (seedKey) => {
       gameState.selectedSeed = seedKey
+      refreshHotbar()
+    })
+    // Right-click a strip seed to pin it to the hotbar
+    seedStrip.querySelectorAll('.seed-strip-btn').forEach(btn => {
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        const cropKey = btn.dataset.cropKey
+        const slots = getPinnedSeeds()
+        const emptyIdx = slots.indexOf(null)
+        const slotIdx = emptyIdx !== -1 ? emptyIdx : 0
+        pinSeedToSlot(slotIdx, cropKey)
+        refreshHotbar()
+        showFeedback('Pinned to slot ' + (slotIdx + 1), '#ffd700')
+      })
     })
   } else {
     seedStrip.style.display = 'none'
   }
+  refreshHotbar()
 
   const cursors = {
     plow: 'crosshair',
@@ -1968,6 +1992,19 @@ window.addEventListener('keydown', (e) => {
     return
   }
 
+  // Ctrl+1-5: select pinned seed in hotbar slot
+  if (e.ctrlKey && ['1', '2', '3', '4', '5'].includes(e.key) && gameState.running) {
+    e.preventDefault()
+    const slotIdx = parseInt(e.key) - 1
+    const cropKey = getPinnedSeeds()[slotIdx]
+    if (cropKey) {
+      gameState.selectedSeed = cropKey
+      setSelectedSeed(cropKey)
+      selectTool('plant')
+    }
+    return
+  }
+
   // Number keys for quick tool select
   const toolKeys = { '1': 'plow', '2': 'plant', '3': 'water', '4': 'harvest', '5': 'remove' }
   if (toolKeys[e.key] && gameState.running) {
@@ -2747,6 +2784,11 @@ function startGame () {
       console.log('[app] Returned to own farm')
     }
   })
+
+  // Show pinned seed hotbar
+  loadPinnedSeeds()
+  seedHotbar.style.display = 'flex'
+  refreshHotbar()
 
   console.log('[app] Game started - Farm:', name)
 }

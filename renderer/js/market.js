@@ -334,6 +334,70 @@ function setSelectedSeed (key) {
   selectedSeed = key
 }
 
+// ── Pinned Seed Hotbar ────────────────────────────────────────────────────────
+let pinnedSeeds = [null, null, null, null, null]
+
+function loadPinnedSeeds () {
+  try {
+    const stored = localStorage.getItem('p2p-farmville-pinned-seeds')
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (Array.isArray(parsed) && parsed.length === 5) pinnedSeeds = parsed
+    }
+  } catch (e) {}
+}
+
+function savePinnedSeeds () {
+  localStorage.setItem('p2p-farmville-pinned-seeds', JSON.stringify(pinnedSeeds))
+}
+
+function pinSeedToSlot (slotIndex, cropKey) {
+  pinnedSeeds[slotIndex] = cropKey
+  savePinnedSeeds()
+}
+
+function getPinnedSeeds () {
+  return pinnedSeeds
+}
+
+/**
+ * Render the always-visible pinned seed hotbar.
+ * @param {HTMLElement} hotbarEl - the #seed-hotbar container
+ * @param {function} onSelect - called with (cropKey, slotIndex) when a filled slot is clicked
+ */
+function renderSeedHotbar (hotbarEl, onSelect) {
+  if (!hotbarEl) return
+  hotbarEl.innerHTML = ''
+
+  for (let i = 0; i < 5; i++) {
+    const cropKey = pinnedSeeds[i]
+    const def = cropKey ? CROP_DEFINITIONS[cropKey] : null
+    const color = def
+      ? '#' + def.colors[def.colors.length - 1].toString(16).padStart(6, '0')
+      : '#555'
+
+    const btn = document.createElement('button')
+    btn.className = 'hotbar-slot' +
+      (cropKey ? ' filled' : ' empty') +
+      (cropKey && cropKey === selectedSeed ? ' selected' : '')
+    btn.title = def
+      ? `Slot ${i + 1}: ${def.name} (Ctrl+${i + 1})`
+      : `Slot ${i + 1}: Empty — right-click a seed in the strip to pin`
+    btn.dataset.slotIndex = i
+    if (def) btn.style.setProperty('--slot-color', color)
+
+    btn.innerHTML =
+      `<span class="hotbar-circle" style="background:${color};"></span>` +
+      `<span class="hotbar-num">${i + 1}</span>`
+
+    btn.addEventListener('click', () => {
+      if (cropKey && onSelect) onSelect(cropKey, i)
+    })
+
+    hotbarEl.appendChild(btn)
+  }
+}
+
 /**
  * Update seed selector strip (shown when plant tool is active)
  */
@@ -364,5 +428,5 @@ function updateSeedStrip (playerLevel, stripEl, onSelect) {
   }
 }
 
-window.MarketSystem = { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, CONSUMABLE_DEFINITIONS }
-export { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, CONSUMABLE_DEFINITIONS }
+window.MarketSystem = { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, loadPinnedSeeds, savePinnedSeeds, pinSeedToSlot, getPinnedSeeds, renderSeedHotbar, CONSUMABLE_DEFINITIONS }
+export { initMarket, showMarket, hideMarket, toggleMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, loadPinnedSeeds, savePinnedSeeds, pinSeedToSlot, getPinnedSeeds, renderSeedHotbar, CONSUMABLE_DEFINITIONS }
