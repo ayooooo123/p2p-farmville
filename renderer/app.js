@@ -111,6 +111,7 @@ const xpDisplay = document.getElementById('xp-display')
 const energyDisplay = document.getElementById('energy-display')
 const seasonDisplay = document.getElementById('season-display')
 const energyBarFill = document.getElementById('energy-bar-fill')
+const xpBarFill = document.getElementById('xp-bar-fill')
 const toolbar = document.getElementById('toolbar')
 const seedStrip = document.getElementById('seed-strip')
 const seedHotbar = document.getElementById('seed-hotbar')
@@ -455,6 +456,10 @@ function updateHUD () {
   xpDisplay.textContent = 'Level ' + gameState.level + ' (' + xpInLevel + '/' + xpNeeded + ' XP)'
   energyDisplay.textContent = 'Energy: ' + gameState.energy + '/' + gameState.maxEnergy
 
+  // XP bar fill
+  const xpPct = xpNeeded > 0 ? Math.min(100, (xpInLevel / xpNeeded) * 100) : 100
+  if (xpBarFill) xpBarFill.style.width = xpPct + '%'
+
   // Energy bar fill
   const pct = (gameState.energy / gameState.maxEnergy) * 100
   energyBarFill.style.width = pct + '%'
@@ -628,6 +633,15 @@ function showLevelUp (level) {
   levelUpDetail.textContent = 'You reached Level ' + level + '!'
   levelUpNotif.style.display = 'flex'
   levelUpNotif.classList.add('show')
+
+  // Flash the XP bar gold on level-up, then reset to 0%
+  if (xpBarFill) {
+    xpBarFill.classList.add('level-up-flash')
+    setTimeout(() => {
+      xpBarFill.classList.remove('level-up-flash')
+      xpBarFill.style.width = '0%'
+    }, 650)
+  }
 
   // Burst level-up particles at farm center
   createParticleEffect('levelup', { x: 0, y: 0.5, z: 0 })
