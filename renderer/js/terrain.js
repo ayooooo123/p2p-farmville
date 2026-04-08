@@ -71,6 +71,7 @@ function createPlotGrid (sceneRef) {
   terrain.rotation.x = -Math.PI / 2
   terrain.position.y = -0.05
   terrain.name = 'baseTerrain'
+  terrain.receiveShadow = true
   scene.add(terrain)
   baseTerrainMesh = terrain
 
@@ -97,6 +98,7 @@ function createPlotGrid (sceneRef) {
       plotMesh.userData.row = row
       plotMesh.userData.col = col
       plotMesh.userData.isPlot = true
+      plotMesh.receiveShadow = true
       scene.add(plotMesh)
       plotMeshes.push(plotMesh)
 
@@ -160,6 +162,7 @@ function _createPaths (scene) {
     const path = new THREE.Mesh(pathGeo, pathMat)
     path.rotation.x = -Math.PI / 2
     path.position.set(0, 0.005, zSign * halfD)
+    path.receiveShadow = true
     scene.add(path)
   }
 
@@ -169,6 +172,7 @@ function _createPaths (scene) {
     const path = new THREE.Mesh(pathGeo, pathMat)
     path.rotation.x = -Math.PI / 2
     path.position.set(xSign * halfW, 0.005, 0)
+    path.receiveShadow = true
     scene.add(path)
   }
 

@@ -44,20 +44,30 @@ function initScene (canvasEl) {
   // Renderer
   renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true })
   renderer.setSize(initW || 800, initH || 600)
-  renderer.setPixelRatio(window.devicePixelRatio)
-  // No shadow maps for top-down view
-  renderer.shadowMap.enabled = false
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
   console.log('[scene] renderer created, drawingBuffer:', renderer.domElement.width, 'x', renderer.domElement.height)
 
-  // Ambient light (primary illumination for top-down)
-  ambientLight = new THREE.AmbientLight(0xffffff, 1.0)
+  // Ambient light — warm cream tint, moderate intensity
+  ambientLight = new THREE.AmbientLight(0xffeedd, 0.6)
   scene.add(ambientLight)
 
-  // Directional light from directly above (subtle shading)
-  sunLight = new THREE.DirectionalLight(0xffffff, 0.5)
-  sunLight.position.set(0, 50, 0)
-  sunLight.castShadow = false
+  // Directional sun light — cast soft shadows from an angled position
+  sunLight = new THREE.DirectionalLight(0xffffff, 0.8)
+  sunLight.position.set(30, 50, -20)
+  sunLight.castShadow = true
+  sunLight.shadow.mapSize.set(1024, 1024)
+  sunLight.shadow.camera.left = -60
+  sunLight.shadow.camera.right = 60
+  sunLight.shadow.camera.top = 60
+  sunLight.shadow.camera.bottom = -60
+  sunLight.shadow.camera.near = 0.5
+  sunLight.shadow.camera.far = 200
+  sunLight.shadow.normalBias = 0.01
+  sunLight.target.position.set(0, 0, 0)
   scene.add(sunLight)
+  scene.add(sunLight.target)
 
   // Outer terrain beyond farm (decorative)
   const outerGeo = new THREE.PlaneGeometry(200, 200)
@@ -69,6 +79,7 @@ function initScene (canvasEl) {
   const outerTerrain = new THREE.Mesh(outerGeo, outerMat)
   outerTerrain.rotation.x = -Math.PI / 2
   outerTerrain.position.y = -0.1
+  outerTerrain.receiveShadow = true
   scene.add(outerTerrain)
 
   // Create plot grid (replaces old GridHelper + flat terrain)
