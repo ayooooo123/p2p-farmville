@@ -118,6 +118,13 @@
           </svg>
           <span class="tool-label">Items</span>
         </button>
+        <button id="almanac-btn" class="tool-btn" title="Crop Almanac — all crop stats">
+          <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- Open book -->
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          <span class="tool-label">Almanac</span>
+        </button>
         <button id="quest-btn" class="tool-btn" title="Daily Quests">
           <svg class="tool-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <!-- Checklist -->
@@ -520,6 +527,25 @@
       <p>Start your farm and connect with neighbors</p>
       <input id="farm-name" type="text" placeholder="Enter Farm Name" maxlength="20" autofocus>
       <button id="start-btn">Start Farming</button>
+    </div>
+
+    <!-- Crop Almanac Panel -->
+    <div id="almanac-panel" style="display:none;">
+      <div id="almanac-header">
+        <h2>&#128218; Crop Almanac</h2>
+        <button id="almanac-close-btn" class="panel-close-btn">X</button>
+      </div>
+      <div id="almanac-controls">
+        <input id="almanac-search" type="text" placeholder="Search crops..." autocomplete="off">
+        <select id="almanac-sort">
+          <option value="level">Sort: Level</option>
+          <option value="price">Sort: Sell Price</option>
+          <option value="time">Sort: Grow Time</option>
+          <option value="profit">Sort: Profit/min</option>
+          <option value="name">Sort: Name</option>
+        </select>
+      </div>
+      <div id="almanac-content"></div>
     </div>
 
     <!-- Chat Panel (enhanced with tabs) -->

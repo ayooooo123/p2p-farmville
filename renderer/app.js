@@ -17,6 +17,7 @@ import { initParticles, createParticleEffect, updateParticles } from './js/parti
 import { FarmActions } from './js/farm-actions.js'
 import { showToast } from './js/toasts.js'
 import { QuestSystem } from './js/quests.js'
+import { openAlmanac, closeAlmanac, isAlmanacOpen } from './js/almanac.js'
 import { SoundSystem } from './js/sounds.js'
 import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
 
@@ -2223,6 +2224,16 @@ if (feedAllBtn) {
 // Plant All button
 if (plantAllBtn) {
   plantAllBtn.addEventListener('click', () => { if (gameState.running) plantAll() })
+}
+
+// Almanac button
+const almanacBtn = document.getElementById('almanac-btn')
+if (almanacBtn) {
+  almanacBtn.addEventListener('click', () => {
+    if (!gameState.running) return
+    if (isAlmanacOpen()) closeAlmanac()
+    else openAlmanac(gameState.level)
+  })
 }
 
 // Quest button
