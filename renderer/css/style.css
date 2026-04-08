@@ -2645,3 +2645,21 @@ body {
   from { transform: translate(-50%, -50%) translateY(0px) scale(1.0); }
   to   { transform: translate(-50%, -50%) translateY(-5px) scale(1.12); }
 }
+
+/* ── Animal hunger indicator ── */
+.animal-hungry {
+  position: absolute;
+  pointer-events: none;
+  font-size: 13px;
+  font-weight: 900;
+  color: #ff8c00;
+  text-shadow: 0 0 5px rgba(255, 80, 0, 0.85), 0 1px 2px rgba(0,0,0,0.8);
+  z-index: 51;
+  transform: translate(-50%, -50%);
+  animation: animal-hungry-pulse 1.2s ease-in-out infinite alternate;
+  white-space: nowrap;
+}
+@keyframes animal-hungry-pulse {
+  from { transform: translate(-50%, -50%) scale(0.9); opacity: 0.75; }
+  to   { transform: translate(-50%, -50%) scale(1.15); opacity: 1.0; }
+}

@@ -2490,6 +2490,7 @@ function updateCropTimers (time) {
 // ── Animal product-ready indicators (DOM overlay) ────────────────────────────
 // Map from animal index -> div element
 const _animalProductEls = new Map()
+const _animalHungerEls = new Map()
 
 function updateAnimalProductIndicators () {
   if (!sceneData || !gameState.running) return
@@ -2497,37 +2498,72 @@ function updateAnimalProductIndicators () {
   const container = document.getElementById('game-container')
   if (!container) return
 
-  const seen = new Set()
+  const seenProduct = new Set()
+  const seenHunger = new Set()
 
   for (let i = 0; i < farmState.animals.length; i++) {
     const animal = farmState.animals[i]
-    if (!animal.productReady || !animal.mesh) continue
+    if (!animal.mesh) continue
 
-    seen.add(i)
+    // ── Product-ready star ─────────────────────────────────────────────
+    if (animal.productReady) {
+      seenProduct.add(i)
 
-    let el = _animalProductEls.get(i)
-    if (!el) {
-      el = document.createElement('div')
-      el.className = 'animal-product-ready'
-      el.textContent = '★'
-      el.title = 'Product ready — click to collect!'
-      container.appendChild(el)
-      _animalProductEls.set(i, el)
+      let el = _animalProductEls.get(i)
+      if (!el) {
+        el = document.createElement('div')
+        el.className = 'animal-product-ready'
+        el.textContent = '★'
+        el.title = 'Product ready — click to collect!'
+        container.appendChild(el)
+        _animalProductEls.set(i, el)
+      }
+
+      const worldPos = new THREE.Vector3(animal.x, 1.1, animal.z)
+      const sc = worldToScreen(worldPos)
+      el.style.left = sc.x + 'px'
+      el.style.top = sc.y + 'px'
+      el.style.display = 'block'
     }
 
-    // Position above the animal mesh
-    const worldPos = new THREE.Vector3(animal.x, 1.1, animal.z)
-    const sc = worldToScreen(worldPos)
-    el.style.left = sc.x + 'px'
-    el.style.top = sc.y + 'px'
-    el.style.display = 'block'
+    // ── Hunger indicator (! badge) ─────────────────────────────────────
+    // Show when animal has never been fed, or after product was collected
+    const isHungry = !animal.fed && !animal.productReady
+    if (isHungry) {
+      seenHunger.add(i)
+
+      let hel = _animalHungerEls.get(i)
+      if (!hel) {
+        hel = document.createElement('div')
+        hel.className = 'animal-hungry'
+        hel.textContent = '!'
+        hel.title = 'Hungry! Click to feed'
+        container.appendChild(hel)
+        _animalHungerEls.set(i, hel)
+      }
+
+      // Position slightly offset from product star so they don't overlap
+      const worldPos = new THREE.Vector3(animal.x, 1.1, animal.z)
+      const sc = worldToScreen(worldPos)
+      hel.style.left = (sc.x + 10) + 'px'
+      hel.style.top = sc.y + 'px'
+      hel.style.display = 'block'
+    }
   }
 
-  // Remove indicators for animals that no longer have ready products
+  // Remove stale product indicators
   for (const [i, el] of _animalProductEls) {
-    if (!seen.has(i)) {
+    if (!seenProduct.has(i)) {
       el.remove()
       _animalProductEls.delete(i)
+    }
+  }
+
+  // Remove stale hunger indicators
+  for (const [i, el] of _animalHungerEls) {
+    if (!seenHunger.has(i)) {
+      el.remove()
+      _animalHungerEls.delete(i)
     }
   }
 }
