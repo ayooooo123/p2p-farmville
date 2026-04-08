@@ -475,7 +475,9 @@ function updateHUD () {
     let readyCount = 0
     let unwateredCount = 0
     let plowedCount = 0
+    let grassCount = 0
     for (const p of allPlots) {
+      if (p.state === terrainData.PLOT_STATES.GRASS) grassCount++
       if (p.state === terrainData.PLOT_STATES.PLOWED) plowedCount++
       if (p.state === terrainData.PLOT_STATES.PLANTED && p.crop && !p.crop.withered) {
         const def = CROP_DEFINITIONS[p.crop.type]
@@ -513,6 +515,15 @@ function updateHUD () {
       if (showPlantAll) {
         const label = plantAllBtn.querySelector('.tool-label')
         if (label) label.textContent = 'Plant (' + plowedCount + ')'
+      }
+    }
+    // Plow All: show when there are unplowed grass plots and enough coins
+    if (plowAllBtn) {
+      const showPlowAll = grassCount > 0 && gameState.coins >= PLOW_COST
+      plowAllBtn.style.display = showPlowAll ? '' : 'none'
+      if (showPlowAll) {
+        const label = plowAllBtn.querySelector('.tool-label')
+        if (label) label.textContent = 'Plow (' + grassCount + ')'
       }
     }
   }
@@ -1404,6 +1415,43 @@ function renderInventoryUI () {
       showToast('Energy Restored', 'water', '+' + restored + ' energy (' + gameState.energy + '/' + gameState.maxEnergy + ')')
       updateHUD()
     }
+    if (useEffect.fertilizeAll != null && terrainData) {
+      // Advance every planted, non-withered, non-mature crop by the given fraction of a stage
+      const fraction = useEffect.fertilizeAll
+      const allPlots = terrainData.getAllPlots()
+      let boosted = 0
+      for (const plot of allPlots) {
+        if (!plot.crop || plot.state !== terrainData.PLOT_STATES.PLANTED) continue
+        if (plot.crop.withered) continue
+        const def = CROP_DEFINITIONS[plot.crop.type]
+        if (!def) continue
+        const maxStage = def.stages - 1
+        if (plot.crop.stage >= maxStage) continue  // already mature, skip
+        const timePerStage = def.growTime / maxStage
+        plot.crop.growthAccum = (plot.crop.growthAccum || 0) + timePerStage * fraction
+        // Handle multi-stage advance from large accumulation
+        while (plot.crop.growthAccum >= timePerStage && plot.crop.stage < maxStage) {
+          plot.crop.growthAccum -= timePerStage
+          plot.crop.stage = Math.min(plot.crop.stage + 1, maxStage)
+          plot.crop.watered = false
+        }
+        boosted++
+        // Refresh crop mesh to new stage
+        if (plot.cropMesh) sceneData.scene.remove(plot.cropMesh)
+        plot.cropMesh = createCropMesh(plot.crop.type, plot.crop.stage)
+        plot.cropMesh.position.set(plot.x, 0.08, plot.z)
+        sceneData.scene.add(plot.cropMesh)
+        // Tiny particle burst per boosted crop
+        createParticleEffect('harvest', { x: plot.x, y: 0.3, z: plot.z })
+      }
+      if (boosted > 0) {
+        SoundSystem.play('bulk_harvest')
+        showFeedback('🌿 Fertilized ' + boosted + ' crop' + (boosted === 1 ? '' : 's') + '!', '#7ec850')
+        showToast('Fertilizer Applied', 'water', boosted + ' crop' + (boosted === 1 ? '' : 's') + ' advanced by ' + Math.round(fraction * 100) + '% of a stage')
+      } else {
+        showFeedback('No crops to fertilize!', '#ff9900')
+      }
+    }
     renderInventoryUI()
   })
 }
@@ -1801,6 +1849,37 @@ function plantAll () {
   }
 }
 
+function plowAll () {
+  if (!terrainData || !gameState.running) return
+  const allPlots = terrainData.getAllPlots()
+  let count = 0
+  let totalCost = 0
+  for (const plot of allPlots) {
+    if (plot.state !== terrainData.PLOT_STATES.GRASS) continue
+    if (gameState.coins < PLOW_COST) break  // stop if can't afford
+    if (!useEnergy(effectiveEnergyCost('plow', ENERGY_COST))) break  // stop if out of energy
+
+    gameState.coins -= PLOW_COST
+    totalCost += PLOW_COST
+    addXP(PLOW_XP)
+    gameState.totalPlowed++
+    terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
+    createParticleEffect('plow', { x: plot.x, y: 0.1, z: plot.z })
+    QuestSystem.recordAction('plow')
+    count++
+  }
+  if (count > 0) {
+    SoundSystem.play('bulk_water')
+    showFeedback('Plowed ' + count + ' plots! -' + totalCost + ' coins', '#daa520')
+    showToast('Plow All: ' + count + ' plots plowed', 'plow', '-' + totalCost + ' 🪙 coins spent')
+    checkAchievements()
+    syncFarmStateNow()
+    updateHUD()
+  } else {
+    showFeedback('No grass plots or not enough coins/energy!', '#ffa500')
+  }
+}
+
 // ── Mouse tracking ───────────────────────────────────────────────────────────
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect()
@@ -2155,6 +2234,10 @@ window.addEventListener('keydown', (e) => {
     if (gameState.running) plantAll()
     return
   }
+  if (e.key === 'l' || e.key === 'L') {
+    if (gameState.running) plowAll()
+    return
+  }
   if (e.key === 'm' || e.key === 'M') {
     if (gameState.running) toggleMinimap()
     return
@@ -2191,6 +2274,7 @@ const harvestAllBtn = document.getElementById('harvest-all-btn')
 const waterAllBtn = document.getElementById('water-all-btn')
 const feedAllBtn = document.getElementById('feed-all-btn')
 const plantAllBtn = document.getElementById('plant-all-btn')
+const plowAllBtn = document.getElementById('plow-all-btn')
 const invBtn = document.getElementById('inventory-btn')
 if (invBtn) {
   invBtn.addEventListener('click', () => {
@@ -2224,6 +2308,11 @@ if (feedAllBtn) {
 // Plant All button
 if (plantAllBtn) {
   plantAllBtn.addEventListener('click', () => { if (gameState.running) plantAll() })
+}
+
+// Plow All button
+if (plowAllBtn) {
+  plowAllBtn.addEventListener('click', () => { if (gameState.running) plowAll() })
 }
 
 // Almanac button

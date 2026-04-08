@@ -43,6 +43,26 @@ const CONSUMABLE_DEFINITIONS = {
     usable: true,
     useEffect: { restoreEnergy: 25 },
     sellPrice: 0
+  },
+  fertilizer: {
+    name: 'Fertilizer',
+    description: 'Boosts all planted crops — advances each one by 50% of a growth stage instantly.',
+    cost: 80,
+    level: 3,
+    icon: '#7ec850',
+    usable: true,
+    useEffect: { fertilizeAll: 0.5 },
+    sellPrice: 0
+  },
+  super_fertilizer: {
+    name: 'Super Fertilizer',
+    description: 'Mega growth boost — advances each planted crop by a full growth stage instantly.',
+    cost: 200,
+    level: 10,
+    icon: '#b8f050',
+    usable: true,
+    useEffect: { fertilizeAll: 1.0 },
+    sellPrice: 0
   }
 }
 
