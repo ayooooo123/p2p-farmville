@@ -389,19 +389,26 @@ export const CROP_DEFINITIONS = {
   }
 }
 
-// ── Flat top-down crop mesh generation ───────────────────────────────────────
+// ── 3D growth-stage crop mesh generation ─────────────────────────────────────
+//
+// Each stage renders differently to give visual depth in the top-down view:
+//   Stage 0 (seed)     — tiny flat disc, dark brown
+//   Stage 1 (sprout)   — short cylinder (stem) + tiny sphere, bright green
+//   Stage 2 (growing)  — taller cylinder + small sphere, medium green → crop color
+//   Stage 3 (maturing) — full cylinder + larger sphere in crop color
+//   Stage 4+ (ready)   — same as stage 3 + pulsing emissive glow ring
 
-// Size mapping for growth stages (fraction of plot, as circle radius)
-const STAGE_SIZES = {
-  0: 0.1,   // seed: tiny dot
-  1: 0.2,   // sprout: small circle
-  2: 0.35,  // growing: medium circle
-  3: 0.5,   // maturing: larger circle
-  4: 0.6    // fully mature: full-sized circle
-}
+// Stage geometry parameters [cylinderRadius, cylinderHeight, sphereRadius]
+const STAGE_GEOM = [
+  [0.08, 0,    0   ],   // 0: seed — just a flat disc
+  [0.07, 0.18, 0.10],   // 1: sprout
+  [0.08, 0.32, 0.16],   // 2: growing
+  [0.09, 0.48, 0.22],   // 3: maturing
+  [0.10, 0.55, 0.28]    // 4: mature
+]
 
 /**
- * Create a flat circle mesh for a crop at a specific growth stage (top-down view)
+ * Create a 3D growth-stage mesh for a crop (works well from top-down orthographic view).
  * @param {string} cropType - key in CROP_DEFINITIONS
  * @param {number} stage - growth stage index (0 = seed, last = mature)
  * @returns {THREE.Group}
@@ -416,75 +423,76 @@ export function createCropMesh (cropType, stage) {
   const isReady = clampedStage >= maxStage
   const group = new THREE.Group()
 
-  // Calculate circle radius based on stage progression
-  const stageKey = Math.min(clampedStage, 4)
-  const radius = STAGE_SIZES[stageKey] || 0.5
+  const geomIdx = Math.min(clampedStage, 4)
+  const [cylR, cylH, sphR] = STAGE_GEOM[geomIdx]
 
   if (clampedStage === 0) {
-    // Seed: tiny dark dot in center
-    const dotGeo = new THREE.CircleGeometry(radius, 8)
-    const dotMat = new THREE.MeshStandardMaterial({ color: 0x5c4a1e })
-    const dot = new THREE.Mesh(dotGeo, dotMat)
-    dot.rotation.x = -Math.PI / 2
-    dot.position.y = 0.02
-    group.add(dot)
-  } else if (clampedStage === 1) {
-    // Small green circle
-    const circleGeo = new THREE.CircleGeometry(radius, 12)
-    const circleMat = new THREE.MeshStandardMaterial({ color: 0x228b22 })
-    const circle = new THREE.Mesh(circleGeo, circleMat)
-    circle.rotation.x = -Math.PI / 2
-    circle.position.y = 0.02
-    group.add(circle)
-  } else if (!isReady) {
-    // Medium growing circle, starts blending toward product color
-    const circleGeo = new THREE.CircleGeometry(radius, 16)
-    const circleMat = new THREE.MeshStandardMaterial({ color })
-    const circle = new THREE.Mesh(circleGeo, circleMat)
-    circle.rotation.x = -Math.PI / 2
-    circle.position.y = 0.02
-    group.add(circle)
+    // Seed: tiny flat disc pressed into the soil, dark brown
+    const discGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.03, 8)
+    const discMat = new THREE.MeshStandardMaterial({ color: 0x5c4a1e, roughness: 0.9 })
+    const disc = new THREE.Mesh(discGeo, discMat)
+    disc.position.y = 0.04
+    group.add(disc)
   } else {
-    // Ready to harvest: full-sized circle in final product color
-    const circleGeo = new THREE.CircleGeometry(radius, 20)
-    const circleMat = new THREE.MeshStandardMaterial({ color })
-    const circle = new THREE.Mesh(circleGeo, circleMat)
-    circle.rotation.x = -Math.PI / 2
-    circle.position.y = 0.02
-    group.add(circle)
+    // Stem cylinder
+    const stemColor = clampedStage <= 2 ? 0x228b22 : new THREE.Color(color).lerp(new THREE.Color(0x228b22), 0.3).getHex()
+    const stemGeo = new THREE.CylinderGeometry(cylR * 0.5, cylR * 0.7, cylH, 7)
+    const stemMat = new THREE.MeshStandardMaterial({ color: stemColor, roughness: 0.85 })
+    const stem = new THREE.Mesh(stemGeo, stemMat)
+    stem.position.y = cylH / 2 + 0.02
+    stem.castShadow = true
+    group.add(stem)
 
-    // Inner accent circle for visual distinction
-    const innerGeo = new THREE.CircleGeometry(radius * 0.5, 12)
-    const innerColor = new THREE.Color(color)
-    innerColor.multiplyScalar(1.3) // brighter inner
-    const innerMat = new THREE.MeshStandardMaterial({ color: innerColor })
-    const inner = new THREE.Mesh(innerGeo, innerMat)
-    inner.rotation.x = -Math.PI / 2
-    inner.position.y = 0.025
-    group.add(inner)
+    // Top sphere (canopy / fruit cluster)
+    const sphereGeo = new THREE.SphereGeometry(sphR, 10, 8)
+    const sphereColor = clampedStage <= 1 ? 0x32cd32 : color
+    const sphereMat = new THREE.MeshStandardMaterial({
+      color: sphereColor,
+      roughness: 0.75,
+      metalness: 0.0,
+      emissive: isReady ? new THREE.Color(color).multiplyScalar(0.15) : 0x000000
+    })
+    const sphere = new THREE.Mesh(sphereGeo, sphereMat)
+    sphere.position.y = cylH + sphR * 0.75 + 0.02
+    sphere.castShadow = true
+    group.add(sphere)
+  }
 
-    // Pulsing glow ring for mature crops
-    const ringInner = radius + 0.05
-    const ringOuter = radius + 0.2
+  // Glow ring for ready/mature crops (pulsing handled in app.js animate loop via userData)
+  if (isReady) {
+    const ringInner = 0.30
+    const ringOuter = 0.48
     const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 32)
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffee44, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffee44,
+      transparent: true,
+      opacity: 0.75,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
     const ring = new THREE.Mesh(ringGeo, ringMat)
     ring.rotation.x = -Math.PI / 2
-    ring.position.y = 0.03
+    ring.position.y = 0.04
     ring.userData.isGlowRing = true
     group.add(ring)
   }
 
   // Progress arc for growing (non-seed, non-mature) crops
   if (clampedStage > 0 && !isReady) {
-    const arcInner = radius + 0.05
-    const arcOuter = radius + 0.12
+    const arcInner = 0.28
+    const arcOuter = 0.38
     const arcLen = 2 * Math.PI * (clampedStage / maxStage)
     const arcGeo = new THREE.RingGeometry(arcInner, arcOuter, 32, 1, -Math.PI / 2, arcLen)
-    const arcMat = new THREE.MeshBasicMaterial({ color: 0x44ff88, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+    const arcMat = new THREE.MeshBasicMaterial({
+      color: 0x44ff88,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
     const arc = new THREE.Mesh(arcGeo, arcMat)
     arc.rotation.x = -Math.PI / 2
-    arc.position.y = 0.03
+    arc.position.y = 0.04
     arc.userData.isProgressArc = true
     group.add(arc)
   }
