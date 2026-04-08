@@ -488,6 +488,14 @@ function updateHUD () {
         if (label) label.textContent = 'Water (' + unwateredCount + ')'
       }
     }
+    const hungryCount = gameState.placedAnimals.filter(a => !a.fed && !a.productReady).length
+    if (feedAllBtn) {
+      feedAllBtn.style.display = hungryCount > 0 ? '' : 'none'
+      if (hungryCount > 0) {
+        const label = feedAllBtn.querySelector('.tool-label')
+        if (label) label.textContent = 'Feed (' + hungryCount + ')'
+      }
+    }
   }
 }
 
@@ -1652,6 +1660,36 @@ function waterAll () {
   }
 }
 
+function feedAll () {
+  if (!gameState.running) return
+  let count = 0
+  let totalCost = 0
+  for (const animal of gameState.placedAnimals) {
+    if (animal.fed || animal.productReady) continue
+    const def = ANIMAL_DEFINITIONS[animal.type]
+    if (!def) continue
+    if (gameState.coins < def.feedCost) break  // stop if can't afford
+    if (!useEnergy(effectiveEnergyCost('plow', ENERGY_COST))) break  // stop if out of energy
+    const result = feedAnimal(animal)
+    if (result) {
+      gameState.coins -= result.feedCost
+      gameState.animalsFed++
+      totalCost += result.feedCost
+      count++
+    }
+  }
+  if (count > 0) {
+    SoundSystem.play('feed')
+    showFeedback('Fed ' + count + ' animal' + (count > 1 ? 's' : '') + '! -' + totalCost + ' coins', '#32cd32')
+    showToast('Feed All: ' + count + ' animal' + (count > 1 ? 's' : '') + ' fed', 'plant', '-' + totalCost + ' 🪙 coins spent')
+    checkAchievements()
+    syncFarmStateNow()
+    updateHUD()
+  } else {
+    showFeedback('No hungry animals!', '#ffa500')
+  }
+}
+
 // ── Mouse tracking ───────────────────────────────────────────────────────────
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect()
@@ -1998,6 +2036,10 @@ window.addEventListener('keydown', (e) => {
     if (gameState.running) waterAll()
     return
   }
+  if (e.key === 'n' || e.key === 'N') {
+    if (gameState.running) feedAll()
+    return
+  }
   if (e.key === 'm' || e.key === 'M') {
     if (gameState.running) toggleMinimap()
     return
@@ -2032,6 +2074,7 @@ window.addEventListener('keydown', (e) => {
 // Inventory button
 const harvestAllBtn = document.getElementById('harvest-all-btn')
 const waterAllBtn = document.getElementById('water-all-btn')
+const feedAllBtn = document.getElementById('feed-all-btn')
 const invBtn = document.getElementById('inventory-btn')
 if (invBtn) {
   invBtn.addEventListener('click', () => {
@@ -2055,6 +2098,11 @@ if (harvestAllBtn) {
 // Water All button
 if (waterAllBtn) {
   waterAllBtn.addEventListener('click', () => waterAll())
+}
+
+// Feed All button
+if (feedAllBtn) {
+  feedAllBtn.addEventListener('click', () => feedAll())
 }
 
 // Quest button

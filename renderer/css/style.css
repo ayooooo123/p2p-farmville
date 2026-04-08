@@ -408,6 +408,18 @@ body {
   color: #fff;
 }
 
+.tool-btn-feed-all {
+  border-color: rgba(50, 205, 50, 0.5);
+  background: rgba(50, 205, 50, 0.12);
+  color: #7ecf7e;
+}
+
+.tool-btn-feed-all:hover {
+  border-color: rgba(50, 205, 50, 0.9);
+  background: rgba(50, 205, 50, 0.25);
+  color: #fff;
+}
+
 /* ── Seed Selector Strip ────────────────────────────────────────────────────── */
 #seed-strip {
   display: flex;
