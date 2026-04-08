@@ -93,6 +93,11 @@ let timeOfDay = 0.3 // fraction 0-1
 let starsGroup = null
 const STAR_COUNT = 200
 
+// Fireflies
+let firefliesGroup = null
+const FIREFLY_COUNT = 30
+const fireflyData = [] // per-firefly animation state
+
 function initDayNight (sceneRef, sunRef, ambientRef, hemiRef, options) {
   scene = sceneRef
   sunLight = sunRef
@@ -106,6 +111,9 @@ function initDayNight (sceneRef, sunRef, ambientRef, hemiRef, options) {
 
   // Create stars group
   _createStars()
+
+  // Create fireflies group
+  _createFireflies()
 }
 
 function _createStars () {
@@ -133,6 +141,76 @@ function _createStars () {
   }
 
   if (scene) scene.add(starsGroup)
+}
+
+function _createFireflies () {
+  firefliesGroup = new THREE.Group()
+  firefliesGroup.visible = false
+
+  const ffGeo = new THREE.SphereGeometry(0.12, 5, 5)
+
+  for (let i = 0; i < FIREFLY_COUNT; i++) {
+    // Randomise color between yellow-green and cool green
+    const hue = 0.18 + Math.random() * 0.15 // 0.18–0.33 (yellow-green to green)
+    const col = new THREE.Color().setHSL(hue, 1.0, 0.6)
+    const mat = new THREE.MeshBasicMaterial({
+      color: col,
+      transparent: true,
+      opacity: 0
+    })
+    const mesh = new THREE.Mesh(ffGeo, mat)
+
+    // Spawn within the farm grid (±18 units) and low altitude
+    const x = (Math.random() - 0.5) * 36
+    const z = (Math.random() - 0.5) * 36
+    const y = 0.5 + Math.random() * 1.5
+    mesh.position.set(x, y, z)
+    firefliesGroup.add(mesh)
+
+    // Per-firefly random phase state
+    fireflyData.push({
+      mesh,
+      // Drift velocity
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.1,
+      vz: (Math.random() - 0.5) * 0.3,
+      // Blink params
+      blinkPhase: Math.random() * Math.PI * 2,
+      blinkSpeed: 0.8 + Math.random() * 1.5,
+      // Base position for gentle wandering
+      baseX: x, baseY: y, baseZ: z,
+      // Wander angle
+      angle: Math.random() * Math.PI * 2,
+      angleSpeed: (Math.random() - 0.5) * 0.5
+    })
+  }
+
+  if (scene) scene.add(firefliesGroup)
+}
+
+function _updateFireflies (dtMs, nightStrength) {
+  if (!firefliesGroup) return
+  const dt = dtMs / 1000 // seconds
+
+  for (const ff of fireflyData) {
+    // Slow circular drift around base position
+    ff.angle += ff.angleSpeed * dt
+    const radius = 3 + Math.sin(ff.blinkPhase * 0.3) * 1.5
+    ff.mesh.position.x = ff.baseX + Math.cos(ff.angle) * radius
+    ff.mesh.position.z = ff.baseZ + Math.sin(ff.angle) * radius
+
+    // Gentle vertical bob
+    ff.blinkPhase += ff.blinkSpeed * dt
+    ff.mesh.position.y = ff.baseY + Math.sin(ff.blinkPhase * 0.7) * 0.4
+
+    // Blink: sinusoidal opacity pulse
+    const blink = (Math.sin(ff.blinkPhase * ff.blinkSpeed) + 1) / 2
+    ff.mesh.material.opacity = blink * nightStrength * 0.9
+
+    // Keep within farm bounds
+    ff.baseX = Math.max(-18, Math.min(18, ff.baseX + ff.vx * dt))
+    ff.baseZ = Math.max(-18, Math.min(18, ff.baseZ + ff.vz * dt))
+  }
 }
 
 function _getPhase (t) {
@@ -230,6 +308,20 @@ function updateDayNight (dtMs) {
         s.material.opacity = Math.max(0, starOpacity)
         s.material.transparent = starOpacity < 1
       })
+    }
+  }
+
+  // Fireflies — appear at dusk/night, wander and blink
+  if (firefliesGroup) {
+    const isNightish = phase === 'night' || phase === 'dusk' ||
+      (phase === 'dawn' && phaseProgress < 0.5)
+    firefliesGroup.visible = isNightish
+
+    if (isNightish) {
+      let ffStrength = 1
+      if (phase === 'dusk') ffStrength = Math.min(1, phaseProgress * 2)
+      else if (phase === 'dawn') ffStrength = Math.max(0, 1 - phaseProgress * 2)
+      _updateFireflies(dtMs || 16, ffStrength)
     }
   }
 }
