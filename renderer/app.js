@@ -79,6 +79,7 @@ const farmState = {
 }
 
 let placementMode = null // { category, key, def, ghostMesh }
+let placementHighlightMesh = null // glowing ring shown under ghost during placement
 let activeCraftingBuilding = null
 
 // ── Drag-to-multi-action state ───────────────────────────────────────────────
@@ -971,6 +972,21 @@ function enterPlacementMode (category, key, def) {
 
   placementMode = { category, key, def, ghostMesh }
 
+  // Create placement highlight ring — glowing disc beneath ghost
+  if (placementHighlightMesh) sceneData.scene.remove(placementHighlightMesh)
+  const hlRingGeo = new THREE.RingGeometry(1.0, 1.6, 32)
+  const hlRingMat = new THREE.MeshBasicMaterial({
+    color: 0x44ff88,
+    transparent: true,
+    opacity: 0.7,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  })
+  placementHighlightMesh = new THREE.Mesh(hlRingGeo, hlRingMat)
+  placementHighlightMesh.rotation.x = -Math.PI / 2
+  placementHighlightMesh.position.set(0, 0.05, 0)
+  sceneData.scene.add(placementHighlightMesh)
+
   if (placementIndicator) placementIndicator.style.display = 'flex'
   if (placementText) placementText.textContent = 'Placing: ' + def.name
 
@@ -983,6 +999,11 @@ function cancelPlacement () {
 
   if (placementMode.ghostMesh) {
     sceneData.scene.remove(placementMode.ghostMesh)
+  }
+
+  if (placementHighlightMesh) {
+    sceneData.scene.remove(placementHighlightMesh)
+    placementHighlightMesh = null
   }
 
   placementMode = null
@@ -1009,6 +1030,10 @@ function updateGhostPosition () {
     const snappedX = Math.round(intersection.x / 2) * 2
     const snappedZ = Math.round(intersection.z / 2) * 2
     placementMode.ghostMesh.position.set(snappedX, 0, snappedZ)
+    // Keep highlight ring aligned beneath ghost
+    if (placementHighlightMesh) {
+      placementHighlightMesh.position.set(snappedX, 0.05, snappedZ)
+    }
   }
 }
 
@@ -1087,7 +1112,11 @@ function confirmPlacement () {
   showFeedback('Placed ' + def.name + '! -' + def.cost + ' coins', '#32cd32')
   syncFarmStateNow()
 
-  // Clear placement mode
+  // Clear placement mode + highlight ring
+  if (placementHighlightMesh) {
+    sceneData.scene.remove(placementHighlightMesh)
+    placementHighlightMesh = null
+  }
   placementMode = null
   if (placementIndicator) placementIndicator.style.display = 'none'
   canvas.style.cursor = 'default'
@@ -2776,6 +2805,14 @@ function gameLoop (time) {
 
   // Update HUD periodically
   updateHUD()
+
+  // Pulse placement highlight ring (breathing opacity + scale)
+  if (placementHighlightMesh) {
+    const pulse = 0.55 + 0.35 * Math.sin(time * 0.004)
+    placementHighlightMesh.material.opacity = pulse
+    const sc = 0.9 + 0.15 * Math.sin(time * 0.004)
+    placementHighlightMesh.scale.setScalar(sc)
+  }
 
   // Render
   renderScene()
