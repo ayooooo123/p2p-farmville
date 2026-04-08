@@ -119,6 +119,18 @@ const EFFECT_CONFIGS = {
     gravity: 2,
     direction: { x: 0, y: 0.3, z: 0 },
     fadeOut: true
+  },
+  plow: {
+    count: 16,
+    color: 0x8b5e2a,
+    colorVariance: 0x3a1a00,
+    size: 0.12,
+    speed: 2.8,
+    spread: 1.2,
+    lifetime: 700,
+    gravity: 5,
+    direction: { x: 0, y: 1, z: 0 },
+    fadeOut: true
   }
 }
 

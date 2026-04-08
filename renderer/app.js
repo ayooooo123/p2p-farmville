@@ -1466,6 +1466,7 @@ function handlePlow (plot) {
   gameState.totalPlowed++
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
   SoundSystem.play('plow')
+  createParticleEffect('plow', { x: plot.x, y: 0.1, z: plot.z })
   showFeedback('Plowed! -' + PLOW_COST + ' coins', '#daa520')
   QuestSystem.recordAction('plow')
   checkAchievements()
