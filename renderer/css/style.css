@@ -811,6 +811,21 @@ body {
   color: #dda0dd;
 }
 
+.seed-profit-pos {
+  color: #4cff6e;
+  font-weight: 600;
+}
+
+.seed-profit-neg {
+  color: #ff6060;
+  font-weight: 600;
+}
+
+.seed-cpm {
+  color: #ffa040;
+  font-size: 10px;
+}
+
 .seed-level {
   position: absolute;
   top: 8px;

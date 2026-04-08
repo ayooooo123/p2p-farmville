@@ -198,6 +198,9 @@ function _renderSeeds (grid, playerLevel, q = '') {
 
     const growTimeSec = Math.round(def.growTime / 1000)
     const growTimeStr = growTimeSec >= 60 ? Math.round(growTimeSec / 60) + 'm' : growTimeSec + 's'
+    const profit = def.sellPrice - def.seedCost
+    const coinsPerMin = growTimeSec > 0 ? (profit / (growTimeSec / 60)).toFixed(1) : 0
+    const profitClass = profit >= 0 ? 'seed-profit-pos' : 'seed-profit-neg'
 
     card.innerHTML = `
       <div class="seed-color-icon" style="background: #${def.colors[def.colors.length - 1].toString(16).padStart(6, '0')};"></div>
@@ -205,7 +208,9 @@ function _renderSeeds (grid, playerLevel, q = '') {
       <div class="seed-stats">
         <span class="seed-cost">${def.seedCost} coins</span>
         <span class="seed-sell">Sells: ${def.sellPrice}</span>
+        <span class="${profitClass}">${profit >= 0 ? '+' : ''}${profit} profit</span>
         <span class="seed-time">${growTimeStr}</span>
+        <span class="seed-cpm" title="Coins per minute">${coinsPerMin}/min</span>
         <span class="seed-xp">+${def.xp} XP</span>
       </div>
       <div class="seed-level">Lv.${def.level}</div>
