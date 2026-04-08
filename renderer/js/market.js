@@ -248,7 +248,13 @@ function _renderCategoryItems (grid, definitions, category, playerLevel, q = '')
       statsHtml += `<span class="seed-time">${timeSec >= 60 ? Math.round(timeSec / 60) + 'm' : timeSec + 's'}</span>`
     }
     if (def.xp) statsHtml += `<span class="seed-xp">+${def.xp} XP</span>`
-    if (def.effect) statsHtml += `<span class="seed-xp">${def.effect}</span>`
+    if (def.effect) {
+      const effectLabel = def.effect === 'action_speed_3x' ? 'Plow & Water: FREE energy'
+        : def.effect === 'plant_speed_3x'   ? 'Plant: FREE energy'
+        : def.effect === 'harvest_speed_3x' ? 'Harvest: FREE energy'
+        : def.effect
+      statsHtml += `<span class="seed-xp">${effectLabel}</span>`
+    }
     if (def.type) statsHtml += `<span class="seed-time">${def.type}</span>`
     if (def.bonus) statsHtml += `<span class="seed-xp">+${def.bonus} beauty</span>`
 

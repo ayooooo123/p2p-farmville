@@ -118,17 +118,27 @@ export function createVehicleMesh (vehicleType) {
 /**
  * Get effective speed multiplier from owned vehicles
  */
+/**
+ * Get the speed multiplier for a given action from owned vehicles.
+ * action: 'plow' | 'plant' | 'water' | 'harvest' | 'remove'
+ * Returns 1 normally, 3 if a relevant vehicle is owned (makes action free).
+ */
 export function getVehicleSpeedMultiplier (ownedVehicles, action) {
   let multiplier = 1
   for (const vKey of ownedVehicles) {
     const def = VEHICLE_DEFINITIONS[vKey]
     if (!def) continue
 
-    if (def.effect === 'action_speed_3x') {
+    // Tractor: free plow, water, and remove actions
+    if (def.effect === 'action_speed_3x' && (action === 'plow' || action === 'water' || action === 'remove')) {
       multiplier = Math.max(multiplier, def.speedMultiplier)
-    } else if (def.effect === 'plant_speed_3x' && action === 'plant') {
+    }
+    // Seeder: free planting
+    if (def.effect === 'plant_speed_3x' && action === 'plant') {
       multiplier = Math.max(multiplier, def.speedMultiplier)
-    } else if (def.effect === 'harvest_speed_3x' && action === 'harvest') {
+    }
+    // Harvester: free harvesting (crops, trees, animals)
+    if (def.effect === 'harvest_speed_3x' && action === 'harvest') {
       multiplier = Math.max(multiplier, def.speedMultiplier)
     }
   }

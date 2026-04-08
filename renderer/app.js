@@ -574,6 +574,19 @@ function deselectTool () {
 })
 
 // ── Energy system ────────────────────────────────────────────────────────────
+/**
+ * Returns the effective energy cost for an action, factoring in owned vehicles.
+ * Tractor (action_speed_3x): plow/water/remove cost 0 energy.
+ * Seeder  (plant_speed_3x):  plant cost 0 energy.
+ * Harvester (harvest_speed_3x): harvest cost 0 energy.
+ */
+function effectiveEnergyCost (action, baseCost) {
+  const owned = farmState.ownedVehicles
+  const vmul = getVehicleSpeedMultiplier(owned, action)
+  // A vehicle with speedMultiplier >= 3 makes that action free
+  return vmul >= 3 ? 0 : baseCost
+}
+
 function useEnergy (amount) {
   if (gameState.energy < amount) {
     showFeedback('Not enough energy!', '#ff4444')
@@ -851,11 +864,15 @@ function updateVehicleStatus () {
     vehicleStatusEl.style.display = 'none'
     return
   }
-  const names = farmState.ownedVehicles.map(v => {
+  const descriptions = farmState.ownedVehicles.map(v => {
     const def = VEHICLE_DEFINITIONS[v]
-    return def ? def.name : v
+    if (!def) return v
+    if (def.effect === 'action_speed_3x')   return def.name + ' (plow/water free)'
+    if (def.effect === 'plant_speed_3x')    return def.name + ' (plant free)'
+    if (def.effect === 'harvest_speed_3x')  return def.name + ' (harvest free)'
+    return def.name
   })
-  vehicleStatusEl.textContent = 'Vehicles: ' + names.join(', ')
+  vehicleStatusEl.textContent = '🚜 ' + descriptions.join(' · ')
   vehicleStatusEl.style.display = 'block'
 }
 
@@ -1118,7 +1135,7 @@ function handleTreeInteract (tree) {
   if (!def) return
 
   if (isTreeReady(tree)) {
-    if (!useEnergy(ENERGY_COST)) return
+    if (!useEnergy(effectiveEnergyCost('harvest', ENERGY_COST))) return
     const reward = harvestTree(tree)
     if (reward) {
       gameState.coins += reward.coins
@@ -1152,7 +1169,7 @@ function handleAnimalInteract (animal) {
 
   if (animal.productReady) {
     // Collect product
-    if (!useEnergy(ENERGY_COST)) return
+    if (!useEnergy(effectiveEnergyCost('harvest', ENERGY_COST))) return
     const reward = collectAnimalProduct(animal)
     if (reward) {
       gameState.coins += reward.coins
@@ -1172,7 +1189,7 @@ function handleAnimalInteract (animal) {
       showFeedback('Not enough coins to feed! (need ' + def.feedCost + ')', '#ff4444')
       return
     }
-    if (!useEnergy(ENERGY_COST)) return
+    if (!useEnergy(effectiveEnergyCost('plow', ENERGY_COST))) return
     const result = feedAnimal(animal)
     if (result) {
       gameState.animalsFed++
@@ -1391,7 +1408,7 @@ function handlePlow (plot) {
     showFeedback('Not enough coins! (need ' + PLOW_COST + ')', '#ff4444')
     return
   }
-  if (!useEnergy(ENERGY_COST)) return
+  if (!useEnergy(effectiveEnergyCost('plow', ENERGY_COST))) return
 
   gameState.coins -= PLOW_COST
   addXP(PLOW_XP)
@@ -1421,7 +1438,7 @@ function handlePlant (plot) {
     showFeedback('Not enough coins! (need ' + cropDef.seedCost + ')', '#ff4444')
     return
   }
-  if (!useEnergy(ENERGY_COST)) return
+  if (!useEnergy(effectiveEnergyCost('plant', ENERGY_COST))) return
 
   gameState.coins -= cropDef.seedCost
 
@@ -1463,7 +1480,7 @@ function handleWater (plot) {
     showFeedback('Already watered!', '#4169e1')
     return
   }
-  if (!useEnergy(ENERGY_COST)) return
+  if (!useEnergy(effectiveEnergyCost('water', ENERGY_COST))) return
 
   plot.crop.watered = true
   gameState.totalWatered++
@@ -1493,7 +1510,7 @@ function handleHarvest (plot) {
     showFeedback('Not mature yet! (stage ' + plot.crop.stage + '/' + maxStage + ')', '#ffa500')
     return
   }
-  if (!useEnergy(ENERGY_COST)) return
+  if (!useEnergy(effectiveEnergyCost('harvest', ENERGY_COST))) return
 
   // Harvest rewards
   const cropType = plot.crop.type
@@ -1549,7 +1566,7 @@ function handleRemove (plot) {
     showFeedback('Nothing to remove!', '#ffa500')
     return
   }
-  if (!useEnergy(ENERGY_COST)) return
+    if (!useEnergy(effectiveEnergyCost('remove', ENERGY_COST))) return
 
   const cropDef = CROP_DEFINITIONS[plot.crop.type]
   const name = cropDef ? cropDef.name : 'crop'
@@ -1574,7 +1591,7 @@ function harvestAll () {
     if (plot.state !== terrainData.PLOT_STATES.PLANTED || !plot.crop || plot.crop.withered) continue
     const def = CROP_DEFINITIONS[plot.crop.type]
     if (!def || plot.crop.stage < def.stages - 1) continue
-    if (!useEnergy(ENERGY_COST)) break  // stop if out of energy
+    if (!useEnergy(effectiveEnergyCost('harvest', ENERGY_COST))) break  // stop if out of energy
 
     const harvestCropType = plot.crop.type
     gameState.coins += def.sellPrice
@@ -1614,7 +1631,7 @@ function waterAll () {
     const def = CROP_DEFINITIONS[plot.crop.type]
     if (!def || plot.crop.stage >= def.stages - 1) continue  // already mature, skip
     if (plot.crop.watered) continue
-    if (!useEnergy(ENERGY_COST)) break  // stop if out of energy
+    if (!useEnergy(effectiveEnergyCost('water', ENERGY_COST))) break  // stop if out of energy
 
     plot.crop.watered = true
     gameState.totalWatered++
