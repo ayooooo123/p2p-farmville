@@ -1,15 +1,10 @@
 import * as THREE from './three.module.min.js'
 
-// ── Particle Effects System ─────────────────────────────────────────────────
-// Pooled particle system with multiple effect types
+// ── Instanced Particle System ────────────────────────────────────────────────
+// Single InstancedMesh for all particles — one draw call regardless of count.
+// Particle state stored in typed arrays for zero per-frame GC pressure.
 
-let scene = null
-const activeEffects = []
-
-// Object pool
-const POOL_SIZE = 200
-const particlePool = []
-let poolInitialized = false
+const MAX_INSTANCES = 300
 
 const EFFECT_CONFIGS = {
   harvest: {
@@ -134,175 +129,199 @@ const EFFECT_CONFIGS = {
   }
 }
 
-// ── Pool Management ─────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
 
-function _initPool () {
-  if (poolInitialized) return
+let scene = null
+let instancedMesh = null
 
-  const geo = new THREE.SphereGeometry(1, 4, 4)
+// Per-slot typed arrays — parallel to InstancedMesh slots
+const slotInUse   = new Uint8Array(MAX_INSTANCES)
+const slotPX      = new Float32Array(MAX_INSTANCES)
+const slotPY      = new Float32Array(MAX_INSTANCES)
+const slotPZ      = new Float32Array(MAX_INSTANCES)
+const slotVX      = new Float32Array(MAX_INSTANCES)
+const slotVY      = new Float32Array(MAX_INSTANCES)
+const slotVZ      = new Float32Array(MAX_INSTANCES)
+const slotGravity = new Float32Array(MAX_INSTANCES)
+const slotSize    = new Float32Array(MAX_INSTANCES)
+const slotR       = new Float32Array(MAX_INSTANCES)
+const slotG       = new Float32Array(MAX_INSTANCES)
+const slotB       = new Float32Array(MAX_INSTANCES)
+const slotStart   = new Float64Array(MAX_INSTANCES) // ms timestamp
+const slotLife    = new Float32Array(MAX_INSTANCES) // ms lifetime
+const slotFade    = new Uint8Array(MAX_INSTANCES)
 
-  for (let i = 0; i < POOL_SIZE; i++) {
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 1
-    })
-    const mesh = new THREE.Mesh(geo, mat)
-    mesh.visible = false
-    mesh.userData.inUse = false
-    particlePool.push(mesh)
-    if (scene) scene.add(mesh)
+// Reusable scratch objects — avoid per-frame allocations
+const _dummy  = new THREE.Object3D()
+const _color  = new THREE.Color()
+
+// ── Pool Management ──────────────────────────────────────────────────────────
+
+function _acquireSlot () {
+  for (let i = 0; i < MAX_INSTANCES; i++) {
+    if (!slotInUse[i]) return i
   }
-
-  poolInitialized = true
+  return -1
 }
 
-function _acquireParticle () {
-  for (const p of particlePool) {
-    if (!p.userData.inUse) {
-      p.userData.inUse = true
-      p.visible = true
-      return p
-    }
-  }
-  return null // pool exhausted
+function _hideSlot (i) {
+  _dummy.position.set(0, -1000, 0)
+  _dummy.scale.set(0, 0, 0)
+  _dummy.updateMatrix()
+  instancedMesh.setMatrixAt(i, _dummy.matrix)
+  instancedMesh.setColorAt(i, _color.setRGB(0, 0, 0))
 }
 
-function _releaseParticle (p) {
-  p.userData.inUse = false
-  p.visible = false
-}
-
-// ── Public API ──────────────────────────────────────────────────────────────
+// ── Public API ───────────────────────────────────────────────────────────────
 
 function initParticles (sceneRef) {
   scene = sceneRef
-  _initPool()
+
+  const geo = new THREE.SphereGeometry(1, 4, 4)
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true })
+  instancedMesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES)
+  instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  instancedMesh.frustumCulled = false // particles can be anywhere
+
+  // Initialise all slots to hidden
+  for (let i = 0; i < MAX_INSTANCES; i++) {
+    _hideSlot(i)
+  }
+  instancedMesh.instanceMatrix.needsUpdate = true
+  instancedMesh.instanceColor.needsUpdate = true
+
+  scene.add(instancedMesh)
 }
 
 function createParticleEffect (type, position) {
-  if (!scene) return
+  if (!scene || !instancedMesh) return
 
   const config = EFFECT_CONFIGS[type]
   if (!config) return
 
-  const effect = {
-    type,
-    particles: [],
-    startTime: Date.now(),
-    lifetime: config.lifetime,
-    config
-  }
+  const baseColor = new THREE.Color(config.color)
+  const now = Date.now()
 
-  for (let i = 0; i < config.count; i++) {
-    const p = _acquireParticle()
-    if (!p) break
+  for (let p = 0; p < config.count; p++) {
+    const slot = _acquireSlot()
+    if (slot < 0) break
 
-    // Position at origin of effect
-    p.position.set(
-      position.x + (Math.random() - 0.5) * config.spread * 0.3,
-      position.y + Math.random() * 0.3,
-      position.z + (Math.random() - 0.5) * config.spread * 0.3
-    )
+    slotInUse[slot] = 1
 
-    // Scale
-    const s = config.size * (0.7 + Math.random() * 0.6)
-    p.scale.set(s, s, s)
+    // Spawn position — small jitter
+    slotPX[slot] = position.x + (Math.random() - 0.5) * config.spread * 0.3
+    slotPY[slot] = position.y + Math.random() * 0.3
+    slotPZ[slot] = position.z + (Math.random() - 0.5) * config.spread * 0.3
 
-    // Color with variance
-    const baseColor = new THREE.Color(config.color)
+    // Size
+    slotSize[slot] = config.size * (0.7 + Math.random() * 0.6)
+
+    // Color with optional variance
+    let r = baseColor.r
+    let g = baseColor.g
+    let b = baseColor.b
     if (config.colorVariance) {
       const variance = new THREE.Color(config.colorVariance)
       const t = Math.random()
-      baseColor.r += variance.r * t
-      baseColor.g += variance.g * t
-      baseColor.b += variance.b * t
+      r = Math.min(1, r + variance.r * t)
+      g = Math.min(1, g + variance.g * t)
+      b = Math.min(1, b + variance.b * t)
     }
-    p.material.color.copy(baseColor)
-    p.material.opacity = 1
+    slotR[slot] = r
+    slotG[slot] = g
+    slotB[slot] = b
 
-    // Velocity
-    const angle = Math.random() * Math.PI * 2
-    const upAngle = Math.random() * Math.PI * 0.5
-    const speed = config.speed * (0.5 + Math.random() * 0.5)
-    p.userData.velocity = {
-      x: Math.cos(angle) * Math.sin(upAngle) * speed * config.spread / 2 +
-         config.direction.x * speed,
-      y: Math.cos(upAngle) * speed * 0.7 + config.direction.y * speed,
-      z: Math.sin(angle) * Math.sin(upAngle) * speed * config.spread / 2 +
-         config.direction.z * speed
-    }
-    p.userData.gravity = config.gravity
+    // Velocity — hemispherical burst in direction
+    const angle    = Math.random() * Math.PI * 2
+    const upAngle  = Math.random() * Math.PI * 0.5
+    const speed    = config.speed * (0.5 + Math.random() * 0.5)
+    slotVX[slot] = Math.cos(angle) * Math.sin(upAngle) * speed * config.spread / 2 +
+                   config.direction.x * speed
+    slotVY[slot] = Math.cos(upAngle) * speed * 0.7 + config.direction.y * speed
+    slotVZ[slot] = Math.sin(angle) * Math.sin(upAngle) * speed * config.spread / 2 +
+                   config.direction.z * speed
 
-    effect.particles.push(p)
+    slotGravity[slot] = config.gravity
+    slotStart[slot]   = now
+    slotLife[slot]    = config.lifetime
+    slotFade[slot]    = config.fadeOut ? 1 : 0
   }
-
-  activeEffects.push(effect)
 }
 
 function updateParticles (dtMs) {
-  if (activeEffects.length === 0) return
+  if (!instancedMesh) return
 
+  const dt  = dtMs / 1000
   const now = Date.now()
-  const dt = dtMs / 1000
+  let anyActive = false
 
-  for (let i = activeEffects.length - 1; i >= 0; i--) {
-    const effect = activeEffects[i]
-    const elapsed = now - effect.startTime
-    const progress = elapsed / effect.lifetime
+  for (let i = 0; i < MAX_INSTANCES; i++) {
+    if (!slotInUse[i]) continue
+
+    const progress = (now - slotStart[i]) / slotLife[i]
 
     if (progress >= 1) {
-      // Effect expired, release all particles
-      for (const p of effect.particles) {
-        _releaseParticle(p)
-      }
-      activeEffects.splice(i, 1)
+      slotInUse[i] = 0
+      _hideSlot(i)
       continue
     }
 
-    // Update each particle
-    for (const p of effect.particles) {
-      const vel = p.userData.velocity
-      const grav = p.userData.gravity
+    anyActive = true
 
-      p.position.x += vel.x * dt
-      p.position.y += vel.y * dt
-      p.position.z += vel.z * dt
+    // Physics
+    slotPX[i] += slotVX[i] * dt
+    slotPY[i] += slotVY[i] * dt
+    slotPZ[i] += slotVZ[i] * dt
+    slotVY[i] -= slotGravity[i] * dt
+    slotVX[i] *= 0.99
+    slotVZ[i] *= 0.99
 
-      // Apply gravity
-      vel.y -= grav * dt
-
-      // Damping
-      vel.x *= 0.99
-      vel.z *= 0.99
-
-      // Fade out
-      if (effect.config.fadeOut) {
-        p.material.opacity = Math.max(0, 1 - progress)
-      }
-
-      // Prevent going below ground
-      if (p.position.y < 0.05) {
-        p.position.y = 0.05
-        vel.y = 0
-        vel.x *= 0.9
-        vel.z *= 0.9
-      }
+    // Ground bounce / stop
+    if (slotPY[i] < 0.05) {
+      slotPY[i] = 0.05
+      slotVY[i] = 0
+      slotVX[i] *= 0.9
+      slotVZ[i] *= 0.9
     }
+
+    // Matrix: position + uniform scale
+    const s = slotSize[i]
+    _dummy.position.set(slotPX[i], slotPY[i], slotPZ[i])
+    _dummy.scale.set(s, s, s)
+    _dummy.updateMatrix()
+    instancedMesh.setMatrixAt(i, _dummy.matrix)
+
+    // Color: multiply RGB by alpha for fade-to-black effect
+    const alpha = slotFade[i] ? Math.max(0, 1 - progress) : 1
+    instancedMesh.setColorAt(i, _color.setRGB(
+      slotR[i] * alpha,
+      slotG[i] * alpha,
+      slotB[i] * alpha
+    ))
+  }
+
+  if (anyActive) {
+    instancedMesh.instanceMatrix.needsUpdate = true
+    if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true
   }
 }
 
 function getActiveEffectCount () {
-  return activeEffects.length
+  let count = 0
+  for (let i = 0; i < MAX_INSTANCES; i++) {
+    if (slotInUse[i]) count++
+  }
+  return count
 }
 
 function dispose () {
-  for (const effect of activeEffects) {
-    for (const p of effect.particles) {
-      _releaseParticle(p)
-    }
+  for (let i = 0; i < MAX_INSTANCES; i++) slotInUse[i] = 0
+  if (instancedMesh) {
+    scene.remove(instancedMesh)
+    instancedMesh.geometry.dispose()
+    instancedMesh.material.dispose()
+    instancedMesh = null
   }
-  activeEffects.length = 0
 }
 
 export {

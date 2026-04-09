@@ -27,6 +27,7 @@ let grassTexEven = null  // shared CanvasTexture for (row+col)%2===0 plots
 let grassTexOdd  = null  // shared CanvasTexture for (row+col)%2===1 plots
 let soilTexDry   = null  // plowed dry soil texture
 let soilTexWet   = null  // watered soil texture
+let pathTex      = null  // cobblestone path texture (created once)
 
 function _hexToRgb (hex) {
   return {
@@ -112,6 +113,89 @@ function _makeSoilTexture (baseHex, darkHex, size = 64) {
   const data = imageData.data
   for (let i = 0; i < data.length; i += 4) {
     const n = (Math.random() - 0.5) * 22
+    data[i]     = Math.min(255, Math.max(0, data[i]     + n))
+    data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + n))
+    data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + n))
+  }
+  ctx.putImageData(imageData, 0, 0)
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  return tex
+}
+
+/**
+ * Generate a canvas cobblestone/brick texture for the farm path perimeter.
+ * Running-bond brick rows with grout lines + subtle per-pixel noise.
+ */
+function _makePathTexture (size = 128) {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+
+  // Base sandy mortar color
+  ctx.fillStyle = '#8a7250'
+  ctx.fillRect(0, 0, size, size)
+
+  // Brick dimensions (in canvas pixels)
+  const brickW = size / 4    // 32px wide
+  const brickH = size / 7    // ~18px tall
+  const grout  = 2            // 2px grout gap
+
+  // Stone colors — warm sandy range
+  const stoneColors = [
+    '#c2a66e', '#b89a5e', '#cdb07a', '#b08050',
+    '#c8a870', '#aa8848', '#d4b880', '#bc9e62'
+  ]
+
+  let colorIdx = 0
+  for (let row = 0; row < Math.ceil(size / brickH) + 1; row++) {
+    // Offset every other row by half a brick (running bond)
+    const xOffset = (row % 2 === 0) ? 0 : brickW / 2
+
+    for (let col = -1; col < Math.ceil(size / brickW) + 1; col++) {
+      const bx = xOffset + col * brickW + grout
+      const by = row * brickH + grout
+      const bw = brickW - grout * 2
+      const bh = brickH - grout * 2
+
+      if (bw > 0 && bh > 0) {
+        // Pick a color from the palette with slight per-brick variation
+        const baseColor = stoneColors[colorIdx % stoneColors.length]
+        colorIdx++
+
+        // Parse hex to RGB for noise
+        const r = parseInt(baseColor.slice(1, 3), 16)
+        const g = parseInt(baseColor.slice(3, 5), 16)
+        const b = parseInt(baseColor.slice(5, 7), 16)
+        const nv = Math.floor((Math.random() - 0.5) * 18)
+        const cr = Math.min(255, Math.max(0, r + nv))
+        const cg = Math.min(255, Math.max(0, g + nv))
+        const cb = Math.min(255, Math.max(0, b + nv))
+
+        ctx.fillStyle = `rgb(${cr},${cg},${cb})`
+        ctx.fillRect(bx, by, bw, bh)
+
+        // Subtle top-left highlight for 3D stone feel
+        ctx.fillStyle = 'rgba(255,255,255,0.10)'
+        ctx.fillRect(bx, by, bw, 2)
+        ctx.fillRect(bx, by, 2, bh)
+
+        // Subtle bottom-right shadow for depth
+        ctx.fillStyle = 'rgba(0,0,0,0.12)'
+        ctx.fillRect(bx, by + bh - 2, bw, 2)
+        ctx.fillRect(bx + bw - 2, by, 2, bh)
+      }
+    }
+  }
+
+  // Per-pixel noise for surface variation
+  const imageData = ctx.getImageData(0, 0, size, size)
+  const data = imageData.data
+  for (let i = 0; i < data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 14
     data[i]     = Math.min(255, Math.max(0, data[i]     + n))
     data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + n))
     data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + n))
@@ -320,42 +404,118 @@ function _createPaths (scene) {
   const halfD = (GRID_ROWS * PLOT_SIZE) / 2 + 1.5
   const pathWidth = 1.5
 
-  const pathMat = new THREE.MeshStandardMaterial({
-    color: COLORS.path,
-    roughness: 0.85,
-    metalness: 0.0
-  })
+  // Build the cobblestone canvas texture once (shared across all 4 path planes)
+  if (!pathTex) pathTex = _makePathTexture(128)
 
-  // Top/bottom paths (flat planes)
+  // ── Path planes with cobblestone texture ──────────────────────────────────
+  // Top/bottom paths
   for (const zSign of [-1, 1]) {
-    const pathGeo = new THREE.PlaneGeometry(halfW * 2 + pathWidth * 2, pathWidth)
+    const totalW = halfW * 2 + pathWidth * 2
+    const tex = pathTex.clone()
+    tex.needsUpdate = true
+    tex.repeat.set(totalW / pathWidth, 1)
+    const pathMat = new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.88,
+      metalness: 0.0
+    })
+    const pathGeo = new THREE.PlaneGeometry(totalW, pathWidth)
     const path = new THREE.Mesh(pathGeo, pathMat)
     path.rotation.x = -Math.PI / 2
     path.position.set(0, 0.005, zSign * halfD)
     path.receiveShadow = true
+    path.matrixAutoUpdate = false
+    path.updateMatrix()
     scene.add(path)
   }
 
-  // Left/right paths (flat planes)
+  // Left/right paths
   for (const xSign of [-1, 1]) {
-    const pathGeo = new THREE.PlaneGeometry(pathWidth, halfD * 2 + pathWidth * 2)
+    const totalD = halfD * 2 + pathWidth * 2
+    const tex = pathTex.clone()
+    tex.needsUpdate = true
+    tex.repeat.set(1, totalD / pathWidth)
+    const pathMat = new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.88,
+      metalness: 0.0
+    })
+    const pathGeo = new THREE.PlaneGeometry(pathWidth, totalD)
     const path = new THREE.Mesh(pathGeo, pathMat)
     path.rotation.x = -Math.PI / 2
     path.position.set(xSign * halfW, 0.005, 0)
     path.receiveShadow = true
+    path.matrixAutoUpdate = false
+    path.updateMatrix()
     scene.add(path)
   }
 
-  // Corner posts as small circles from above
-  for (const xSign of [-1, 1]) {
-    for (const zSign of [-1, 1]) {
-      const postGeo = new THREE.CircleGeometry(0.3, 8)
-      const postMat = new THREE.MeshStandardMaterial({ color: 0x8b5e3c })
+  // ── 3D Fence posts at corners and mid-spans ────────────────────────────────
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x6b3a1e, roughness: 0.9, metalness: 0 })
+  const capMat  = new THREE.MeshStandardMaterial({ color: 0x4a2510, roughness: 0.8, metalness: 0 })
+  const postH   = 0.8
+  const postR   = 0.18
+  const capR    = 0.22
+
+  // Corner + mid-span post positions
+  const postXPositions = [-halfW, 0, halfW]
+  const postZPositions = [-halfD, 0, halfD]
+
+  for (const px of postXPositions) {
+    for (const pz of postZPositions) {
+      // Only place posts at corners and at midpoints of the border sides
+      const isCorner = (px !== 0 && pz !== 0)
+      const isMidSide = (px === 0 || pz === 0) && !(px === 0 && pz === 0)
+      if (!isCorner && !isMidSide) continue
+
+      // Post cylinder
+      const postGeo = new THREE.CylinderGeometry(postR, postR * 1.1, postH, 8)
       const post = new THREE.Mesh(postGeo, postMat)
-      post.rotation.x = -Math.PI / 2
-      post.position.set(xSign * halfW, 0.02, zSign * halfD)
+      post.position.set(px, postH / 2, pz)
+      post.castShadow = true
+      post.receiveShadow = true
+      post.matrixAutoUpdate = false
+      post.updateMatrix()
       scene.add(post)
+
+      // Rounded cap on top
+      const capGeo = new THREE.SphereGeometry(capR, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2)
+      const cap = new THREE.Mesh(capGeo, capMat)
+      cap.position.set(px, postH, pz)
+      cap.castShadow = true
+      cap.matrixAutoUpdate = false
+      cap.updateMatrix()
+      scene.add(cap)
     }
+  }
+
+  // ── Horizontal fence rails connecting corner posts ─────────────────────────
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x7a4820, roughness: 0.85, metalness: 0 })
+  const railH   = 0.06  // rail cross-section
+  const railY   = postH * 0.65  // height of rail along post
+
+  // Top and bottom rails (parallel to X)
+  for (const pz of [-halfD, halfD]) {
+    const railLen = halfW * 2
+    const railGeo = new THREE.BoxGeometry(railLen, railH, railH)
+    const rail = new THREE.Mesh(railGeo, railMat)
+    rail.position.set(0, railY, pz)
+    rail.castShadow = true
+    rail.matrixAutoUpdate = false
+    rail.updateMatrix()
+    scene.add(rail)
+  }
+
+  // Left and right rails (parallel to Z)
+  for (const px of [-halfW, halfW]) {
+    const railLen = halfD * 2
+    const railGeo = new THREE.BoxGeometry(railH, railH, railLen)
+    const rail = new THREE.Mesh(railGeo, railMat)
+    rail.position.set(px, railY, 0)
+    rail.castShadow = true
+    rail.matrixAutoUpdate = false
+    rail.updateMatrix()
+    scene.add(rail)
   }
 }
 
