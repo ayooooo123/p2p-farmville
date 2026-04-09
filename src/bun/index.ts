@@ -1,10 +1,10 @@
 import { BrowserWindow, BrowserView } from 'electrobun/bun';
+import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const appDir = import.meta.dir ?? path.dirname(new URL(import.meta.url).pathname);
 
 type BareProcess = ReturnType<typeof spawn>;
 
@@ -27,7 +27,20 @@ function isDevelopment() {
 }
 
 function getRendererRoot() {
-  return path.resolve(__dirname, '..', '..', 'renderer');
+  const candidates = [
+    path.resolve(appDir, '..', 'Resources', 'app', 'renderer'),
+    path.resolve(appDir, '..', 'app', 'renderer'),
+    path.resolve(appDir, '..', '..', 'renderer'),
+    path.resolve(process.cwd(), 'renderer'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'index.html'))) {
+      return candidate;
+    }
+  }
+
+  return candidates[0];
 }
 
 function getRendererUrl() {
@@ -36,7 +49,7 @@ function getRendererUrl() {
     return new URL('/renderer/index.html', baseUrl).href;
   }
 
-  return pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
+  return pathToFileURL(path.join(getRendererRoot(), 'index.html')).href;
 }
 
 function startRendererDevServer() {
@@ -49,7 +62,7 @@ function startRendererDevServer() {
     port: 50001,
     fetch: async (request) => {
       const url = new URL(request.url);
-      const rendererRoot = path.resolve(__dirname, '..', '..', 'renderer');
+      const rendererRoot = getRendererRoot();
 
       let decodedPath = url.pathname;
       try {
