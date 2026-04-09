@@ -8,6 +8,7 @@ let scene, camera, renderer
 let terrainData = null
 let sunLight = null
 let ambientLight = null
+let hemiLight = null
 let resizeObserver = null
 let viewportWidth = 1
 let viewportHeight = 1
@@ -53,14 +54,20 @@ function initScene (canvasEl) {
   renderer.domElement.style.display = 'block'
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.25
   console.log('[scene] renderer created, drawingBuffer:', renderer.domElement.width, 'x', renderer.domElement.height)
 
-  // Ambient light — moderate intensity for stable visibility
-  ambientLight = new THREE.AmbientLight(0xffeedd, 1.0)
+  // Ambient light — stronger final visibility pass
+  ambientLight = new THREE.AmbientLight(0xffeedd, 1.5)
   scene.add(ambientLight)
 
-  // Directional sun light — moderate intensity for stable visibility
-  sunLight = new THREE.DirectionalLight(0xffffff, 1.2)
+  // Hemisphere light — fills in global bounce and sky/ground contrast
+  hemiLight = new THREE.HemisphereLight(0xbfe8ff, 0x8f7a4a, 1.2)
+  scene.add(hemiLight)
+
+  // Directional sun light — stronger final visibility pass
+  sunLight = new THREE.DirectionalLight(0xffffff, 2.0)
   sunLight.position.set(30, 50, -20)
   sunLight.castShadow = true
   sunLight.shadow.mapSize.set(1024, 1024)
@@ -194,7 +201,7 @@ function animate () {
 
 function getSunLight () { return sunLight }
 function getAmbientLight () { return ambientLight }
-function getHemiLight () { return null }
+function getHemiLight () { return hemiLight }
 function getFrustumSize () { return frustumSize }
 function setFrustumSize (size) {
   frustumSize = size
