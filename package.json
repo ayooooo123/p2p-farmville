@@ -2,31 +2,26 @@
   "name": "p2p-farmville",
   "productName": "P2P FarmVille",
   "version": "1.0.0",
-  "description": "Peer-to-peer FarmVille with Three.js + Electron + pear-runtime",
+  "description": "Peer-to-peer FarmVille with Three.js + Electrobun + pear-runtime",
   "license": "MIT",
   "private": true,
+  "type": "module",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron-forge start",
-    "build": "electron-forge package",
-    "make": "electron-forge make"
+    "dev": "electrobun dev",
+    "start": "electrobun run",
+    "build": "electrobun build"
   },
   "dependencies": {
     "b4a": "^1.6.7",
     "compact-encoding": "^2.19.2",
     "corestore": "^7.9.2",
+    "electrobun": "^1.16.0",
     "hypercore-crypto": "^3.6.1",
     "hyperswarm": "^4.17.0",
     "pear-runtime": "^1.1.1",
     "protomux": "^3.10.1",
     "ready-resource": "^1.2.0",
     "streamx": "^2.25.0"
-  },
-  "devDependencies": {
-    "@electron-forge/cli": "^7.0.0",
-    "@electron-forge/maker-dmg": "^7.0.0",
-    "@electron-forge/maker-zip": "^7.0.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.0.0",
-    "electron": "^34.0.0"
   }
 }
