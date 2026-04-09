@@ -10,12 +10,55 @@ function ensureSafeGameState() {
   try {
     const current = globalThis.gameState;
     if (!current || typeof current !== 'object') {
-      globalThis.gameState = { placedAnimals: [] };
+      const safeState = { placedAnimals: [] };
+      globalThis.gameState = safeState;
+      if (typeof window !== 'undefined') window.gameState = safeState;
       return;
     }
 
     if (!Array.isArray(current.placedAnimals)) {
       current.placedAnimals = [];
+    }
+
+    if (typeof window !== 'undefined') {
+      if (!window.gameState || typeof window.gameState !== 'object') {
+        window.gameState = current;
+      }
+      if (!Array.isArray(window.gameState.placedAnimals)) {
+        window.gameState.placedAnimals = [];
+      }
+    }
+  } catch {}
+}
+
+function setBridgeAliases(bridge) {
+  const aliases = [
+    'P2PFarmVilleIPC',
+    'p2pFarmVilleIPC',
+    'p2pFarmVilleIpc',
+    'ipc',
+    'ipcBridge',
+    'electronIPC',
+    '__P2P_FARMVILLE_IPC__',
+  ];
+
+  try {
+    globalThis.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
+    for (const name of aliases) {
+      globalThis[name] = bridge;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
+      for (const name of aliases) {
+        window[name] = bridge;
+      }
+    }
+
+    if (typeof document !== 'undefined') {
+      for (const name of aliases) {
+        document[name] = bridge;
+      }
     }
   } catch {}
 }
@@ -197,19 +240,8 @@ function createWebSocketBridge(url = DEFAULT_IPC_URL) {
     },
   };
 
-  try {
-    globalThis.__P2P_FARMVILLE_IPC__ = bridge;
-    globalThis.P2PFarmVilleIPC = bridge;
-    globalThis.ipc = bridge;
-    globalThis.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
-    if (typeof window !== 'undefined') {
-      window.__P2P_FARMVILLE_IPC__ = bridge;
-      window.P2PFarmVilleIPC = bridge;
-      window.ipc = bridge;
-      window.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
-    }
-    dispatchWorkerEvent({ type: 'bridge:ready', url });
-  } catch {}
+  setBridgeAliases(bridge);
+  dispatchWorkerEvent({ type: 'bridge:ready', url });
 
   return bridge;
 }
