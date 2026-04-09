@@ -47,6 +47,7 @@
 const Corestore = require('corestore')
 const Hyperswarm = require('hyperswarm')
 const Protomux = require('protomux')
+const path = require('node:path')
 const cenc = require('compact-encoding')
 const b4a = require('b4a')
 const crypto = require("hypercore-crypto")
@@ -60,7 +61,8 @@ const DAILY_GIFT_LIMIT = 5
 
 // ── State ───────────────────────────────────────────────────────────────────
 function getStoragePath () {
-  return (globalThis.process?.env?.APPDATA || globalThis.process?.env?.HOME || '.') + '/p2p-farmville'
+  const baseDir = globalThis.process?.env?.APPDATA || globalThis.process?.env?.LOCALAPPDATA || globalThis.process?.env?.HOME || '/tmp'
+  return path.join(baseDir, 'p2p-farmville')
 }
 
 const storagePath = getStoragePath()
@@ -107,6 +109,8 @@ const visitorActionCounts = new Map()
 let ipcServer = null
 let ipcMux = null
 let ipcMessage = null
+let ipcChannelReady = false
+let initialFarmStateSent = false
 
 function createWebSocketTransport (socket) {
   const listeners = new Map()
@@ -209,10 +213,12 @@ function bindIpcSocket (socket) {
   const channel = mux.createChannel({
     protocol: 'farmville-ipc',
     onopen () {
+      ipcChannelReady = true
       if (ipcMessage) {
         ipcMessage.send({ type: 'worker:ready', storagePath })
       }
-      console.log('[worker] websocket IPC channel open, sent worker:ready')
+      void sendInitialFarmState()
+      console.log('[worker] websocket IPC channel open, sent worker:ready and initial farm state if available')
     }
   })
 
@@ -248,6 +254,37 @@ function send (msg) {
 
 function sendError (error) {
   send({ type: 'error', error: String(error) })
+}
+
+async function readLatestFarmState () {
+  try {
+    if (!farmStateCore) return null
+    await farmStateCore.update()
+    const len = farmStateCore.length
+    if (!len) return null
+    const entry = await farmStateCore.get(len - 1)
+    if (!entry) return null
+    return JSON.parse(b4a.toString(entry))
+  } catch (e) {
+    console.error('[worker] Read latest farm state error:', e.message)
+    return null
+  }
+}
+
+async function sendInitialFarmState () {
+  if (initialFarmStateSent || !ipcMessage) return false
+  const loadedState = await readLatestFarmState()
+  if (!loadedState) return false
+  initialFarmStateSent = true
+  send({
+    type: 'farm-update',
+    playerKey: playerKey,
+    farmState: loadedState,
+    gameState: loadedState,
+    source: 'loaded-state'
+  })
+  console.log('[worker] sent loaded farm state to renderer')
+  return true
 }
 
 // ── Protomux encoding helper ────────────────────────────────────────────────
@@ -1369,6 +1406,8 @@ async function handleIPCMessage (data) {
             playerKey: playerKey,
             playerName: playerName
           })
+
+          void sendInitialFarmState()
 
           console.log('[worker] P2P engine fully initialized')
         }
