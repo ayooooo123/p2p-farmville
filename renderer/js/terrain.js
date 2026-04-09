@@ -22,6 +22,118 @@ const COLORS = {
   path: 0xc2a66e
 }
 
+// ── Canvas-generated textures ─────────────────────────────────────────────────
+let grassTexEven = null  // shared CanvasTexture for (row+col)%2===0 plots
+let grassTexOdd  = null  // shared CanvasTexture for (row+col)%2===1 plots
+let soilTexDry   = null  // plowed dry soil texture
+let soilTexWet   = null  // watered soil texture
+
+function _hexToRgb (hex) {
+  return {
+    r: (hex >> 16) & 0xff,
+    g: (hex >> 8) & 0xff,
+    b: hex & 0xff
+  }
+}
+
+/**
+ * Generate a canvas grass texture: sub-tile checkerboard of two greens + pixel noise.
+ */
+function _makeGrassTexture (col1Hex, col2Hex, size = 64) {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+
+  const c1 = _hexToRgb(col1Hex)
+  const c2 = _hexToRgb(col2Hex)
+
+  // Fill base with col1
+  ctx.fillStyle = `rgb(${c1.r},${c1.g},${c1.b})`
+  ctx.fillRect(0, 0, size, size)
+
+  // Draw 8x8 sub-tile checkerboard with col2
+  const tileSize = size / 8
+  ctx.fillStyle = `rgb(${c2.r},${c2.g},${c2.b})`
+  for (let ty = 0; ty < 8; ty++) {
+    for (let tx = 0; tx < 8; tx++) {
+      if ((tx + ty) % 2 === 1) {
+        ctx.fillRect(tx * tileSize, ty * tileSize, tileSize, tileSize)
+      }
+    }
+  }
+
+  // Per-pixel noise for organic grass look
+  const imageData = ctx.getImageData(0, 0, size, size)
+  const data = imageData.data
+  for (let i = 0; i < data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 30
+    data[i]     = Math.min(255, Math.max(0, data[i]     + n))
+    data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + n))
+    data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + n))
+  }
+  ctx.putImageData(imageData, 0, 0)
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  return tex
+}
+
+/**
+ * Generate a canvas soil texture: earthy base + random dark clods + pixel noise.
+ */
+function _makeSoilTexture (baseHex, darkHex, size = 64) {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+
+  const cb = _hexToRgb(baseHex)
+  const cd = _hexToRgb(darkHex)
+
+  // Fill base soil color
+  ctx.fillStyle = `rgb(${cb.r},${cb.g},${cb.b})`
+  ctx.fillRect(0, 0, size, size)
+
+  // Random darker clod blotches
+  ctx.fillStyle = `rgba(${cd.r},${cd.g},${cd.b},0.55)`
+  for (let i = 0; i < 18; i++) {
+    const rx = Math.random() * size
+    const ry = Math.random() * size
+    const rr = 1.5 + Math.random() * 3.5
+    ctx.beginPath()
+    ctx.ellipse(rx, ry, rr, rr * (0.6 + Math.random() * 0.6), Math.random() * Math.PI, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  // Per-pixel noise
+  const imageData = ctx.getImageData(0, 0, size, size)
+  const data = imageData.data
+  for (let i = 0; i < data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 22
+    data[i]     = Math.min(255, Math.max(0, data[i]     + n))
+    data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + n))
+    data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + n))
+  }
+  ctx.putImageData(imageData, 0, 0)
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  return tex
+}
+
+/**
+ * Dispose old grass textures and create new ones for the given season palette.
+ */
+function _rebuildGrassTextures (primary, alt) {
+  if (grassTexEven) grassTexEven.dispose()
+  if (grassTexOdd)  grassTexOdd.dispose()
+  grassTexEven = _makeGrassTexture(primary, alt)
+  grassTexOdd  = _makeGrassTexture(alt, primary)
+}
+
 // Season grass palettes: [primary, alt, baseTerrain]
 const SEASON_GRASS = {
   spring: [0x5aad2e, 0x4d9e26, 0x4d9426],   // bright spring green
@@ -60,10 +172,17 @@ function createPlotGrid (sceneRef) {
   plotGrid = []
   plotMeshes = []
 
-  // Base terrain (larger than grid)
+  // Build shared canvas textures
+  _rebuildGrassTextures(COLORS.grass, COLORS.grassAlt)
+  soilTexDry = _makeSoilTexture(0x6b4226, 0x4a2a14)
+  soilTexWet = _makeSoilTexture(0x3d2510, 0x251508)
+
+  // Base terrain (larger than grid) — canvas grass texture for rich background
   const terrainGeo = new THREE.PlaneGeometry(90, 90)
+  const terrainBaseTex = _makeGrassTexture(0x3d6b24, 0x4a7c2e, 128)
+  terrainBaseTex.repeat.set(14, 14)
   const terrainMat = new THREE.MeshStandardMaterial({
-    color: 0x3d6b24,
+    map: terrainBaseTex,
     roughness: 0.95,
     metalness: 0.0
   })
@@ -87,8 +206,9 @@ function createPlotGrid (sceneRef) {
 
       // Flat plane with slight gap for grid lines (0.08 gap = ~1px grid line at normal zoom)
       const plotGeo = new THREE.PlaneGeometry(PLOT_SIZE - 0.08, PLOT_SIZE - 0.08)
+      const grassTex = (row + col) % 2 === 0 ? grassTexEven : grassTexOdd
       const plotMat = new THREE.MeshStandardMaterial({
-        color: (row + col) % 2 === 0 ? COLORS.grass : COLORS.grassAlt,
+        map: grassTex,
         roughness: 0.9,
         metalness: 0.0
       })
@@ -218,18 +338,21 @@ function setPlotState (row, col, state) {
   if (!plot) return
 
   plot.state = state
+  const mat = plot.mesh.material
 
   switch (state) {
     case PLOT_STATES.GRASS:
-      plot.mesh.material.color.setHex((row + col) % 2 === 0 ? COLORS.grass : COLORS.grassAlt)
-      // Remove furrow lines if any
+      mat.map = (row + col) % 2 === 0 ? grassTexEven : grassTexOdd
+      mat.color.setHex(0xffffff)
+      mat.needsUpdate = true
       _removeFurrows(plot)
       break
 
     case PLOT_STATES.PLOWED:
     case PLOT_STATES.PLANTED:
-      plot.mesh.material.color.setHex(COLORS.plowed)
-      // Add furrow detail lines
+      mat.map = soilTexDry
+      mat.color.setHex(0xffffff)
+      mat.needsUpdate = true
       _addFurrows(plot)
       break
   }
@@ -269,18 +392,23 @@ function setPlotWatered (row, col, watered) {
   const plot = getPlotAt(row, col)
   if (!plot) return
 
+  const mat = plot.mesh.material
   if (watered) {
-    // Darken soil to show moisture
-    plot.mesh.material.color.setHex(COLORS.plowedWatered)
-    // Update furrow line colours too
+    // Darker wet soil canvas texture
+    mat.map = soilTexWet
+    mat.color.setHex(0xffffff)
+    mat.needsUpdate = true
+    // Darken furrow overlay lines too
     if (plot._furrows) {
       plot._furrows.children.forEach(f => {
         f.material.color.setHex(COLORS.plowedWateredDark)
       })
     }
   } else {
-    // Restore dry plowed appearance
-    plot.mesh.material.color.setHex(COLORS.plowed)
+    // Dry soil canvas texture
+    mat.map = soilTexDry
+    mat.color.setHex(0xffffff)
+    mat.needsUpdate = true
     if (plot._furrows) {
       plot._furrows.children.forEach(f => {
         f.material.color.setHex(COLORS.plowedDark)
@@ -319,22 +447,32 @@ function setSeasonColors (season) {
 
   const [primary, alt, base] = SEASON_GRASS[season]
 
+  // Rebuild shared grass canvas textures for new season palette
+  _rebuildGrassTextures(primary, alt)
+
   // Update the large background terrain plane
   if (baseTerrainMesh) {
-    baseTerrainMesh.material.color.setHex(base)
+    if (baseTerrainMesh.material.map) baseTerrainMesh.material.map.dispose()
+    const newBaseTex = _makeGrassTexture(base, primary, 128)
+    newBaseTex.repeat.set(14, 14)
+    baseTerrainMesh.material.map = newBaseTex
+    baseTerrainMesh.material.color.setHex(0xffffff)
+    baseTerrainMesh.material.needsUpdate = true
   }
 
-  // Update every grass-state plot
+  // Re-apply new grass textures to every grass-state plot
   for (let row = 0; row < GRID_ROWS; row++) {
     for (let col = 0; col < GRID_COLS; col++) {
       const plot = plotGrid[row][col]
       if (plot && plot.state === PLOT_STATES.GRASS) {
-        plot.mesh.material.color.setHex((row + col) % 2 === 0 ? primary : alt)
+        plot.mesh.material.map = (row + col) % 2 === 0 ? grassTexEven : grassTexOdd
+        plot.mesh.material.color.setHex(0xffffff)
+        plot.mesh.material.needsUpdate = true
       }
     }
   }
 
-  // Also update the grass-colour reference so setPlotState restores the right colour
+  // Update COLORS refs for legacy use (setPlotState color fallback)
   COLORS.grass = primary
   COLORS.grassAlt = alt
 }
