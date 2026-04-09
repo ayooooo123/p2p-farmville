@@ -506,7 +506,7 @@ function updateHUD () {
         if (label) label.textContent = 'Water (' + unwateredCount + ')'
       }
     }
-    const hungryCount = gameState.placedAnimals.filter(a => !a.fed && !a.productReady).length
+    const hungryCount = farmState.animals.filter(a => !a.fed && !a.productReady).length
     if (feedAllBtn) {
       feedAllBtn.style.display = hungryCount > 0 ? '' : 'none'
       if (hungryCount > 0) {
@@ -1776,7 +1776,7 @@ function feedAll () {
   if (!gameState.running) return
   let count = 0
   let totalCost = 0
-  for (const animal of gameState.placedAnimals) {
+  for (const animal of farmState.animals) {
     if (animal.fed || animal.productReady) continue
     const def = ANIMAL_DEFINITIONS[animal.type]
     if (!def) continue
