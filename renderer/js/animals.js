@@ -78,38 +78,66 @@ export function createAnimalMesh (animalType) {
   group.userData.objectType = 'animal'
   group.userData.animalType = animalType
 
-  // Body oval/circle (flat from above)
-  const bodyR = Math.max(def.bodyW, def.bodyD) * 0.5
-  const bodyGeo = new THREE.CircleGeometry(bodyR, 16)
-  const bodyMat = new THREE.MeshStandardMaterial({ color: def.bodyColor })
+  // ── 3D body: box geometry with proper height ─────────────────────────────
+  const bodyH = def.bodyH
+  const bodyGeo = new THREE.BoxGeometry(def.bodyW, bodyH, def.bodyD)
+  const bodyMat = new THREE.MeshStandardMaterial({ color: def.bodyColor, roughness: 0.85, metalness: 0.0 })
   const body = new THREE.Mesh(bodyGeo, bodyMat)
-  body.rotation.x = -Math.PI / 2
-  body.position.y = 0.02
-  // Stretch to oval for non-square animals
-  if (def.bodyD > def.bodyW * 1.2) {
-    body.scale.set(def.bodyW / def.bodyD, 1, 1)
-  }
+  body.position.y = bodyH / 2  // sit on the ground
+  body.castShadow = true
+  body.receiveShadow = true
   group.add(body)
 
-  // Head circle (slightly offset forward)
-  const headGeo = new THREE.CircleGeometry(def.headSize, 12)
-  const headMat = new THREE.MeshStandardMaterial({ color: def.headColor })
+  // Woolly overlay for sheep — fluffy white sphere on top of body
+  if (def.woolly) {
+    const woolR = Math.max(def.bodyW, def.bodyD) * 0.55
+    const woolGeo = new THREE.SphereGeometry(woolR, 10, 8)
+    const woolMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.98, metalness: 0.0 })
+    const wool = new THREE.Mesh(woolGeo, woolMat)
+    wool.position.y = bodyH * 0.75
+    wool.scale.set(1, 0.65, 1)  // flatten into fluffy puff from top view
+    wool.castShadow = true
+    group.add(wool)
+  }
+
+  // ── 3D head: sphere offset forward ───────────────────────────────────────
+  const headGeo = new THREE.SphereGeometry(def.headSize, 10, 8)
+  const headMat = new THREE.MeshStandardMaterial({ color: def.headColor, roughness: 0.8, metalness: 0.0 })
   const head = new THREE.Mesh(headGeo, headMat)
-  head.rotation.x = -Math.PI / 2
-  head.position.set(0, 0.025, -bodyR * 0.7)
+  head.position.set(0, bodyH * 0.85, -(def.bodyD / 2 + def.headSize * 0.55))
+  head.castShadow = true
   group.add(head)
 
-  // Spots for cow (small dark circles)
+  // ── Legs: cylinders at body corners ──────────────────────────────────────
+  const legH = bodyH * 0.55
+  const legR = 0.04
+  const legGeo = new THREE.CylinderGeometry(legR, legR * 1.1, legH, 5)
+  const legMat = new THREE.MeshStandardMaterial({ color: def.legColor, roughness: 0.9 })
+  const legCount = def.legs === 2 ? 2 : 4
+  const lxOff = def.bodyW * 0.32
+  const lzOff = def.bodyD * 0.32
+  // Legs sit on the ground: center at legH/2 above y=0
+  const legY = legH / 2
+  const legPositions = legCount === 2
+    ? [[-lxOff * 0.5, 0], [lxOff * 0.5, 0]]  // [x, z] only
+    : [[-lxOff, lzOff], [lxOff, lzOff], [-lxOff, -lzOff], [lxOff, -lzOff]]
+  for (const [lx, lz] of legPositions) {
+    const leg = new THREE.Mesh(legGeo, legMat)
+    leg.position.set(lx, legY, lz)
+    leg.castShadow = true
+    group.add(leg)
+  }
+
+  // ── Spots for cow: small spheres on top of body ───────────────────────────
   if (def.spots) {
-    const spotMat = new THREE.MeshStandardMaterial({ color: def.spotColor })
+    const spotMat = new THREE.MeshStandardMaterial({ color: def.spotColor, roughness: 0.9 })
     for (let i = 0; i < 3; i++) {
-      const spotGeo = new THREE.CircleGeometry(0.1, 6)
+      const spotGeo = new THREE.SphereGeometry(0.07, 6, 5)
       const spot = new THREE.Mesh(spotGeo, spotMat)
-      spot.rotation.x = -Math.PI / 2
       spot.position.set(
-        (Math.random() - 0.5) * bodyR * 0.8,
-        0.03,
-        (Math.random() - 0.5) * bodyR * 0.6
+        (Math.random() - 0.5) * def.bodyW * 0.5,
+        bodyH + 0.04,
+        (Math.random() - 0.5) * def.bodyD * 0.4
       )
       group.add(spot)
     }
