@@ -68,25 +68,34 @@ function getRendererUrl() {
 }
 
 async function serveRendererRequest(pathname: string) {
+  const rendererRoot = path.resolve(getRendererRoot());
   const normalizedPath = pathname === '/' || pathname === '/renderer' || pathname === '/renderer/'
     ? '/renderer/index.html'
     : pathname;
 
-  if (!normalizedPath.startsWith('/renderer/')) {
-    return null;
+  const manifestPath = normalizedPath === '/manifest.json'
+    ? path.join(rendererRoot, 'manifest.json')
+    : null;
+
+  const mappedPath = normalizedPath.startsWith('/renderer/')
+    ? path.resolve(rendererRoot, normalizedPath.slice('/renderer/'.length) || 'index.html')
+    : manifestPath;
+
+  if (!mappedPath) {
+    return new Response('Not Found', { status: 404 });
   }
 
-  const rendererRoot = path.resolve(getRendererRoot());
-  const relativePath = normalizedPath.slice('/renderer/'.length);
-  const filePath = path.resolve(rendererRoot, relativePath || 'index.html');
-
-  if (filePath !== rendererRoot && !filePath.startsWith(rendererRoot + path.sep)) {
+  if (mappedPath !== rendererRoot && !mappedPath.startsWith(rendererRoot + path.sep)) {
     return new Response('Forbidden', { status: 403 });
   }
 
-  const file = Bun.file(filePath);
-  if (!(await file.exists())) {
-    return null;
+  const file = Bun.file(mappedPath);
+  try {
+    if (typeof file.exists !== 'function' || !(await file.exists())) {
+      return new Response('Not Found', { status: 404 });
+    }
+  } catch {
+    return new Response('Not Found', { status: 404 });
   }
 
   return new Response(file);
@@ -101,13 +110,14 @@ function startRendererDevServer() {
     hostname: '127.0.0.1',
     port: 50000,
     fetch: async (request) => {
-      const url = new URL(request.url);
-      const response = await serveRendererRequest(url.pathname);
-      if (response) {
-        return response;
+      try {
+        const url = new URL(request.url);
+        const response = await serveRendererRequest(url.pathname);
+        return response ?? new Response('Not Found', { status: 404 });
+      } catch (error) {
+        console.error('[main] renderer dev server fetch error:', error instanceof Error ? error.message : error);
+        return new Response('Internal Server Error', { status: 500 });
       }
-
-      return new Response('Not Found', { status: 404 });
     },
   });
 
