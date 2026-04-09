@@ -201,6 +201,7 @@ function createWebSocketBridge(url = DEFAULT_IPC_URL) {
     socket.binaryType = 'arraybuffer';
 
     socket.addEventListener('open', () => {
+      console.log('[ipc-bridge] websocket open', { url });
       ready = true;
       while (pendingOutbound.length > 0 && socket && socket.readyState === WebSocket.OPEN) {
         const chunk = pendingOutbound.shift();
