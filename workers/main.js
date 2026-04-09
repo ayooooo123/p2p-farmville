@@ -10,6 +10,7 @@
  * IPC Protocol (worker <-> renderer):
  *   Renderer sends:
  *     { type: 'init', playerName }
+ *     { type: 'start-farming', playerName }
  *     { type: 'update-farm', farmState }
  *     { type: 'chat', message }
  *     { type: 'chat-private', targetKey, message }
@@ -1223,7 +1224,8 @@ async function handleIPCMessage (data) {
   try {
     switch (data.type) {
       case 'init':
-      case 'farm:init': {
+      case 'farm:init':
+      case 'start-farming': {
         playerName = data.playerName || data.farmName || 'Farmer'
         console.log('[worker] Player initialized:', playerName)
 
