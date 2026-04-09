@@ -28,6 +28,8 @@ function isDevelopment() {
 
 function getRendererRoot() {
   const candidates = [
+    path.resolve(appDir, 'renderer'),
+    path.resolve(appDir, '..', 'renderer'),
     path.resolve(appDir, '..', 'Resources', 'app', 'renderer'),
     path.resolve(appDir, '..', 'app', 'renderer'),
     path.resolve(appDir, '..', '..', 'renderer'),
@@ -110,8 +112,27 @@ function createWindow(rendererUrl: string) {
   });
 }
 
+function getWorkerEntry() {
+  const candidates = [
+    path.resolve(appDir, 'workers', 'main.cjs'),
+    path.resolve(appDir, '..', 'workers', 'main.cjs'),
+    path.resolve(appDir, '..', 'Resources', 'app', 'workers', 'main.cjs'),
+    path.resolve(appDir, '..', 'app', 'workers', 'main.cjs'),
+    path.resolve(appDir, '..', '..', 'workers', 'main.cjs'),
+    path.resolve(process.cwd(), 'workers', 'main.cjs'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0];
+}
+
 function createWorker() {
-  const workerEntry = path.join(__dirname, '..', 'workers', 'main.cjs');
+  const workerEntry = getWorkerEntry();
   const worker = spawn('bare', [workerEntry], {
     stdio: ['ignore', 'inherit', 'inherit'],
     windowsHide: true,
