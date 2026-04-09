@@ -1,5 +1,4 @@
 import { BrowserWindow } from 'electrobun/bun';
-import PearRuntime from 'pear-runtime';
 import Protomux from 'protomux';
 import cenc from 'compact-encoding';
 import path from 'node:path';
@@ -12,14 +11,25 @@ type WorkerMessagePort = {
   send: (payload: unknown) => void;
 };
 
-type WorkerProcess = ReturnType<PearRuntime['run']>;
+type StreamListener = (...args: any[]) => void;
+
+type WorkerTransport = {
+  userData: unknown;
+  destroyed: boolean;
+  alloc: (size: number) => Uint8Array;
+  on: (event: 'data' | 'drain' | 'end' | 'error' | 'close', listener: StreamListener) => WorkerTransport;
+  write: (buffer: Uint8Array) => boolean;
+  pause: () => void;
+  resume: () => void;
+  end: () => void;
+  destroy: (err?: unknown) => void;
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
-let pear: PearRuntime | null = null;
-let workerProcess: WorkerProcess | null = null;
+let workerTransport: WorkerTransport | null = null;
 let workerMessage: WorkerMessagePort | null = null;
 let rendererBridgeBound = false;
 
@@ -59,33 +69,196 @@ function createWindow(rendererUrl: string) {
   bindRendererBridge();
 }
 
-async function startWorker(storagePath: string) {
-  pear = new PearRuntime({
-    dir: storagePath,
-    version: APP_VERSION,
-    name: APP_NAME,
-    upgrade: 'pear://dev',
-    updates: false,
+function createWorkerTransport(worker: Worker): WorkerTransport {
+  const listeners = new Map<string, Set<StreamListener>>();
+  let destroyed = false;
+
+  const emit = (event: 'data' | 'drain' | 'end' | 'error' | 'close', ...args: any[]) => {
+    const eventListeners = listeners.get(event);
+    if (!eventListeners) return;
+    for (const listener of eventListeners) {
+      try {
+        listener(...args);
+      } catch (error) {
+        console.error('[main] worker transport listener error:', error instanceof Error ? error.message : error);
+      }
+    }
+  };
+
+  const transport: WorkerTransport = {
+    userData: null,
+    destroyed: false,
+    alloc(size: number) {
+      return new Uint8Array(size);
+    },
+    on(event, listener) {
+      const set = listeners.get(event) ?? new Set<StreamListener>();
+      set.add(listener);
+      listeners.set(event, set);
+      return transport;
+    },
+    write(buffer) {
+      if (destroyed) return false;
+      worker.postMessage({ type: 'ipc:data', payload: buffer });
+      return true;
+    },
+    pause() {},
+    resume() {},
+    end() {
+      if (destroyed) return;
+      destroyed = true;
+      transport.destroyed = true;
+      try {
+        worker.postMessage({ type: 'ipc:end' });
+      } catch {}
+      emit('end');
+      emit('close');
+      worker.terminate();
+    },
+    destroy(err?: unknown) {
+      if (destroyed) return;
+      destroyed = true;
+      transport.destroyed = true;
+      if (err) emit('error', err);
+      try {
+        worker.postMessage({ type: 'ipc:destroy', error: String(err instanceof Error ? err.message : err ?? 'destroyed') });
+      } catch {}
+      emit('close');
+      worker.terminate();
+    },
+  };
+
+  worker.addEventListener('message', (event) => {
+    const message = event.data as { type?: string; payload?: unknown; error?: unknown } | unknown;
+    if (!message || typeof message !== 'object') return;
+
+    const { type, payload, error } = message as { type?: string; payload?: unknown; error?: unknown };
+    if (type === 'ipc:data') {
+      emit('data', payload);
+      return;
+    }
+    if (type === 'ipc:end') {
+      destroyed = true;
+      transport.destroyed = true;
+      emit('end');
+      emit('close');
+      return;
+    }
+    if (type === 'ipc:destroy') {
+      destroyed = true;
+      transport.destroyed = true;
+      if (error) emit('error', error);
+      emit('close');
+    }
   });
 
-  await pear.ready();
-
-  const workerPath = path.join(__dirname, '..', 'workers', 'main.js');
-  workerProcess = pear.run(workerPath, [storagePath]);
-
-  workerProcess.stdout?.on('data', (chunk: Buffer | Uint8Array) => {
-    console.log('[worker]', Buffer.from(chunk).toString().trim());
+  worker.addEventListener('error', (event) => {
+    emit('error', event.error ?? event.message ?? new Error('Worker error'));
+    emit('close');
   });
 
-  workerProcess.stderr?.on('data', (chunk: Buffer | Uint8Array) => {
-    console.error('[worker:err]', Buffer.from(chunk).toString().trim());
-  });
+  return transport;
+}
 
-  workerProcess.on?.('error', (error: unknown) => {
-    console.error('[main] worker error:', error instanceof Error ? error.message : error);
-  });
+function createWorker() {
+  const workerEntry = pathToFileURL(path.join(__dirname, '..', 'workers', 'main.js')).href;
+  const bootstrapSource = `
+    import { createRequire } from 'node:module';
 
-  const ipcMux = new Protomux(workerProcess);
+    const workerEntry = ${JSON.stringify(workerEntry)};
+    const listeners = new Map();
+    let destroyed = false;
+
+    function emit(event, ...args) {
+      const set = listeners.get(event);
+      if (!set) return;
+      for (const listener of set) {
+        try {
+          listener(...args);
+        } catch {}
+      }
+    }
+
+    const ipc = {
+      userData: null,
+      destroyed: false,
+      alloc(size) {
+        return new Uint8Array(size);
+      },
+      on(event, listener) {
+        const set = listeners.get(event) ?? new Set();
+        set.add(listener);
+        listeners.set(event, set);
+        return ipc;
+      },
+      write(buffer) {
+        if (destroyed) return false;
+        postMessage({ type: 'ipc:data', payload: buffer });
+        return true;
+      },
+      pause() {},
+      resume() {},
+      end() {
+        if (destroyed) return;
+        destroyed = true;
+        ipc.destroyed = true;
+        try { postMessage({ type: 'ipc:end' }); } catch {}
+        emit('end');
+        emit('close');
+        close();
+      },
+      destroy(err) {
+        if (destroyed) return;
+        destroyed = true;
+        ipc.destroyed = true;
+        if (err) emit('error', err);
+        try { postMessage({ type: 'ipc:destroy', error: String(err instanceof Error ? err.message : err ?? 'destroyed') }); } catch {}
+        emit('close');
+        close();
+      },
+    };
+
+    addEventListener('message', (event) => {
+      const message = event.data;
+      if (!message || typeof message !== 'object') return;
+      if (message.type === 'ipc:data') {
+        emit('data', message.payload);
+        return;
+      }
+      if (message.type === 'ipc:end') {
+        destroyed = true;
+        ipc.destroyed = true;
+        emit('end');
+        emit('close');
+        close();
+        return;
+      }
+      if (message.type === 'ipc:destroy') {
+        destroyed = true;
+        ipc.destroyed = true;
+        emit('error', new Error(String(message.error || 'destroyed')));
+        emit('close');
+        close();
+      }
+    });
+
+    globalThis.require = createRequire(workerEntry);
+    globalThis.Bare = { IPC: ipc };
+
+    await import(workerEntry);
+  `;
+
+  const bootstrapUrl = URL.createObjectURL(new Blob([bootstrapSource], { type: 'text/javascript' }));
+  const worker = new Worker(bootstrapUrl, { type: 'module' });
+  worker.addEventListener('close', () => {
+    URL.revokeObjectURL(bootstrapUrl);
+  });
+  return createWorkerTransport(worker);
+}
+
+async function startWorker() {
+  workerTransport = createWorker();
+  const ipcMux = new Protomux(workerTransport);
   const ipcChannel = ipcMux.createChannel({ protocol: 'farmville-ipc' });
 
   workerMessage = ipcChannel.addMessage({
@@ -99,17 +272,16 @@ async function startWorker(storagePath: string) {
 }
 
 async function createApp() {
-  const storagePath = getStoragePath();
   const rendererUrl = pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
 
   createWindow(rendererUrl);
-  await startWorker(storagePath);
+  await startWorker();
 }
 
 await createApp();
 
 process.on('beforeExit', async () => {
   try {
-    await pear?.close?.();
+    workerTransport?.destroy();
   } catch {}
 });
