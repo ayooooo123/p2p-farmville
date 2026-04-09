@@ -441,6 +441,8 @@ export function createCropMesh (cropType, stage) {
     const stem = new THREE.Mesh(stemGeo, stemMat)
     stem.position.y = cylH / 2 + 0.02
     stem.castShadow = true
+    stem.userData.isStem = true
+    stem.userData.stemHeight = cylH
     group.add(stem)
 
     // Top sphere (canopy / fruit cluster)

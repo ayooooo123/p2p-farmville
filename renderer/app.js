@@ -20,6 +20,7 @@ import { QuestSystem } from './js/quests.js'
 import { openAlmanac, closeAlmanac, isAlmanacOpen } from './js/almanac.js'
 import { SoundSystem } from './js/sounds.js'
 import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
+import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon } from './js/daynight.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -378,12 +379,18 @@ NeighborRenderer.init(sceneData.scene)
 
 // ── Weather HUD + Rain auto-water ─────────────────────────────────────────────
 const weatherDisplay = document.getElementById('weather-display')
+const timeDisplay = document.getElementById('time-display')
 
 function _updateWeatherHUD () {
   if (!weatherDisplay) return
   const icon = getWeatherIcon()
   const name = getWeatherName()
   weatherDisplay.textContent = icon + ' ' + name
+}
+
+function _updateTimeHUD () {
+  if (!timeDisplay) return
+  timeDisplay.textContent = getPhaseIcon() + ' ' + getGameClockString()
 }
 
 function rainAutoWaterCrops () {
@@ -2492,6 +2499,27 @@ function animateReadyCrops (time) {
   }
 }
 
+// ── Crop wind sway animation ─────────────────────────────────────────────────
+// Applies a gentle per-stem rotation each frame using per-plot phase offsets
+// so crops wave independently rather than in lockstep.
+function animateCropWind (time) {
+  if (!terrainData) return
+  const WIND_FREQ = 0.0014     // oscillations per ms
+  const WIND_STR  = 0.18       // max rotation (radians) per unit of stem height
+  const allPlots = terrainData.getAllPlots()
+  for (const plot of allPlots) {
+    if (!plot.cropMesh || !plot.crop || plot.crop.withered) continue
+    if (plot.crop.stage === 0) continue  // seeds stay flush with soil
+    const phase = plot.x * 1.31 + plot.z * 0.97
+    plot.cropMesh.traverse(child => {
+      if (!child.userData.isStem) return
+      const amp = child.userData.stemHeight * WIND_STR
+      child.rotation.z = Math.sin(time * WIND_FREQ + phase) * amp
+      child.rotation.x = Math.cos(time * WIND_FREQ * 0.71 + phase) * amp * 0.45
+    })
+  }
+}
+
 // ── Crop timer labels (world-to-screen DOM overlay) ──────────────────────────
 // Map from 'row,col' -> div element
 const _cropTimerEls = new Map()
@@ -3003,8 +3031,11 @@ function gameLoop (time) {
 
   // Update systems
   updateWeather(dtMs, sceneData.sunLight)
+  updateDayNight(dtMs)
+  _updateTimeHUD()
   updateCrops(dtMs)
   animateReadyCrops(time)
+  animateCropWind(time)
   updateCropTimers(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
@@ -3091,6 +3122,12 @@ function startGame () {
   initWeather(sceneData.scene, {
     onAutoWater: rainAutoWaterCrops
   })
+
+  // ── Initialize day/night cycle ─────────────────────────────────────────────
+  // Wire up the full day/night system: controls sunLight + ambientLight colour,
+  // sky background, stars, and firefly visibility based on a 10-minute game day.
+  initDayNight(sceneData.scene, sceneData.sunLight, sceneData.ambientLight, null)
+  _updateTimeHUD()
 
   // Register weather change listener → update HUD + toast
   onWeatherChange((newWeather, oldWeather) => {
