@@ -1,4 +1,4 @@
-const DEFAULT_IPC_URL = 'ws://localhost:50002';
+const DEFAULT_IPC_URL = 'ws://localhost:50006';
 const BUNDLE_BASE_URL = new URL('../', import.meta.url);
 
 function createSafeGameState() {
