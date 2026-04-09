@@ -8,6 +8,7 @@ let scene, camera, renderer
 let terrainData = null
 let sunLight = null
 let ambientLight = null
+let resizeObserver = null
 
 // Orthographic frustum size (vertical extent in world units)
 let frustumSize = 45
@@ -19,11 +20,11 @@ function initScene (canvasEl) {
 
   // Use clientWidth/Height — window.innerWidth/Height may be 0 in WebView at init time
   const initW = canvasEl.parentElement
-    ? canvasEl.parentElement.clientWidth || document.documentElement.clientWidth
-    : document.documentElement.clientWidth
+    ? canvasEl.parentElement.clientWidth || window.innerWidth || document.documentElement.clientWidth
+    : window.innerWidth || document.documentElement.clientWidth
   const initH = canvasEl.parentElement
-    ? canvasEl.parentElement.clientHeight || document.documentElement.clientHeight
-    : document.documentElement.clientHeight
+    ? canvasEl.parentElement.clientHeight || window.innerHeight || document.documentElement.clientHeight
+    : window.innerHeight || document.documentElement.clientHeight
   console.log('[scene] initScene canvas parent size:', initW, 'x', initH,
     '| canvas clientSize:', canvasEl.clientWidth, 'x', canvasEl.clientHeight)
 
@@ -42,29 +43,32 @@ function initScene (canvasEl) {
   camera.up.set(0, 0, -1) // ensure consistent orientation for top-down
 
   // Renderer
-  renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true })
-  renderer.setSize(initW || 800, initH || 600)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true, alpha: false })
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+  renderer.setSize(initW || 800, initH || 600, false)
+  renderer.domElement.style.width = '100%'
+  renderer.domElement.style.height = '100%'
+  renderer.domElement.style.display = 'block'
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
   console.log('[scene] renderer created, drawingBuffer:', renderer.domElement.width, 'x', renderer.domElement.height)
 
-  // Ambient light — warm cream tint, moderate intensity
-  ambientLight = new THREE.AmbientLight(0xffeedd, 0.6)
+  // Ambient light — brighter so the farm doesn't look washed out or too dark
+  ambientLight = new THREE.AmbientLight(0xfff2dd, 1.15)
   scene.add(ambientLight)
 
-  // Directional sun light — cast soft shadows from an angled position
-  sunLight = new THREE.DirectionalLight(0xffffff, 0.8)
-  sunLight.position.set(30, 50, -20)
+  // Directional sun light — stronger fill for clearer scene visibility
+  sunLight = new THREE.DirectionalLight(0xffffff, 1.6)
+  sunLight.position.set(30, 60, -20)
   sunLight.castShadow = true
-  sunLight.shadow.mapSize.set(1024, 1024)
+  sunLight.shadow.mapSize.set(2048, 2048)
   sunLight.shadow.camera.left = -60
   sunLight.shadow.camera.right = 60
   sunLight.shadow.camera.top = 60
   sunLight.shadow.camera.bottom = -60
   sunLight.shadow.camera.near = 0.5
   sunLight.shadow.camera.far = 200
-  sunLight.shadow.normalBias = 0.01
+  sunLight.shadow.normalBias = 0.02
   sunLight.target.position.set(0, 0, 0)
   scene.add(sunLight)
   scene.add(sunLight.target)
@@ -88,39 +92,47 @@ function initScene (canvasEl) {
   // Decorative border trees (flat circles from above)
   _addBorderTrees(scene)
 
-  // Handle resize (update orthographic frustum)
-  window.addEventListener('resize', () => {
-    const w = document.documentElement.clientWidth
-    const h = document.documentElement.clientHeight
-    const newAspect = w / h || 1
+  const applySize = (width, height) => {
+    if (width <= 0 || height <= 0) return
+    const newAspect = width / height || 1
     camera.left = -frustumSize * newAspect / 2
     camera.right = frustumSize * newAspect / 2
     camera.top = frustumSize / 2
     camera.bottom = -frustumSize / 2
     camera.updateProjectionMatrix()
-    renderer.setSize(w, h)
+    renderer.setSize(width, height, false)
+    renderer.domElement.style.width = '100%'
+    renderer.domElement.style.height = '100%'
+  }
+
+  // Handle resize (update orthographic frustum)
+  window.addEventListener('resize', () => {
+    const w = canvasEl.parentElement
+      ? canvasEl.parentElement.clientWidth || window.innerWidth || document.documentElement.clientWidth
+      : window.innerWidth || document.documentElement.clientWidth
+    const h = canvasEl.parentElement
+      ? canvasEl.parentElement.clientHeight || window.innerHeight || document.documentElement.clientHeight
+      : window.innerHeight || document.documentElement.clientHeight
+    applySize(w, h)
   })
 
-  // ResizeObserver: update renderer when canvas is actually laid out (WebView compat)
+  // ResizeObserver: update renderer when the renderer container is laid out (WebView compat)
   if (typeof ResizeObserver !== 'undefined') {
-    const ro = new ResizeObserver(entries => {
+    const resizeTarget = canvasEl.parentElement || document.documentElement
+    resizeObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect
         if (width > 0 && height > 0) {
           console.log('[scene] ResizeObserver fired:', width, 'x', height)
-          const newAspect = width / height
-          camera.left = -frustumSize * newAspect / 2
-          camera.right = frustumSize * newAspect / 2
-          camera.top = frustumSize / 2
-          camera.bottom = -frustumSize / 2
-          camera.updateProjectionMatrix()
-          renderer.setSize(width, height)
+          applySize(width, height)
           renderer.render(scene, camera)
         }
       }
     })
-    ro.observe(canvasEl)
+    resizeObserver.observe(resizeTarget)
   }
+
+  applySize(initW || 800, initH || 600)
 
   // Force one frame immediately so the canvas isn't blank if the loop hasn't started
   renderer.render(scene, camera)
@@ -171,6 +183,7 @@ function _addBorderTrees (scene) {
 }
 
 function animate () {
+  updateCamera()
   renderer.render(scene, camera)
 }
 
@@ -180,7 +193,7 @@ function getHemiLight () { return null }
 function getFrustumSize () { return frustumSize }
 function setFrustumSize (size) {
   frustumSize = size
-  const aspect = (document.documentElement.clientWidth / document.documentElement.clientHeight) || 1
+  const aspect = (window.innerWidth || document.documentElement.clientWidth) / (window.innerHeight || document.documentElement.clientHeight) || 1
   camera.left = -frustumSize * aspect / 2
   camera.right = frustumSize * aspect / 2
   camera.top = frustumSize / 2
@@ -188,7 +201,7 @@ function setFrustumSize (size) {
   camera.updateProjectionMatrix()
 }
 
-// ── Camera controls (pan + zoom) ─────────────────────────────────────────────
+// ─��� Camera controls (pan + zoom) ─────────────────────────────────────────────
 const camState = {
   targetFrustum: 45,
   targetX: 0,
