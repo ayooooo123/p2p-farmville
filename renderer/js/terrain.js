@@ -149,6 +149,7 @@ let plotGrid = []
 let plotMeshes = []
 let raycaster = null
 let scene = null
+let gridLinesMesh = null
 
 // ── Hover highlight mesh ─────────────────────────────────────────────────────
 let hoverHighlightMesh = null
@@ -159,6 +160,52 @@ const HIGHLIGHT_COLORS = {
   harvest: { color: 0xffd700, opacity: 0.35 },
   remove:  { color: 0xff4444, opacity: 0.35 },
   default: { color: 0xffffff, opacity: 0.20 }
+}
+
+/**
+ * Build a LineSegments grid overlay between all plot tiles.
+ * Static mesh — matrixAutoUpdate disabled for a small perf win.
+ */
+function _createGridLines (sceneRef) {
+  // Dispose previous if createPlotGrid is called more than once
+  if (gridLinesMesh) {
+    sceneRef.remove(gridLinesMesh)
+    gridLinesMesh.geometry.dispose()
+    gridLinesMesh.material.dispose()
+    gridLinesMesh = null
+  }
+
+  const halfW = (GRID_COLS * PLOT_SIZE) / 2  // 20
+  const halfD = (GRID_ROWS * PLOT_SIZE) / 2  // 20
+  const pts = []
+
+  // Vertical lines (parallel to Z axis, one per column boundary)
+  for (let col = 0; col <= GRID_COLS; col++) {
+    const x = -halfW + col * PLOT_SIZE
+    pts.push(x, 0.03, -halfD,  x, 0.03, halfD)
+  }
+
+  // Horizontal lines (parallel to X axis, one per row boundary)
+  for (let row = 0; row <= GRID_ROWS; row++) {
+    const z = -halfD + row * PLOT_SIZE
+    pts.push(-halfW, 0.03, z,  halfW, 0.03, z)
+  }
+
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
+  const mat = new THREE.LineBasicMaterial({
+    color: 0x2a4510,
+    opacity: 0.25,
+    transparent: true,
+    depthWrite: false
+  })
+  const lines = new THREE.LineSegments(geo, mat)
+  lines.name = 'plotGridLines'
+  // Static geometry — disable auto matrix update for a free perf gain
+  lines.matrixAutoUpdate = false
+  lines.updateMatrix()
+  sceneRef.add(lines)
+  gridLinesMesh = lines
 }
 
 /**
@@ -234,6 +281,9 @@ function createPlotGrid (sceneRef) {
       }
     }
   }
+
+  // Grid line overlay between plots (static, single draw call)
+  _createGridLines(scene)
 
   // Create a single hover highlight quad (hidden by default)
   const hlGeo = new THREE.PlaneGeometry(PLOT_SIZE - 0.04, PLOT_SIZE - 0.04)
