@@ -43,6 +43,16 @@ function bindRendererBridge() {
   });
 }
 
+function getRendererUrl() {
+  const isDev = process.env.NODE_ENV !== 'production' || process.env.ELECTROBUN_DEV === '1' || process.env.ELECTROBUN_MODE === 'dev';
+  if (isDev) {
+    const baseUrl = process.env.ELECTROBUN_DEV_SERVER_URL || 'http://localhost:50000';
+    return baseUrl + '/renderer/index.html';
+  }
+
+  return pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
+}
+
 function createWindow(rendererUrl) {
   mainWindow = new BrowserWindow({
     title: 'P2P FarmVille',
@@ -93,7 +103,7 @@ async function startWorker(storagePath) {
 
 async function createApp() {
   const storagePath = getStoragePath();
-  const rendererUrl = pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
+  const rendererUrl = getRendererUrl();
 
   createWindow(rendererUrl);
   await startWorker(storagePath);

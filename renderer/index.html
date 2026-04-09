@@ -564,14 +564,14 @@
   </div>
 
   <!-- Electrobun view entrypoint (compiled from src/game/index.ts) - sets up window.IPCBridge via RPC -->
-  <script src="js/ipc-bridge.js"></script>
+  <script src="js/ipc-bridge.js" type="module"></script>
   <!-- Game scripts (use window.IPCBridge for P2P communication) -->
-  <script src="js/player.js"></script>
-  <script src="js/chat.js"></script>
-  <script src="js/trade.js"></script>
-  <script src="js/gift.js"></script>
-  <script src="js/coop.js"></script>
-  <script src="js/neighbor-panel.js"></script>
+  <script src="js/player.js" type="module"></script>
+  <script src="js/chat.js" type="module"></script>
+  <script src="js/trade.js" type="module"></script>
+  <script src="js/gift.js" type="module"></script>
+  <script src="js/coop.js" type="module"></script>
+  <script src="js/neighbor-panel.js" type="module"></script>
   <!-- Main app (ES module - imports Three.js and other modules) -->
   <script src="app.js" type="module"></script>
 </body>
