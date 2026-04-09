@@ -9,6 +9,8 @@ let terrainData = null
 let sunLight = null
 let ambientLight = null
 let resizeObserver = null
+let viewportWidth = 1
+let viewportHeight = 1
 
 // Orthographic frustum size (vertical extent in world units)
 let frustumSize = 45
@@ -53,22 +55,22 @@ function initScene (canvasEl) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
   console.log('[scene] renderer created, drawingBuffer:', renderer.domElement.width, 'x', renderer.domElement.height)
 
-  // Ambient light — brighter so the farm doesn't look washed out or too dark
-  ambientLight = new THREE.AmbientLight(0xfff2dd, 1.15)
+  // Ambient light — safer intensity to avoid flattening or black-screen artifacts
+  ambientLight = new THREE.AmbientLight(0xffeedd, 0.8)
   scene.add(ambientLight)
 
-  // Directional sun light — stronger fill for clearer scene visibility
-  sunLight = new THREE.DirectionalLight(0xffffff, 1.6)
-  sunLight.position.set(30, 60, -20)
+  // Directional sun light — safer intensity for stable visibility
+  sunLight = new THREE.DirectionalLight(0xffffff, 1.0)
+  sunLight.position.set(30, 50, -20)
   sunLight.castShadow = true
-  sunLight.shadow.mapSize.set(2048, 2048)
+  sunLight.shadow.mapSize.set(1024, 1024)
   sunLight.shadow.camera.left = -60
   sunLight.shadow.camera.right = 60
   sunLight.shadow.camera.top = 60
   sunLight.shadow.camera.bottom = -60
   sunLight.shadow.camera.near = 0.5
   sunLight.shadow.camera.far = 200
-  sunLight.shadow.normalBias = 0.02
+  sunLight.shadow.normalBias = 0.01
   sunLight.target.position.set(0, 0, 0)
   scene.add(sunLight)
   scene.add(sunLight.target)
@@ -93,14 +95,17 @@ function initScene (canvasEl) {
   _addBorderTrees(scene)
 
   const applySize = (width, height) => {
-    if (width <= 0 || height <= 0) return
-    const newAspect = width / height || 1
+    const safeWidth = width > 0 ? width : (window.innerWidth || document.documentElement.clientWidth || 1)
+    const safeHeight = height > 0 ? height : (window.innerHeight || document.documentElement.clientHeight || 1)
+    viewportWidth = safeWidth
+    viewportHeight = safeHeight
+    const newAspect = safeWidth / safeHeight || 1
     camera.left = -frustumSize * newAspect / 2
     camera.right = frustumSize * newAspect / 2
     camera.top = frustumSize / 2
     camera.bottom = -frustumSize / 2
     camera.updateProjectionMatrix()
-    renderer.setSize(width, height, false)
+    renderer.setSize(safeWidth, safeHeight, false)
     renderer.domElement.style.width = '100%'
     renderer.domElement.style.height = '100%'
   }
@@ -193,7 +198,9 @@ function getHemiLight () { return null }
 function getFrustumSize () { return frustumSize }
 function setFrustumSize (size) {
   frustumSize = size
-  const aspect = (window.innerWidth || document.documentElement.clientWidth) / (window.innerHeight || document.documentElement.clientHeight) || 1
+  const aspect = (viewportWidth > 0 && viewportHeight > 0)
+    ? viewportWidth / viewportHeight
+    : ((window.innerWidth || document.documentElement.clientWidth || 1) / (window.innerHeight || document.documentElement.clientHeight || 1))
   camera.left = -frustumSize * aspect / 2
   camera.right = frustumSize * aspect / 2
   camera.top = frustumSize / 2
@@ -265,7 +272,9 @@ function updateCamera () {
   // Lerp frustum size
   if (Math.abs(frustumSize - camState.targetFrustum) > 0.01) {
     frustumSize += (camState.targetFrustum - frustumSize) * CAM_LERP
-    const aspect = (document.documentElement.clientWidth / document.documentElement.clientHeight) || 1
+    const aspect = (viewportWidth > 0 && viewportHeight > 0)
+      ? viewportWidth / viewportHeight
+      : ((window.innerWidth || document.documentElement.clientWidth || 1) / (window.innerHeight || document.documentElement.clientHeight || 1))
     camera.left   = -frustumSize * aspect / 2
     camera.right  =  frustumSize * aspect / 2
     camera.top    =  frustumSize / 2
