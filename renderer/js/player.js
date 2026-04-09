@@ -9,9 +9,13 @@ const WORLD_HALF_W = 200 // can walk far left/right to visit neighbors
 const WORLD_HALF_D = 50 // slightly beyond farm depth
 
 let playerMesh = null
+let playerBody = null   // cylinder body ref for bob
+let playerHead = null   // sphere head ref for bob
 let dirIndicator = null
+let bobTime = 0
 const keys = { w: false, a: false, s: false, d: false }
 const playerPos = { x: 0, z: 0 }
+let isMoving = false
 
 // Visiting state
 let visiting = false
@@ -20,36 +24,60 @@ let visitingNeighborName = ''
 let onVisitChangeCallback = null
 
 function initPlayer (scene) {
-  // Flat player: colored circle with direction triangle (top-down view)
+  // 3D capsule-like player: cylinder body + sphere head with shadow
   const group = new THREE.Group()
 
-  // Body circle (blue)
-  const bodyGeo = new THREE.CircleGeometry(0.5, 16)
+  // Body: cylinder (torso)
+  const bodyGeo = new THREE.CylinderGeometry(0.32, 0.36, 0.72, 12)
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2196f3 })
   const body = new THREE.Mesh(bodyGeo, bodyMat)
-  body.rotation.x = -Math.PI / 2
-  body.position.y = 0.03
+  body.position.y = 0.46
+  body.castShadow = true
+  body.receiveShadow = true
   group.add(body)
+  playerBody = body
 
-  // Head/skin inner circle
-  const headGeo = new THREE.CircleGeometry(0.25, 12)
+  // Legs: two small cylinders below body
+  const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.3, 8)
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x1565c0 })
+
+  const leftLeg = new THREE.Mesh(legGeo, legMat)
+  leftLeg.position.set(-0.14, 0.15, 0)
+  leftLeg.castShadow = true
+  group.add(leftLeg)
+
+  const rightLeg = new THREE.Mesh(legGeo, legMat)
+  rightLeg.position.set(0.14, 0.15, 0)
+  rightLeg.castShadow = true
+  group.add(rightLeg)
+
+  // Head: sphere (skin tone)
+  const headGeo = new THREE.SphereGeometry(0.28, 12, 10)
   const headMat = new THREE.MeshStandardMaterial({ color: 0xffcc88 })
   const head = new THREE.Mesh(headGeo, headMat)
-  head.rotation.x = -Math.PI / 2
-  head.position.y = 0.035
+  head.position.y = 1.08
+  head.castShadow = true
   group.add(head)
+  playerHead = head
 
-  // Direction indicator (triangle pointing forward)
-  const triShape = new THREE.Shape()
-  triShape.moveTo(0, -0.7)
-  triShape.lineTo(-0.15, -0.45)
-  triShape.lineTo(0.15, -0.45)
-  triShape.closePath()
-  const triGeo = new THREE.ShapeGeometry(triShape)
-  const triMat = new THREE.MeshStandardMaterial({ color: 0x1565c0 })
-  dirIndicator = new THREE.Mesh(triGeo, triMat)
-  dirIndicator.rotation.x = -Math.PI / 2
-  dirIndicator.position.y = 0.04
+  // Hat: small flat cylinder on top of head
+  const hatBrimGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.06, 12)
+  const hatTopGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.26, 12)
+  const hatMat = new THREE.MeshStandardMaterial({ color: 0x5d4037 })
+  const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat)
+  hatBrim.position.y = 1.36
+  hatBrim.castShadow = true
+  group.add(hatBrim)
+  const hatTop = new THREE.Mesh(hatTopGeo, hatMat)
+  hatTop.position.y = 1.55
+  hatTop.castShadow = true
+  group.add(hatTop)
+
+  // Direction indicator: small blue sphere in front
+  const dotGeo = new THREE.SphereGeometry(0.08, 6, 6)
+  const dotMat = new THREE.MeshStandardMaterial({ color: 0x90caf9, emissive: 0x1565c0, emissiveIntensity: 0.4 })
+  dirIndicator = new THREE.Mesh(dotGeo, dotMat)
+  dirIndicator.position.set(0, 0.6, -0.42)
   group.add(dirIndicator)
 
   group.position.set(0, 0, 0)
@@ -88,6 +116,8 @@ function updatePlayer (dt) {
     dz /= len
   }
 
+  isMoving = dx !== 0 || dz !== 0
+
   playerPos.x += dx * PLAYER_SPEED * dt
   playerPos.z += dz * PLAYER_SPEED * dt
 
@@ -99,8 +129,23 @@ function updatePlayer (dt) {
   playerMesh.position.z = playerPos.z
 
   // Rotate player to face movement direction
-  if (dx !== 0 || dz !== 0) {
+  if (isMoving) {
     playerMesh.rotation.y = Math.atan2(dx, dz)
+  }
+
+  // Bob animation: sine wave on Y when moving, idle gentle sway when still
+  if (isMoving) {
+    bobTime += dt * 8.0  // faster bob while walking
+    const bobY = Math.abs(Math.sin(bobTime)) * 0.12
+    playerMesh.position.y = bobY
+    // Slight lean in movement direction (roll)
+    playerMesh.rotation.z = Math.sin(bobTime) * 0.06
+  } else {
+    // Idle: slow gentle float
+    bobTime += dt * 1.5
+    const idleY = Math.sin(bobTime) * 0.03
+    playerMesh.position.y = idleY
+    playerMesh.rotation.z = 0
   }
 
   // Check if player has crossed farm boundary
