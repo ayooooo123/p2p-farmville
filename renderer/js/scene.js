@@ -14,7 +14,7 @@ let viewportWidth = 1
 let viewportHeight = 1
 
 // Orthographic frustum size (vertical extent in world units)
-let frustumSize = 45
+let frustumSize = 60
 
 function initScene (canvasEl) {
   // Scene
@@ -32,7 +32,7 @@ function initScene (canvasEl) {
     '| canvas clientSize:', canvasEl.clientWidth, 'x', canvasEl.clientHeight)
 
   // Orthographic Camera - pure top-down
-  const aspect = initW / initH || 1
+  const aspect = (initW > 0 && initH > 0) ? initW / initH : 1
   camera = new THREE.OrthographicCamera(
     -frustumSize * aspect / 2,
     frustumSize * aspect / 2,
@@ -42,6 +42,7 @@ function initScene (canvasEl) {
     200
   )
   camera.position.set(0, 50, 0)
+  camera.zoom = 1
   camera.lookAt(0, 0, 0)
   camera.up.set(0, 0, -1) // ensure consistent orientation for top-down
 
@@ -106,7 +107,7 @@ function initScene (canvasEl) {
     const safeHeight = height > 0 ? height : (window.innerHeight || document.documentElement.clientHeight || 1)
     viewportWidth = safeWidth
     viewportHeight = safeHeight
-    const newAspect = safeWidth / safeHeight || 1
+    const newAspect = (safeWidth > 0 && safeHeight > 0) ? (safeWidth / safeHeight) : 1
     camera.left = -frustumSize * newAspect / 2
     camera.right = frustumSize * newAspect / 2
     camera.top = frustumSize / 2
@@ -217,7 +218,7 @@ function setFrustumSize (size) {
 
 // ─��� Camera controls (pan + zoom) ─────────────────────────────────────────────
 const camState = {
-  targetFrustum: 45,
+  targetFrustum: 60,
   targetX: 0,
   targetZ: 0,
   panning: false,
@@ -229,8 +230,8 @@ const camState = {
 }
 
 const CAM_MIN_FRUSTUM = 10
-const CAM_MAX_FRUSTUM = 80
-const CAM_CLAMP = 60
+const CAM_MAX_FRUSTUM = 100
+const CAM_CLAMP = 80
 const CAM_LERP = 0.15
 
 function initCameraControls (canvasEl) {
@@ -280,7 +281,7 @@ function updateCamera () {
   if (Math.abs(frustumSize - camState.targetFrustum) > 0.01) {
     frustumSize += (camState.targetFrustum - frustumSize) * CAM_LERP
     const aspect = (viewportWidth > 0 && viewportHeight > 0)
-      ? viewportWidth / viewportHeight
+      ? (viewportWidth / viewportHeight)
       : ((window.innerWidth || document.documentElement.clientWidth || 1) / (window.innerHeight || document.documentElement.clientHeight || 1))
     camera.left   = -frustumSize * aspect / 2
     camera.right  =  frustumSize * aspect / 2
@@ -296,7 +297,7 @@ function updateCamera () {
 }
 
 function resetCamera () {
-  camState.targetFrustum = 45
+  camState.targetFrustum = 60
   camState.targetX = 0
   camState.targetZ = 0
 }
