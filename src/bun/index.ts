@@ -60,7 +60,7 @@ function getRendererRoot() {
 
 function getRendererUrl() {
   if (isDevelopment()) {
-    const baseUrl = process.env.ELECTROBUN_DEV_SERVER_URL || 'http://localhost:50000';
+    const baseUrl = process.env.ELECTROBUN_DEV_SERVER_URL || 'http://localhost:50001';
     return new URL('/renderer/index.html', baseUrl).href;
   }
 
@@ -68,34 +68,25 @@ function getRendererUrl() {
 }
 
 async function serveRendererRequest(pathname: string) {
-  const rendererRoot = path.resolve(getRendererRoot());
   const normalizedPath = pathname === '/' || pathname === '/renderer' || pathname === '/renderer/'
     ? '/renderer/index.html'
     : pathname;
 
-  const manifestPath = normalizedPath === '/manifest.json'
-    ? path.join(rendererRoot, 'manifest.json')
-    : null;
-
-  const mappedPath = normalizedPath.startsWith('/renderer/')
-    ? path.resolve(rendererRoot, normalizedPath.slice('/renderer/'.length) || 'index.html')
-    : manifestPath;
-
-  if (!mappedPath) {
-    return new Response('Not Found', { status: 404 });
+  if (!normalizedPath.startsWith('/renderer/')) {
+    return null;
   }
 
-  if (mappedPath !== rendererRoot && !mappedPath.startsWith(rendererRoot + path.sep)) {
+  const rendererRoot = path.resolve(getRendererRoot());
+  const relativePath = normalizedPath.slice('/renderer/'.length);
+  const filePath = path.resolve(rendererRoot, relativePath || 'index.html');
+
+  if (filePath !== rendererRoot && !filePath.startsWith(rendererRoot + path.sep)) {
     return new Response('Forbidden', { status: 403 });
   }
 
-  const file = Bun.file(mappedPath);
-  try {
-    if (typeof file.exists !== 'function' || !(await file.exists())) {
-      return new Response('Not Found', { status: 404 });
-    }
-  } catch {
-    return new Response('Not Found', { status: 404 });
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) {
+    return null;
   }
 
   return new Response(file);
@@ -108,20 +99,19 @@ function startRendererDevServer() {
 
   rendererServer = Bun.serve({
     hostname: '127.0.0.1',
-    port: 50000,
+    port: 50001,
     fetch: async (request) => {
-      try {
-        const url = new URL(request.url);
-        const response = await serveRendererRequest(url.pathname);
-        return response ?? new Response('Not Found', { status: 404 });
-      } catch (error) {
-        console.error('[main] renderer dev server fetch error:', error instanceof Error ? error.message : error);
-        return new Response('Internal Server Error', { status: 500 });
+      const url = new URL(request.url);
+      const response = await serveRendererRequest(url.pathname);
+      if (response) {
+        return response;
       }
+
+      return new Response('Not Found', { status: 404 });
     },
   });
 
-  console.log('[main] renderer dev server listening on http://127.0.0.1:50000');
+  console.log('[main] renderer dev server listening on http://127.0.0.1:50001');
 }
 
 function forwardToRenderer(message: unknown) {
