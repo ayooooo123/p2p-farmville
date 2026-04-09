@@ -49,6 +49,17 @@ function getStoragePath() {
   return path.join(process.env.APPDATA || process.env.HOME || '.', 'p2p-farmville');
 }
 
+function getRendererUrl() {
+  const isDev = process.env.NODE_ENV !== 'production' || process.env.ELECTROBUN_DEV === '1' || process.env.ELECTROBUN_MODE === 'dev';
+
+  if (isDev) {
+    const baseUrl = process.env.ELECTROBUN_DEV_SERVER_URL || 'http://localhost:50000';
+    return new URL('/renderer/index.html', baseUrl).href;
+  }
+
+  return pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
+}
+
 function forwardToRenderer(message: unknown) {
   try {
     mainWindow?.webview?.sendMessageToWebviewViaExecute(message);
@@ -292,7 +303,7 @@ async function startWorker() {
 }
 
 async function createApp() {
-  const rendererUrl = pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
+  const rendererUrl = getRendererUrl();
 
   createWindow(rendererUrl);
   await startWorker();
