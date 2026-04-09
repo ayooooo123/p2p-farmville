@@ -39,18 +39,28 @@ function getRendererUrl() {
   return pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
 }
 
-async function serveRendererRequest(pathname: string) {
-  const normalizedPath = pathname === '/' || pathname === '/renderer' || pathname === '/renderer/'
-    ? '/renderer/index.html'
-    : pathname;
+function resolveRendererPath(pathname: string) {
+  const normalized = pathname.replace(/\\/g, '/').replace(/^\/+/, '');
 
-  if (!normalizedPath.startsWith('/renderer/')) {
-    return null;
+  if (normalized === '' || normalized === 'renderer' || normalized === 'renderer/') {
+    return 'index.html';
   }
 
+  if (normalized === 'renderer/index.html') {
+    return 'index.html';
+  }
+
+  if (normalized.startsWith('renderer/')) {
+    return normalized.slice('renderer/'.length);
+  }
+
+  return normalized;
+}
+
+async function serveRendererRequest(pathname: string) {
   const rendererRoot = path.resolve(getRendererRoot());
-  const relativePath = normalizedPath.slice('/renderer/'.length);
-  const filePath = path.resolve(rendererRoot, relativePath || 'index.html');
+  const relativePath = resolveRendererPath(pathname);
+  const filePath = path.resolve(rendererRoot, relativePath);
 
   if (filePath !== rendererRoot && !filePath.startsWith(rendererRoot + path.sep)) {
     return new Response('Forbidden', { status: 403 });
@@ -58,7 +68,7 @@ async function serveRendererRequest(pathname: string) {
 
   const file = Bun.file(filePath);
   if (!(await file.exists())) {
-    return null;
+    return new Response('Not Found', { status: 404 });
   }
 
   return new Response(file);
@@ -74,12 +84,7 @@ function startRendererDevServer() {
     port: 50001,
     fetch: async (request) => {
       const url = new URL(request.url);
-      const response = await serveRendererRequest(url.pathname);
-      if (response) {
-        return response;
-      }
-
-      return new Response('Not Found', { status: 404 });
+      return await serveRendererRequest(url.pathname);
     },
   });
 
@@ -96,7 +101,7 @@ function createWindow(rendererUrl: string) {
 }
 
 function createWorker() {
-  const workerEntry = path.join(__dirname, '..', 'workers', 'main.js');
+  const workerEntry = path.join(__dirname, '..', 'workers', 'main.cjs');
   const worker = spawn('bare', [workerEntry], {
     stdio: ['ignore', 'inherit', 'inherit'],
     windowsHide: true,
