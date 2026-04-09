@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 
-const appDir = import.meta.dir ?? path.dirname(new URL(import.meta.url).pathname);
+const bundleDir = import.meta.dir ?? path.dirname(new URL(import.meta.url).pathname);
 
 type BareProcess = ReturnType<typeof spawn>;
 
@@ -38,32 +38,30 @@ function findPath(candidates: string[], exists: (candidate: string) => boolean) 
 
 const rendererRoot = findPath(
   [
-    path.resolve(appDir, 'renderer'),
-    path.resolve(appDir, 'app', 'renderer'),
-    path.resolve(appDir, '..', 'renderer'),
-    path.resolve(appDir, '..', 'app', 'renderer'),
-    path.resolve(appDir, '..', 'Resources', 'app', 'renderer'),
-    path.resolve(appDir, '..', '..', 'Resources', 'app', 'renderer'),
-    path.resolve(process.cwd(), 'renderer'),
+    path.join(bundleDir, 'app', 'renderer'),
+    path.join(bundleDir, '..', 'app', 'renderer'),
+    path.join(bundleDir, '..', '..', 'app', 'renderer'),
+    path.join(bundleDir, '..', 'renderer'),
+    path.join(process.cwd(), 'app', 'renderer'),
+    path.join(process.cwd(), 'renderer'),
   ],
   (candidate) => fs.existsSync(path.join(candidate, 'index.html'))
 );
 
 const workerEntry = findPath(
   [
-    path.resolve(appDir, 'workers', 'main.cjs'),
-    path.resolve(appDir, 'app', 'workers', 'main.cjs'),
-    path.resolve(appDir, '..', 'workers', 'main.cjs'),
-    path.resolve(appDir, '..', 'app', 'workers', 'main.cjs'),
-    path.resolve(appDir, '..', 'Resources', 'app', 'workers', 'main.cjs'),
-    path.resolve(appDir, '..', '..', 'Resources', 'app', 'workers', 'main.cjs'),
-    path.resolve(process.cwd(), 'workers', 'main.cjs'),
+    path.join(bundleDir, 'app', 'workers', 'main.cjs'),
+    path.join(bundleDir, '..', 'app', 'workers', 'main.cjs'),
+    path.join(bundleDir, '..', '..', 'app', 'workers', 'main.cjs'),
+    path.join(bundleDir, '..', 'workers', 'main.cjs'),
+    path.join(process.cwd(), 'app', 'workers', 'main.cjs'),
+    path.join(process.cwd(), 'workers', 'main.cjs'),
   ],
   (candidate) => fs.existsSync(candidate)
 );
 
 console.log('[main] resolved bundle paths', {
-  appDir,
+  bundleDir,
   rendererRoot,
   rendererIndex: path.join(rendererRoot, 'index.html'),
   workerEntry,
@@ -71,7 +69,7 @@ console.log('[main] resolved bundle paths', {
 
 function getRendererUrl() {
   if (isDevelopment()) {
-    const baseUrl = process.env.ELECTROBUN_DEV_SERVER_URL || 'http://localhost:50001';
+    const baseUrl = process.env.ELECTROBUN_DEV_SERVER_URL || 'http://localhost:50005';
     return new URL('/renderer/index.html', baseUrl).href;
   }
 
@@ -90,6 +88,71 @@ function contentTypeFor(relativePath: string) {
   return 'application/octet-stream';
 }
 
+function normalizeRendererPath(pathname: string) {
+  const decodedPath = (() => {
+    try {
+      return decodeURIComponent(pathname);
+    } catch {
+      return pathname;
+    }
+  })();
+
+  const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/^\/+/, '');
+
+  if (normalizedPath === '' || normalizedPath === 'renderer' || normalizedPath === 'renderer/' || normalizedPath === '/') {
+    return 'index.html';
+  }
+
+  if (normalizedPath === 'renderer/index.html' || normalizedPath === '/renderer/index.html') {
+    return 'index.html';
+  }
+
+  if (normalizedPath === 'manifest.json' || normalizedPath === 'renderer/manifest.json') {
+    return 'manifest.json';
+  }
+
+  if (normalizedPath.startsWith('renderer/')) {
+    return normalizedPath.slice('renderer/'.length);
+  }
+
+  return normalizedPath;
+}
+
+async function serveRendererRequest(request: Request) {
+  const url = new URL(request.url);
+  const relativePath = normalizeRendererPath(url.pathname);
+  const resolvedPath = path.resolve(rendererRoot, relativePath);
+  console.log('[main] renderer request', { requestedUrl: request.url, resolvedPath });
+
+  const rootPrefix = rendererRoot.endsWith(path.sep) ? rendererRoot : rendererRoot + path.sep;
+  if (resolvedPath !== rendererRoot && !resolvedPath.startsWith(rootPrefix)) {
+    return new Response('Forbidden', {
+      status: 403,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+    });
+  }
+
+  const file = Bun.file(resolvedPath);
+  try {
+    if (!(await file.exists())) {
+      return new Response('Not Found', {
+        status: 404,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      });
+    }
+  } catch {
+    return new Response('Not Found', {
+      status: 404,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+    });
+  }
+
+  return new Response(file, {
+    status: 200,
+    headers: { 'content-type': contentTypeFor(relativePath || 'index.html') },
+  });
+}
+
 function startRendererDevServer() {
   if (!isDevelopment() || rendererServer) {
     return;
@@ -97,74 +160,24 @@ function startRendererDevServer() {
 
   rendererServer = Bun.serve({
     hostname: '127.0.0.1',
-    port: 50001,
+    port: 50005,
     fetch: async (request) => {
-      const requestedUrl = request.url;
-
       try {
-        const url = new URL(requestedUrl);
-        let decodedPath = url.pathname;
-
-        try {
-          decodedPath = decodeURIComponent(url.pathname);
-        } catch {}
-
-        const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/^\/+/, '');
-        const relativePath =
-          normalizedPath === '' ||
-          normalizedPath === 'renderer' ||
-          normalizedPath === 'renderer/' ||
-          normalizedPath === '/'
-            ? 'index.html'
-            : normalizedPath === 'renderer/index.html' || normalizedPath === '/renderer/index.html'
-              ? 'index.html'
-              : normalizedPath === 'manifest.json' || normalizedPath === 'renderer/manifest.json'
-                ? 'manifest.json'
-                : normalizedPath.startsWith('renderer/')
-                  ? normalizedPath.slice('renderer/'.length)
-                  : normalizedPath;
-
-        const resolvedPath = path.resolve(rendererRoot, relativePath);
-        console.log('[main] renderer request', { requestedUrl, resolvedPath });
-
-        const rootPrefix = rendererRoot.endsWith(path.sep) ? rendererRoot : rendererRoot + path.sep;
-        if (resolvedPath !== rendererRoot && !resolvedPath.startsWith(rootPrefix)) {
-          return new Response('Forbidden', {
-            status: 403,
-            headers: { 'content-type': 'text/plain; charset=utf-8' },
-          });
-        }
-
-        const file = Bun.file(resolvedPath);
-        if (!(await file.exists())) {
-          return new Response(`Not Found: ${relativePath || 'index.html'}`, {
-            status: 404,
-            headers: { 'content-type': 'text/plain; charset=utf-8' },
-          });
-        }
-
-        const body = await file.text();
-        return new Response(body, {
-          status: 200,
-          headers: { 'content-type': contentTypeFor(relativePath || 'index.html') },
-        });
+        return await serveRendererRequest(request);
       } catch (error) {
-        console.error('[main] renderer request handler error', { requestedUrl, error });
-        return new Response('Internal Server Error', {
-          status: 500,
-          headers: { 'content-type': 'text/plain; charset=utf-8' },
-        });
+        console.error('[main] renderer dev server fetch error:', error instanceof Error ? error.message : error);
+        return new Response('Internal Server Error', { status: 500 });
       }
     },
   });
 
-  console.log('[main] renderer dev server listening on http://127.0.0.1:50001');
+  console.log('[main] renderer dev server listening on http://127.0.0.1:50005');
 }
 
 function createWindow(rendererUrl: string) {
   mainWindow = new BrowserWindow({
     title: 'P2P FarmVille',
-    frame: { x: 0, y: 0, width: 1200, height: 800 },
+    frame: { x: 0, y: 0, width: 1600, height: 1000 },
     url: rendererUrl,
     rpc: appRPC,
   });
