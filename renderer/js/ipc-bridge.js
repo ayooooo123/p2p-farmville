@@ -2,6 +2,12 @@ import Protomux from 'protomux';
 import cenc from 'compact-encoding';
 
 const DEFAULT_IPC_URL = 'ws://localhost:50002';
+const BUNDLE_BASE_URL = new URL('../', import.meta.url);
+
+function resolveRendererAssetUrl(relativePath) {
+  const normalizedPath = String(relativePath ?? '').replace(/^\/+/, '');
+  return new URL(normalizedPath, BUNDLE_BASE_URL).href;
+}
 
 function createWebSocketTransport(socket) {
   const listeners = new Map();
@@ -108,6 +114,41 @@ function createWebSocketTransport(socket) {
   return transport;
 }
 
+function dispatchWorkerEvent(message) {
+  try {
+    globalThis.dispatchEvent?.(new CustomEvent('p2p-farmville:ipc-message', { detail: message }));
+  } catch {}
+
+  const type = message?.type;
+  if (!type) return;
+
+  const aliases = [
+    `p2p-farmville:${type}`,
+  ];
+
+  if (type === 'farm-action-result') {
+    aliases.push('p2p-farmville:action-confirmation');
+  }
+
+  if (type === 'visitor-farm-action') {
+    aliases.push('p2p-farmville:action-request');
+  }
+
+  if (type === 'farm-update') {
+    aliases.push('p2p-farmville:farm-update');
+  }
+
+  if (type === 'worker:ready') {
+    aliases.push('p2p-farmville:worker-ready');
+  }
+
+  for (const eventName of aliases) {
+    try {
+      globalThis.dispatchEvent?.(new CustomEvent(eventName, { detail: message }));
+    } catch {}
+  }
+}
+
 export function createIpcBridge(url = DEFAULT_IPC_URL) {
   const socket = new WebSocket(url);
   socket.binaryType = 'arraybuffer';
@@ -125,9 +166,7 @@ export function createIpcBridge(url = DEFAULT_IPC_URL) {
       } catch {}
     }
 
-    try {
-      globalThis.dispatchEvent?.(new CustomEvent('p2p-farmville:ipc-message', { detail: message }));
-    } catch {}
+    dispatchWorkerEvent(message);
   };
 
   const channel = mux.createChannel({
@@ -174,8 +213,10 @@ export function createIpcBridge(url = DEFAULT_IPC_URL) {
 
   try {
     globalThis.__P2P_FARMVILLE_IPC__ = bridge;
+    globalThis.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
     if (typeof window !== 'undefined') {
       window.__P2P_FARMVILLE_IPC__ = bridge;
+      window.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
     }
   } catch {}
 
@@ -193,3 +234,4 @@ const defaultBridge = typeof WebSocket !== 'undefined' ? createIpcBridge() : {
 export default defaultBridge;
 export const sendToWorker = (payload) => defaultBridge.send(payload);
 export const onWorkerMessage = (listener) => defaultBridge.onMessage(listener);
+export { resolveRendererAssetUrl };
