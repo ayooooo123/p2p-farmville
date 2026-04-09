@@ -64,7 +64,7 @@ async function startWorker(storagePath: string) {
     dir: storagePath,
     version: APP_VERSION,
     name: APP_NAME,
-    link: 'pear://dev',
+    upgrade: 'pear://dev',
     updates: false,
   });
 
