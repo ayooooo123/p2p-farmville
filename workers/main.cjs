@@ -256,6 +256,10 @@ function sendError (error) {
   send({ type: 'error', error: String(error) })
 }
 
+function extractFarmSnapshot (data) {
+  return data?.gameState ?? data?.state ?? data?.farmState ?? null
+}
+
 async function readLatestFarmState () {
   try {
     if (!farmStateCore) return null
@@ -271,16 +275,17 @@ async function readLatestFarmState () {
   }
 }
 
-async function sendInitialFarmState () {
+async function sendInitialFarmState (loadedState = null) {
   if (initialFarmStateSent || !ipcMessage) return false
-  const loadedState = await readLatestFarmState()
-  if (!loadedState) return false
+  const snapshot = loadedState ?? await readLatestFarmState()
+  if (!snapshot) return false
   initialFarmStateSent = true
   send({
     type: 'farm-update',
     playerKey: playerKey,
-    farmState: loadedState,
-    gameState: loadedState,
+    farmState: snapshot,
+    gameState: snapshot,
+    state: snapshot,
     source: 'loaded-state'
   })
   console.log('[worker] sent loaded farm state to renderer')
@@ -1401,13 +1406,17 @@ async function handleIPCMessage (data) {
           initialized = true
           startPeriodicTasks()
 
+          const loadedState = await readLatestFarmState()
           send({
             type: 'initialized',
             playerKey: playerKey,
-            playerName: playerName
+            playerName: playerName,
+            farmState: loadedState,
+            gameState: loadedState,
+            state: loadedState
           })
 
-          void sendInitialFarmState()
+          void sendInitialFarmState(loadedState)
 
           console.log('[worker] P2P engine fully initialized')
         }
@@ -1429,7 +1438,7 @@ async function handleIPCMessage (data) {
 
       case 'update-farm': {
         if (!initialized) return
-        const farmState = data.farmState
+        const farmState = extractFarmSnapshot(data)
         if (!farmState) return
         await persistFarmState(farmState)
         broadcastFarmState(farmState)
