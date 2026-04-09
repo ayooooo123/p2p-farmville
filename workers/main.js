@@ -1,7 +1,7 @@
-/* global Bare */
+/* global WebSocket */
 /* P2P FarmVille Worker - Phase 5: Social Features
  *
- * This Bare worker handles ALL P2P networking:
+ * This worker handles ALL P2P networking:
  * - Corestore for persistent storage (farm state, world registry, chat)
  * - Hyperswarm for peer discovery on a shared world topic
  * - Protomux for multiplexed channels per connection
@@ -59,9 +59,11 @@ const HELP_REQUEST_EXPIRY = 30 * 60 * 1000 // 30 minutes
 const DAILY_GIFT_LIMIT = 5
 
 // ── State ───────────────────────────────────────────────────────────────────
-// Bare.argv: [bare-binary, script-path, ...args]
-// pear.run(script, [storagePath]) → argv[2] = storagePath
-const storagePath = Bare.argv[2] || './storage'
+function getStoragePath () {
+  return (globalThis.process?.env?.APPDATA || globalThis.process?.env?.HOME || '.') + '/p2p-farmville'
+}
+
+const storagePath = getStoragePath()
 let store = null
 let swarm = null
 let playerName = ''
@@ -101,14 +103,115 @@ let helpIdCounter = 0
 // Visitor farm action rate limiting: Map<peerKey, { count, windowStart }>
 const visitorActionCounts = new Map()
 
-// ── Protomux IPC (Bare.IPC ↔ Bun main process) ──────────────────────────────
-const ipcMux = new Protomux(Bare.IPC)
+// ── Protomux IPC (ws transport ↔ Bun main process) ─────────────────────────
+function createWebSocketTransport (url) {
+  const listeners = new Map()
+  const pendingWrites = []
+  let destroyed = false
+  let opened = false
+  const socket = new WebSocket(url)
+  socket.binaryType = 'arraybuffer'
+
+  const emit = (event, ...args) => {
+    const set = listeners.get(event)
+    if (!set) return
+    for (const listener of set) {
+      try {
+        listener(...args)
+      } catch {}
+    }
+  }
+
+  const transport = {
+    userData: null,
+    destroyed: false,
+    alloc (size) {
+      return new Uint8Array(size)
+    },
+    on (event, listener) {
+      const set = listeners.get(event) ?? new Set()
+      set.add(listener)
+      listeners.set(event, set)
+      return transport
+    },
+    write (buffer) {
+      if (destroyed) return false
+      if (opened && socket.readyState === WebSocket.OPEN) {
+        socket.send(buffer)
+      } else {
+        pendingWrites.push(buffer)
+      }
+      return true
+    },
+    pause () {},
+    resume () {},
+    end () {
+      if (destroyed) return
+      destroyed = true
+      transport.destroyed = true
+      try { socket.close() } catch {}
+      emit('end')
+      emit('close')
+    },
+    destroy (err) {
+      if (destroyed) return
+      destroyed = true
+      transport.destroyed = true
+      if (err) emit('error', err)
+      try { socket.close() } catch {}
+      emit('close')
+    }
+  }
+
+  socket.addEventListener('open', () => {
+    opened = true
+    while (pendingWrites.length > 0) {
+      socket.send(pendingWrites.shift())
+    }
+    emit('open')
+  })
+
+  socket.addEventListener('message', (event) => {
+    const data = event.data
+    if (typeof data === 'string') {
+      emit('data', new TextEncoder().encode(data))
+      return
+    }
+
+    if (data instanceof ArrayBuffer) {
+      emit('data', new Uint8Array(data))
+      return
+    }
+
+    if (ArrayBuffer.isView(data)) {
+      emit('data', new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
+      return
+    }
+
+    emit('data', new Uint8Array())
+  })
+
+  socket.addEventListener('error', (event) => {
+    emit('error', event.error ?? new Error('WebSocket error'))
+  })
+
+  socket.addEventListener('close', () => {
+    destroyed = true
+    transport.destroyed = true
+    emit('end')
+    emit('close')
+  })
+
+  return transport
+}
+
+const ipcUrl = globalThis.__P2P_FARMVILLE_IPC_URL__ || 'ws://127.0.0.1:50002'
+const ipcMux = new Protomux(createWebSocketTransport(ipcUrl))
 const ipcChannel = ipcMux.createChannel({
   protocol: 'farmville-ipc',
   onopen () {
-    // Both sides open — safe to send now
     ipcMessage.send({ type: 'worker:ready', storagePath })
-    console.log('[worker] Protomux IPC channel open, sent worker:ready')
+    console.log('[worker] ws IPC channel open, sent worker:ready')
   }
 })
 const ipcMessage = ipcChannel.addMessage({ encoding: cenc.json, onmessage: handleIPCMessage })
@@ -527,7 +630,7 @@ function handleTradeMessage (remoteKey, buf) {
   }
 }
 
-// ── Gift message handler ────────────────────────────────────────────────────
+// ── Gift message handler ────────────────��───────────────────────────────────
 function handleGiftMessage (remoteKey, buf) {
   try {
     const msg = JSON.parse(b4a.toString(buf))
@@ -654,7 +757,7 @@ function handleHelpMessage (remoteKey, buf) {
   }
 }
 
-// ── Farm action message handler (visitor actions) ──────────────────────────
+// ── Farm action message handler (visitor actions) ───��──────────────────────
 function handleFarmActionMessage (remoteKey, buf) {
   try {
     const msg = JSON.parse(b4a.toString(buf))
@@ -1393,6 +1496,6 @@ async function handleIPCMessage (data) {
 }
 
 // ── Startup ─────────────────────────────────────────────────────────────────
-// worker:ready is sent from ipcChannel.onopen once Protomux handshake completes
+// worker:ready is sent when the websocket-backed Protomux channel opens
 console.log('[worker] P2P FarmVille worker started, storage:', storagePath)
-console.log('[worker] Waiting for Protomux IPC channel open...')
+console.log('[worker] Waiting for websocket IPC channel open...')
