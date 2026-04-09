@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 
 const appDir = import.meta.dir ?? path.dirname(new URL(import.meta.url).pathname);
 const rendererRoot = path.join(appDir, 'app', 'renderer');
-const workerEntry = path.join(appDir, 'workers', 'main.cjs');
+const workerEntry = path.join(appDir, 'app', 'workers', 'main.cjs');
 
 type BareProcess = ReturnType<typeof spawn>;
 
@@ -36,6 +36,18 @@ function getRendererUrl() {
   return pathToFileURL(path.join(rendererRoot, 'index.html')).href;
 }
 
+function contentTypeFor(relativePath: string) {
+  if (relativePath.endsWith('.html')) return 'text/html; charset=utf-8';
+  if (relativePath.endsWith('.js')) return 'application/javascript; charset=utf-8';
+  if (relativePath.endsWith('.css')) return 'text/css; charset=utf-8';
+  if (relativePath.endsWith('.json')) return 'application/json; charset=utf-8';
+  if (relativePath.endsWith('.svg')) return 'image/svg+xml; charset=utf-8';
+  if (relativePath.endsWith('.png')) return 'image/png';
+  if (relativePath.endsWith('.jpg') || relativePath.endsWith('.jpeg')) return 'image/jpeg';
+  if (relativePath.endsWith('.webp')) return 'image/webp';
+  return 'application/octet-stream';
+}
+
 function startRendererDevServer() {
   if (!isDevelopment() || rendererServer) {
     return;
@@ -45,46 +57,53 @@ function startRendererDevServer() {
     hostname: '127.0.0.1',
     port: 50001,
     fetch: async (request) => {
-      const url = new URL(request.url);
-
-      let decodedPath = url.pathname;
+      const requestedUrl = request.url;
       try {
-        decodedPath = decodeURIComponent(url.pathname);
-      } catch {}
+        const url = new URL(request.url);
 
-      const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/^\/+/, '');
-      const relativePath =
-        normalizedPath === '' ||
-        normalizedPath === 'renderer' ||
-        normalizedPath === 'renderer/' ||
-        normalizedPath === '/'
-          ? 'index.html'
-          : normalizedPath === 'renderer/index.html' || normalizedPath === '/renderer/index.html'
+        let decodedPath = url.pathname;
+        try {
+          decodedPath = decodeURIComponent(url.pathname);
+        } catch {}
+
+        const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/^\/+/, '');
+        const relativePath =
+          normalizedPath === '' ||
+          normalizedPath === 'renderer' ||
+          normalizedPath === 'renderer/' ||
+          normalizedPath === '/'
             ? 'index.html'
-            : normalizedPath === 'manifest.json' || normalizedPath === 'renderer/manifest.json'
-              ? 'manifest.json'
-              : normalizedPath.startsWith('renderer/')
-                ? normalizedPath.slice('renderer/'.length)
-                : normalizedPath;
+            : normalizedPath === 'renderer/index.html' || normalizedPath === '/renderer/index.html'
+              ? 'index.html'
+              : normalizedPath === 'manifest.json' || normalizedPath === 'renderer/manifest.json'
+                ? 'manifest.json'
+                : normalizedPath.startsWith('renderer/')
+                  ? normalizedPath.slice('renderer/'.length)
+                  : normalizedPath;
 
-      const filePath = path.join(rendererRoot, relativePath);
-      const file = Bun.file(filePath);
-      if (!(await file.exists())) {
-        return new Response('Not Found', { status: 404 });
+        const resolvedPath = path.join(rendererRoot, relativePath);
+        console.log('[main] renderer request', { requestedUrl, resolvedPath });
+
+        const file = Bun.file(resolvedPath);
+        if (!(await file.exists())) {
+          return new Response(`Not Found: ${relativePath}`, {
+            status: 404,
+            headers: { 'content-type': 'text/plain; charset=utf-8' },
+          });
+        }
+
+        const body = await file.text();
+        return new Response(body, {
+          status: 200,
+          headers: { 'content-type': contentTypeFor(relativePath) },
+        });
+      } catch (error) {
+        console.error('[main] renderer request handler error', { requestedUrl, error });
+        return new Response('Internal Server Error', {
+          status: 500,
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        });
       }
-
-      const body = await file.text();
-      const contentType =
-        relativePath.endsWith('.html') ? 'text/html; charset=utf-8' :
-        relativePath.endsWith('.js') ? 'application/javascript; charset=utf-8' :
-        relativePath.endsWith('.css') ? 'text/css; charset=utf-8' :
-        relativePath.endsWith('.json') ? 'application/json; charset=utf-8' :
-        relativePath.endsWith('.svg') ? 'image/svg+xml; charset=utf-8' :
-        'application/octet-stream';
-
-      return new Response(body, {
-        headers: { 'content-type': contentType },
-      });
     },
   });
 
