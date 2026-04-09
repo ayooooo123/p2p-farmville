@@ -39,41 +39,6 @@ function getRendererUrl() {
   return pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
 }
 
-function resolveRendererPath(pathname: string) {
-  const normalized = pathname.replace(/\\/g, '/').replace(/^\/+/, '');
-
-  if (normalized === '' || normalized === 'renderer' || normalized === 'renderer/') {
-    return 'index.html';
-  }
-
-  if (normalized === 'renderer/index.html') {
-    return 'index.html';
-  }
-
-  if (normalized.startsWith('renderer/')) {
-    return normalized.slice('renderer/'.length);
-  }
-
-  return normalized;
-}
-
-async function serveRendererRequest(pathname: string) {
-  const rendererRoot = path.resolve(getRendererRoot());
-  const relativePath = resolveRendererPath(pathname);
-  const filePath = path.resolve(rendererRoot, relativePath);
-
-  if (filePath !== rendererRoot && !filePath.startsWith(rendererRoot + path.sep)) {
-    return new Response('Forbidden', { status: 403 });
-  }
-
-  const file = Bun.file(filePath);
-  if (!(await file.exists())) {
-    return new Response('Not Found', { status: 404 });
-  }
-
-  return new Response(file);
-}
-
 function startRendererDevServer() {
   if (!isDevelopment() || rendererServer) {
     return;
@@ -84,7 +49,39 @@ function startRendererDevServer() {
     port: 50001,
     fetch: async (request) => {
       const url = new URL(request.url);
-      return serveRendererRequest(url.pathname);
+      const rendererRoot = path.resolve(__dirname, '..', '..', 'renderer');
+
+      let decodedPath = url.pathname;
+      try {
+        decodedPath = decodeURIComponent(url.pathname);
+      } catch {}
+
+      const normalizedPath = decodedPath.replace(/\\/g, '/').replace(/^\/+/, '');
+      const relativePath =
+        normalizedPath === '' ||
+        normalizedPath === 'renderer' ||
+        normalizedPath === 'renderer/'
+          ? 'index.html'
+          : normalizedPath === 'renderer/index.html'
+            ? 'index.html'
+            : normalizedPath === 'manifest.json' || normalizedPath === 'renderer/manifest.json'
+              ? 'manifest.json'
+              : normalizedPath.startsWith('renderer/')
+                ? normalizedPath.slice('renderer/'.length)
+                : normalizedPath;
+
+      const filePath = path.resolve(rendererRoot, relativePath);
+      const rootPrefix = rendererRoot.endsWith(path.sep) ? rendererRoot : rendererRoot + path.sep;
+      if (filePath !== rendererRoot && !filePath.startsWith(rootPrefix)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      const file = Bun.file(filePath);
+      if (!(await file.exists())) {
+        return new Response('Not Found', { status: 404 });
+      }
+
+      return new Response(file);
     },
   });
 

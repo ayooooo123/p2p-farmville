@@ -50,7 +50,7 @@ const Protomux = require('protomux')
 const cenc = require('compact-encoding')
 const b4a = require('b4a')
 const crypto = require("hypercore-crypto")
-const { WebSocket, Server: WebSocketServer } = require('bare-ws')
+const WebSocket = require('bare-ws')
 
 const WORLD_TOPIC = 'p2p-farmville-world-v1'
 const ANNOUNCE_INTERVAL = 30000 // re-announce every 30s
@@ -400,7 +400,7 @@ function handleConnection (stream) {
     })
     giftChannel.open()
 
-    // ── Co-op channel ────────────────────────────────────────────────���────
+    // ── Co-op channel ─────────────────────────────────────────────────────
     const coopChannel = mux.createChannel({
       protocol: 'coop',
       id: b4a.from('p2p-farmville-coop'),
