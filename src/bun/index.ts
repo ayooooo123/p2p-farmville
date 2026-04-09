@@ -84,7 +84,7 @@ function startRendererDevServer() {
     port: 50001,
     fetch: async (request) => {
       const url = new URL(request.url);
-      return await serveRendererRequest(url.pathname);
+      return serveRendererRequest(url.pathname);
     },
   });
 
