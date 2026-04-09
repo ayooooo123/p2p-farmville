@@ -81,7 +81,7 @@ export const BUILDING_DEFINITIONS = {
 }
 
 /**
- * Create a flat top-down building mesh (colored rectangle from above)
+ * Create a 3D building mesh: box walls + pyramid hip roof + door
  * @param {string} buildingType - key in BUILDING_DEFINITIONS
  * @returns {THREE.Group}
  */
@@ -95,35 +95,58 @@ export function createBuildingMesh (buildingType) {
 
   const w = def.width
   const d = def.depth
+  const wallH = def.height * 0.7   // wall height derived from building definition
+  const roofH = def.height * 0.3   // roof peak height derived from building definition
 
-  // Main building rectangle (roof color from above)
-  const roofGeo = new THREE.PlaneGeometry(w, d)
-  const roofMat = new THREE.MeshStandardMaterial({ color: def.roofColor })
+  // --- Walls: BoxGeometry ---
+  const wallGeo = new THREE.BoxGeometry(w, wallH, d)
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: def.wallColor,
+    roughness: 0.85,
+    metalness: 0.05
+  })
+  const walls = new THREE.Mesh(wallGeo, wallMat)
+  walls.position.y = wallH / 2
+  walls.castShadow = true
+  walls.receiveShadow = true
+  group.add(walls)
+
+  // --- Roof: hip/pyramid — CylinderGeometry(0, r, h, 4) gives a square pyramid.
+  // After rotation.y = PI/4 the base corners align with the XZ axes, then
+  // scale.x = w/√2 and scale.z = d/√2 stretches the footprint to exactly w×d.
+  // openEnded=true removes the redundant bottom cap (sits flush on box top).
+  const roofGeo = new THREE.CylinderGeometry(0, 1, roofH, 4, 1, true)
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: def.roofColor,
+    roughness: 0.8,
+    metalness: 0.0
+  })
   const roof = new THREE.Mesh(roofGeo, roofMat)
-  roof.rotation.x = -Math.PI / 2
-  roof.position.y = 0.02
+  roof.position.y = wallH + roofH / 2
+  roof.rotation.y = Math.PI / 4
+  roof.scale.set(w / Math.SQRT2, 1, d / Math.SQRT2)
+  roof.castShadow = true
+  roof.receiveShadow = true
   group.add(roof)
 
-  // Wall outline (slightly larger, wall color, underneath)
-  const outlineGeo = new THREE.PlaneGeometry(w + 0.3, d + 0.3)
-  const outlineMat = new THREE.MeshStandardMaterial({ color: def.wallColor })
-  const outline = new THREE.Mesh(outlineGeo, outlineMat)
-  outline.rotation.x = -Math.PI / 2
-  outline.position.y = 0.015
-  group.add(outline)
-
-  // Door indicator (small rectangle on one side)
-  const doorGeo = new THREE.PlaneGeometry(w * 0.25, 0.4)
-  const doorMat = new THREE.MeshStandardMaterial({ color: def.doorColor })
+  // --- Door: small box on the front face (+Z side) ---
+  const doorW = Math.min(w * 0.25, 1.0)
+  const doorH = Math.min(wallH * 0.55, 1.0)
+  const doorGeo = new THREE.BoxGeometry(doorW, doorH, 0.12)
+  const doorMat = new THREE.MeshStandardMaterial({ color: def.doorColor, roughness: 0.7 })
   const door = new THREE.Mesh(doorGeo, doorMat)
-  door.rotation.x = -Math.PI / 2
-  door.position.set(0, 0.025, -d / 2 - 0.15)
+  door.position.set(0, doorH / 2, d / 2 + 0.06)
+  door.castShadow = true
   group.add(door)
 
-  // Greenhouse special: translucent
+  // Greenhouse special: glass-like treatment on both walls and roof
   if (buildingType === 'greenhouse') {
+    wallMat.transparent = true
+    wallMat.opacity = 0.45
+    wallMat.depthWrite = false
     roofMat.transparent = true
-    roofMat.opacity = 0.6
+    roofMat.opacity = 0.55
+    roofMat.depthWrite = false
   }
 
   return group
