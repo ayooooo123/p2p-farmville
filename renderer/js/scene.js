@@ -14,7 +14,7 @@ let viewportWidth = 1
 let viewportHeight = 1
 
 // Orthographic frustum size (vertical extent in world units)
-let frustumSize = 60
+let frustumSize = 72
 
 function initScene (canvasEl) {
   // Scene
@@ -41,7 +41,7 @@ function initScene (canvasEl) {
     0.1,
     200
   )
-  camera.position.set(0, 50, 0)
+  camera.position.set(0, 50, 4)
   camera.zoom = 1
   camera.lookAt(0, 0, 0)
   camera.up.set(0, 0, -1) // ensure consistent orientation for top-down
@@ -218,9 +218,9 @@ function setFrustumSize (size) {
 
 // ─��� Camera controls (pan + zoom) ─────────────────────────────────────────────
 const camState = {
-  targetFrustum: 60,
+  targetFrustum: 72,
   targetX: 0,
-  targetZ: 0,
+  targetZ: 4,
   panning: false,
   panStartX: 0,
   panStartZ: 0,
@@ -230,8 +230,8 @@ const camState = {
 }
 
 const CAM_MIN_FRUSTUM = 10
-const CAM_MAX_FRUSTUM = 100
-const CAM_CLAMP = 80
+const CAM_MAX_FRUSTUM = 120
+const CAM_CLAMP = 100
 const CAM_LERP = 0.15
 
 function initCameraControls (canvasEl) {
@@ -294,12 +294,14 @@ function updateCamera () {
   const tz = camState.targetZ
   camera.position.x += (tx - camera.position.x) * CAM_LERP
   camera.position.z += (tz - camera.position.z) * CAM_LERP
+  camera.position.z = Math.max(-CAM_CLAMP, Math.min(CAM_CLAMP, camera.position.z))
 }
 
+
 function resetCamera () {
-  camState.targetFrustum = 60
+  camState.targetFrustum = 72
   camState.targetX = 0
-  camState.targetZ = 0
+  camState.targetZ = 4
 }
 
 function getCameraOffset () {
