@@ -9,6 +9,66 @@ function resolveRendererAssetUrl(relativePath) {
   return new URL(normalizedPath, BUNDLE_BASE_URL).href;
 }
 
+function dispatchToTarget(target, eventName, detail) {
+  if (!target || typeof target.dispatchEvent !== 'function') return;
+  try {
+    target.dispatchEvent(new CustomEvent(eventName, { detail }));
+  } catch {}
+}
+
+function dispatchWorkerEvent(message) {
+  const type = message?.type;
+  const action = message?.action;
+  const targets = [globalThis];
+
+  if (typeof window !== 'undefined') targets.push(window);
+  if (typeof document !== 'undefined') targets.push(document);
+
+  const eventNames = new Set();
+  if (type) {
+    eventNames.add('p2p-farmville:ipc-message');
+    eventNames.add(`p2p-farmville:${type}`);
+  }
+
+  if (type === 'farm-update') {
+    eventNames.add('p2p-farmville:farm-update');
+  }
+
+  if (type === 'worker:ready') {
+    eventNames.add('p2p-farmville:worker-ready');
+  }
+
+  if (type === 'visitor-farm-action') {
+    eventNames.add('p2p-farmville:action-request');
+    eventNames.add('p2p-farmville:farm-action-request');
+    if (action) {
+      eventNames.add(`p2p-farmville:action-request:${action}`);
+      eventNames.add(`p2p-farmville:farm-action-request:${action}`);
+    }
+  }
+
+  if (type === 'farm-action-result') {
+    eventNames.add('p2p-farmville:action-confirmation');
+    eventNames.add('p2p-farmville:farm-action-result');
+    eventNames.add('p2p-farmville:farm-action-confirmation');
+    if (action) {
+      eventNames.add(`p2p-farmville:action-confirmation:${action}`);
+      eventNames.add(`p2p-farmville:farm-action-result:${action}`);
+      eventNames.add(`p2p-farmville:farm-action-confirmation:${action}`);
+    }
+  }
+
+  for (const eventName of eventNames) {
+    for (const target of targets) {
+      dispatchToTarget(target, eventName, message);
+    }
+  }
+
+  try {
+    globalThis.dispatchEvent?.(new CustomEvent('p2p-farmville:ipc-message', { detail: message }));
+  } catch {}
+}
+
 function createWebSocketTransport(socket) {
   const listeners = new Map();
   const pendingWrites = [];
@@ -112,41 +172,6 @@ function createWebSocketTransport(socket) {
   });
 
   return transport;
-}
-
-function dispatchWorkerEvent(message) {
-  try {
-    globalThis.dispatchEvent?.(new CustomEvent('p2p-farmville:ipc-message', { detail: message }));
-  } catch {}
-
-  const type = message?.type;
-  if (!type) return;
-
-  const aliases = [
-    `p2p-farmville:${type}`,
-  ];
-
-  if (type === 'farm-action-result') {
-    aliases.push('p2p-farmville:action-confirmation');
-  }
-
-  if (type === 'visitor-farm-action') {
-    aliases.push('p2p-farmville:action-request');
-  }
-
-  if (type === 'farm-update') {
-    aliases.push('p2p-farmville:farm-update');
-  }
-
-  if (type === 'worker:ready') {
-    aliases.push('p2p-farmville:worker-ready');
-  }
-
-  for (const eventName of aliases) {
-    try {
-      globalThis.dispatchEvent?.(new CustomEvent(eventName, { detail: message }));
-    } catch {}
-  }
 }
 
 export function createIpcBridge(url = DEFAULT_IPC_URL) {
