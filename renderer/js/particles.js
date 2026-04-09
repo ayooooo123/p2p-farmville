@@ -6,18 +6,23 @@ import * as THREE from './three.module.min.js'
 
 const MAX_INSTANCES = 300
 
+// P8 — harvest burst: radial outward in XZ plane so it reads from top-down
+// orthographic camera. 500 ms lifetime with fast fade, high initial speed.
+// colorPalette: array of hex colors — each particle picks one at random.
 const EFFECT_CONFIGS = {
   harvest: {
-    count: 20,
-    color: 0xffd700,
-    colorVariance: 0x332200,
-    size: 0.15,
-    speed: 3,
-    spread: 1.5,
-    lifetime: 1200,
-    gravity: -2,
-    direction: { x: 0, y: 1, z: 0 },
-    fadeOut: true
+    count: 28,
+    color: 0xffd700,          // fallback base color
+    colorVariance: 0,
+    colorPalette: [0xffd700, 0xff8c00, 0xff4500, 0x88dd22, 0xffee44, 0xffa500],
+    size: 0.18,
+    speed: 5.5,
+    spread: 2.2,
+    lifetime: 500,            // P8 spec: fade over 0.5 s
+    gravity: 0,               // no gravity — top-down view: XZ spread is what matters
+    direction: { x: 0, y: 0, z: 0 }, // radial burst handled below
+    fadeOut: true,
+    radialBurst: true         // burst purely outward in XZ plane (top-down visible)
   },
   coin: {
     count: 8,
@@ -216,30 +221,44 @@ function createParticleEffect (type, position) {
     // Size
     slotSize[slot] = config.size * (0.7 + Math.random() * 0.6)
 
-    // Color with optional variance
-    let r = baseColor.r
-    let g = baseColor.g
-    let b = baseColor.b
-    if (config.colorVariance) {
-      const variance = new THREE.Color(config.colorVariance)
-      const t = Math.random()
-      r = Math.min(1, r + variance.r * t)
-      g = Math.min(1, g + variance.g * t)
-      b = Math.min(1, b + variance.b * t)
+    // Color: pick from palette if present, otherwise use base + variance
+    let r, g, b
+    if (config.colorPalette && config.colorPalette.length > 0) {
+      const pick = new THREE.Color(config.colorPalette[Math.floor(Math.random() * config.colorPalette.length)])
+      r = pick.r; g = pick.g; b = pick.b
+    } else {
+      r = baseColor.r; g = baseColor.g; b = baseColor.b
+      if (config.colorVariance) {
+        const variance = new THREE.Color(config.colorVariance)
+        const t = Math.random()
+        r = Math.min(1, r + variance.r * t)
+        g = Math.min(1, g + variance.g * t)
+        b = Math.min(1, b + variance.b * t)
+      }
     }
     slotR[slot] = r
     slotG[slot] = g
     slotB[slot] = b
 
-    // Velocity — hemispherical burst in direction
-    const angle    = Math.random() * Math.PI * 2
-    const upAngle  = Math.random() * Math.PI * 0.5
-    const speed    = config.speed * (0.5 + Math.random() * 0.5)
-    slotVX[slot] = Math.cos(angle) * Math.sin(upAngle) * speed * config.spread / 2 +
-                   config.direction.x * speed
-    slotVY[slot] = Math.cos(upAngle) * speed * 0.7 + config.direction.y * speed
-    slotVZ[slot] = Math.sin(angle) * Math.sin(upAngle) * speed * config.spread / 2 +
-                   config.direction.z * speed
+    // Velocity — radial XZ burst (top-down visible) or hemispherical
+    const angle = Math.random() * Math.PI * 2
+    const speed = config.speed * (0.5 + Math.random() * 0.5)
+
+    if (config.radialBurst) {
+      // P8: burst purely outward in XZ plane — clearly visible from top-down camera.
+      // Small Y lift so particles rise slightly above ground plane.
+      slotVX[slot] = Math.cos(angle) * speed
+      slotVY[slot] = 0.8 + Math.random() * 0.6 // slight upward pop
+      slotVZ[slot] = Math.sin(angle) * speed
+    } else {
+      // Default: hemispherical burst in configured direction
+      const upAngle = Math.random() * Math.PI * 0.5
+      slotVX[slot] = Math.cos(angle) * Math.sin(upAngle) * speed * config.spread / 2 +
+                     config.direction.x * speed
+      slotVY[slot] = Math.cos(upAngle) * speed * 0.7 + config.direction.y * speed
+      slotVZ[slot] = Math.sin(angle) * Math.sin(upAngle) * speed * config.spread / 2 +
+                     config.direction.z * speed
+    }
 
     slotGravity[slot] = config.gravity
     slotStart[slot]   = now
