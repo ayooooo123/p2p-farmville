@@ -1,6 +1,3 @@
-import Protomux from 'protomux';
-import cenc from 'compact-encoding';
-
 const DEFAULT_IPC_URL = 'ws://localhost:50002';
 const BUNDLE_BASE_URL = new URL('../', import.meta.url);
 
@@ -25,6 +22,7 @@ function dispatchWorkerEvent(message) {
   if (typeof document !== 'undefined') targets.push(document);
 
   const eventNames = new Set();
+
   if (type) {
     eventNames.add('p2p-farmville:ipc-message');
     eventNames.add(`p2p-farmville:${type}`);
@@ -63,126 +61,30 @@ function dispatchWorkerEvent(message) {
       dispatchToTarget(target, eventName, message);
     }
   }
-
-  try {
-    globalThis.dispatchEvent?.(new CustomEvent('p2p-farmville:ipc-message', { detail: message }));
-  } catch {}
 }
 
-function createWebSocketTransport(socket) {
-  const listeners = new Map();
-  const pendingWrites = [];
-  let destroyed = false;
-  let opened = false;
+function decodeMessageData(data) {
+  if (typeof data === 'string') {
+    return data;
+  }
 
-  const emit = (event, ...args) => {
-    const set = listeners.get(event);
-    if (!set) return;
-    for (const listener of set) {
-      try {
-        listener(...args);
-      } catch {}
-    }
-  };
+  if (data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(data));
+  }
 
-  const transport = {
-    userData: null,
-    destroyed: false,
-    alloc(size) {
-      return new Uint8Array(size);
-    },
-    on(event, listener) {
-      const set = listeners.get(event) ?? new Set();
-      set.add(listener);
-      listeners.set(event, set);
-      return transport;
-    },
-    write(buffer) {
-      if (destroyed) return false;
-      if (opened && socket.readyState === WebSocket.OPEN) {
-        socket.send(buffer);
-      } else {
-        pendingWrites.push(buffer);
-      }
-      return true;
-    },
-    pause() {},
-    resume() {},
-    end() {
-      if (destroyed) return;
-      destroyed = true;
-      transport.destroyed = true;
-      try {
-        socket.close();
-      } catch {}
-      emit('end');
-      emit('close');
-    },
-    destroy(err) {
-      if (destroyed) return;
-      destroyed = true;
-      transport.destroyed = true;
-      if (err) emit('error', err);
-      try {
-        socket.close();
-      } catch {}
-      emit('close');
-    },
-  };
+  if (ArrayBuffer.isView(data)) {
+    return new TextDecoder().decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+  }
 
-  socket.addEventListener('open', () => {
-    opened = true;
-    while (pendingWrites.length > 0) {
-      const chunk = pendingWrites.shift();
-      if (chunk) socket.send(chunk);
-    }
-    emit('drain');
-    emit('open');
-  });
-
-  socket.addEventListener('message', (event) => {
-    const data = event.data;
-    if (typeof data === 'string') {
-      emit('data', new TextEncoder().encode(data));
-      return;
-    }
-
-    if (data instanceof ArrayBuffer) {
-      emit('data', new Uint8Array(data));
-      return;
-    }
-
-    if (ArrayBuffer.isView(data)) {
-      emit('data', new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-      return;
-    }
-
-    emit('data', new Uint8Array());
-  });
-
-  socket.addEventListener('error', (event) => {
-    emit('error', event.error ?? new Error('WebSocket error'));
-  });
-
-  socket.addEventListener('close', () => {
-    destroyed = true;
-    transport.destroyed = true;
-    emit('end');
-    emit('close');
-  });
-
-  return transport;
+  return '';
 }
 
-export function createIpcBridge(url = DEFAULT_IPC_URL) {
-  const socket = new WebSocket(url);
-  socket.binaryType = 'arraybuffer';
-
-  const transport = createWebSocketTransport(socket);
-  const mux = new Protomux(transport);
+function createWebSocketBridge(url = DEFAULT_IPC_URL) {
   const listeners = new Set();
   const pendingOutbound = [];
-  let messagePort = null;
+  let socket = null;
+  let ready = false;
+  let closed = false;
 
   const notify = (message) => {
     for (const listener of listeners) {
@@ -194,45 +96,82 @@ export function createIpcBridge(url = DEFAULT_IPC_URL) {
     dispatchWorkerEvent(message);
   };
 
-  const channel = mux.createChannel({
-    protocol: 'farmville-ipc',
-    onopen() {
-      while (pendingOutbound.length > 0) {
-        messagePort.send(pendingOutbound.shift());
+  const sendSerialized = (serialized) => {
+    if (!socket || !ready || socket.readyState !== WebSocket.OPEN) {
+      pendingOutbound.push(serialized);
+      return;
+    }
+
+    try {
+      socket.send(serialized);
+    } catch (error) {
+      console.error('[ipc-bridge] send failed', error);
+    }
+  };
+
+  const connect = () => {
+    if (closed) return;
+
+    socket = new WebSocket(url);
+    socket.binaryType = 'arraybuffer';
+
+    socket.addEventListener('open', () => {
+      ready = true;
+      while (pendingOutbound.length > 0 && socket && socket.readyState === WebSocket.OPEN) {
+        const chunk = pendingOutbound.shift();
+        if (typeof chunk === 'string') {
+          socket.send(chunk);
+        }
       }
-    },
-  });
+      dispatchWorkerEvent({ type: 'worker:ready', url });
+    });
 
-  messagePort = channel.addMessage({
-    encoding: cenc.json,
-    onmessage(message) {
+    socket.addEventListener('message', (event) => {
+      const raw = decodeMessageData(event.data);
+      if (!raw) return;
+
+      let message = raw;
+      try {
+        message = JSON.parse(raw);
+      } catch {}
+
       notify(message);
-    },
-  });
+    });
 
-  channel.open();
+    socket.addEventListener('error', (event) => {
+      console.error('[ipc-bridge] websocket error', event?.error ?? event);
+      dispatchWorkerEvent({ type: 'ipc:error', error: String(event?.error ?? 'WebSocket error') });
+    });
+
+    socket.addEventListener('close', () => {
+      ready = false;
+      if (!closed) {
+        dispatchWorkerEvent({ type: 'ipc:closed' });
+      }
+    });
+  };
+
+  connect();
 
   const bridge = {
     url,
     send(payload) {
-      if (messagePort) {
-        messagePort.send(payload);
-        return;
-      }
-
-      pendingOutbound.push(payload);
+      const serialized = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      sendSerialized(serialized);
     },
     onMessage(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     close() {
+      closed = true;
+      ready = false;
       try {
-        transport.destroy();
+        socket?.close();
       } catch {}
     },
     get ready() {
-      return Boolean(messagePort);
+      return ready;
     },
   };
 
@@ -248,7 +187,7 @@ export function createIpcBridge(url = DEFAULT_IPC_URL) {
   return bridge;
 }
 
-const defaultBridge = typeof WebSocket !== 'undefined' ? createIpcBridge() : {
+const defaultBridge = typeof WebSocket !== 'undefined' ? createWebSocketBridge() : {
   url: DEFAULT_IPC_URL,
   send() {},
   onMessage() { return () => {}; },
