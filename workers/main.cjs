@@ -228,13 +228,13 @@ function bindIpcSocket (socket) {
 function startIpcServer () {
   if (ipcServer) return
 
-  ipcServer = new WebSocketServer({ port: 50002 }, (socket) => {
-    console.log('[worker] websocket IPC client connected on ws://localhost:50002')
+  ipcServer = new WebSocketServer({ port: 50006 }, (socket) => {
+    console.log('[worker] websocket IPC client connected on ws://localhost:50006')
     bindIpcSocket(socket)
   })
 
   ipcServer.on('listening', () => {
-    console.log('[worker] websocket IPC server listening on ws://localhost:50002')
+    console.log('[worker] websocket IPC server listening on ws://localhost:50006')
   })
 }
 
@@ -391,7 +391,7 @@ function handleConnection (stream) {
     })
     chatChannel.open()
 
-    // ── Trade channel ────────���────────────────────────────────────────────
+    // ── Trade channel ─────────────────────────────────────────────────────
     const tradeChannel = mux.createChannel({
       protocol: 'trade',
       id: b4a.from('p2p-farmville-trade'),
@@ -651,7 +651,7 @@ function handleTradeMessage (remoteKey, buf) {
   }
 }
 
-// ── Gift message handler ────────────────────────────────────────────────────
+// ── Gift message handler ─────────────────────────────────────────────────��──
 function handleGiftMessage (remoteKey, buf) {
   try {
     const msg = JSON.parse(b4a.toString(buf))
@@ -1262,7 +1262,7 @@ function broadcastNeighborList () {
   send({ type: 'neighbors', neighbors: neighborList })
 }
 
-// ── Get our position ─���──────────────────────────────────────────────────────
+// ── Get our position ────────────────────────────────────────────────────────
 function getMyPosition () {
   return { x: 0, z: 0 }
 }
