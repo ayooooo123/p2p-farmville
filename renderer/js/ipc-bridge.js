@@ -6,6 +6,20 @@ function resolveRendererAssetUrl(relativePath) {
   return new URL(normalizedPath, BUNDLE_BASE_URL).href;
 }
 
+function ensureSafeGameState() {
+  try {
+    const current = globalThis.gameState;
+    if (!current || typeof current !== 'object') {
+      globalThis.gameState = { placedAnimals: [] };
+      return;
+    }
+
+    if (!Array.isArray(current.placedAnimals)) {
+      current.placedAnimals = [];
+    }
+  } catch {}
+}
+
 function dispatchToTarget(target, eventName, detail) {
   if (!target || typeof target.dispatchEvent !== 'function') return;
   try {
@@ -34,6 +48,11 @@ function dispatchWorkerEvent(message) {
 
   if (type === 'worker:ready') {
     eventNames.add('p2p-farmville:worker-ready');
+  }
+
+  if (type === 'bridge:ready') {
+    eventNames.add('p2p-farmville:bridge-ready');
+    eventNames.add('p2p-farmville:ready');
   }
 
   if (type === 'visitor-farm-action') {
@@ -86,6 +105,8 @@ function createWebSocketBridge(url = DEFAULT_IPC_URL) {
   let ready = false;
   let closed = false;
 
+  ensureSafeGameState();
+
   const notify = (message) => {
     for (const listener of listeners) {
       try {
@@ -123,7 +144,8 @@ function createWebSocketBridge(url = DEFAULT_IPC_URL) {
           socket.send(chunk);
         }
       }
-      dispatchWorkerEvent({ type: 'worker:ready', url });
+
+      dispatchWorkerEvent({ type: 'bridge:ready', url });
     });
 
     socket.addEventListener('message', (event) => {
@@ -177,11 +199,16 @@ function createWebSocketBridge(url = DEFAULT_IPC_URL) {
 
   try {
     globalThis.__P2P_FARMVILLE_IPC__ = bridge;
+    globalThis.P2PFarmVilleIPC = bridge;
+    globalThis.ipc = bridge;
     globalThis.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
     if (typeof window !== 'undefined') {
       window.__P2P_FARMVILLE_IPC__ = bridge;
+      window.P2PFarmVilleIPC = bridge;
+      window.ipc = bridge;
       window.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
     }
+    dispatchWorkerEvent({ type: 'bridge:ready', url });
   } catch {}
 
   return bridge;
