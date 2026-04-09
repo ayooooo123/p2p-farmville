@@ -1,10 +1,11 @@
 import { BrowserWindow, BrowserView } from 'electrobun/bun';
-import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const appDir = import.meta.dir ?? path.dirname(new URL(import.meta.url).pathname);
+const rendererRoot = path.join(appDir, 'app', 'renderer');
+const workerEntry = path.join(appDir, 'workers', 'main.cjs');
 
 type BareProcess = ReturnType<typeof spawn>;
 
@@ -26,32 +27,13 @@ function isDevelopment() {
   return process.env.NODE_ENV !== 'production' || process.env.ELECTROBUN_DEV === '1' || process.env.ELECTROBUN_MODE === 'dev';
 }
 
-function getRendererRoot() {
-  const candidates = [
-    path.resolve(appDir, 'renderer'),
-    path.resolve(appDir, '..', 'renderer'),
-    path.resolve(appDir, '..', 'Resources', 'app', 'renderer'),
-    path.resolve(appDir, '..', 'app', 'renderer'),
-    path.resolve(appDir, '..', '..', 'renderer'),
-    path.resolve(process.cwd(), 'renderer'),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(path.join(candidate, 'index.html'))) {
-      return candidate;
-    }
-  }
-
-  return candidates[0];
-}
-
 function getRendererUrl() {
   if (isDevelopment()) {
     const baseUrl = process.env.ELECTROBUN_DEV_SERVER_URL || 'http://localhost:50001';
     return new URL('/renderer/index.html', baseUrl).href;
   }
 
-  return pathToFileURL(path.join(getRendererRoot(), 'index.html')).href;
+  return pathToFileURL(path.join(rendererRoot, 'index.html')).href;
 }
 
 function startRendererDevServer() {
@@ -64,7 +46,6 @@ function startRendererDevServer() {
     port: 50001,
     fetch: async (request) => {
       const url = new URL(request.url);
-      const rendererRoot = getRendererRoot();
 
       let decodedPath = url.pathname;
       try {
@@ -75,9 +56,10 @@ function startRendererDevServer() {
       const relativePath =
         normalizedPath === '' ||
         normalizedPath === 'renderer' ||
-        normalizedPath === 'renderer/'
+        normalizedPath === 'renderer/' ||
+        normalizedPath === '/'
           ? 'index.html'
-          : normalizedPath === 'renderer/index.html'
+          : normalizedPath === 'renderer/index.html' || normalizedPath === '/renderer/index.html'
             ? 'index.html'
             : normalizedPath === 'manifest.json' || normalizedPath === 'renderer/manifest.json'
               ? 'manifest.json'
@@ -85,18 +67,24 @@ function startRendererDevServer() {
                 ? normalizedPath.slice('renderer/'.length)
                 : normalizedPath;
 
-      const filePath = path.resolve(rendererRoot, relativePath);
-      const rootPrefix = rendererRoot.endsWith(path.sep) ? rendererRoot : rendererRoot + path.sep;
-      if (filePath !== rendererRoot && !filePath.startsWith(rootPrefix)) {
-        return new Response('Forbidden', { status: 403 });
-      }
-
+      const filePath = path.join(rendererRoot, relativePath);
       const file = Bun.file(filePath);
       if (!(await file.exists())) {
         return new Response('Not Found', { status: 404 });
       }
 
-      return new Response(file);
+      const body = await file.text();
+      const contentType =
+        relativePath.endsWith('.html') ? 'text/html; charset=utf-8' :
+        relativePath.endsWith('.js') ? 'application/javascript; charset=utf-8' :
+        relativePath.endsWith('.css') ? 'text/css; charset=utf-8' :
+        relativePath.endsWith('.json') ? 'application/json; charset=utf-8' :
+        relativePath.endsWith('.svg') ? 'image/svg+xml; charset=utf-8' :
+        'application/octet-stream';
+
+      return new Response(body, {
+        headers: { 'content-type': contentType },
+      });
     },
   });
 
@@ -112,27 +100,7 @@ function createWindow(rendererUrl: string) {
   });
 }
 
-function getWorkerEntry() {
-  const candidates = [
-    path.resolve(appDir, 'workers', 'main.cjs'),
-    path.resolve(appDir, '..', 'workers', 'main.cjs'),
-    path.resolve(appDir, '..', 'Resources', 'app', 'workers', 'main.cjs'),
-    path.resolve(appDir, '..', 'app', 'workers', 'main.cjs'),
-    path.resolve(appDir, '..', '..', 'workers', 'main.cjs'),
-    path.resolve(process.cwd(), 'workers', 'main.cjs'),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return candidates[0];
-}
-
 function createWorker() {
-  const workerEntry = getWorkerEntry();
   const worker = spawn('bare', [workerEntry], {
     stdio: ['ignore', 'inherit', 'inherit'],
     windowsHide: true,
