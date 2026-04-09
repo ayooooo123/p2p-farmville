@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electrobun/bun';
+import { BrowserWindow, BrowserView } from 'electrobun/bun';
 import Protomux from 'protomux';
 import cenc from 'compact-encoding';
 import path from 'node:path';
@@ -33,7 +33,7 @@ let workerTransport: WorkerTransport | null = null;
 let workerMessage: WorkerMessagePort | null = null;
 let rendererBridgeBound = false;
 
-const appRPC = BrowserWindow.defineRPC({
+const appRPC = BrowserView.defineRPC({
   maxRequestTime: 30000,
   handlers: {
     requests: {
