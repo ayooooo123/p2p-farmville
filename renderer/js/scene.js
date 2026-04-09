@@ -137,20 +137,36 @@ function _addBorderTrees (scene) {
   ]
 
   for (const [x, z] of treePositions) {
-    // Flat circle representing tree canopy from above
+    // 3D border tree: cylinder trunk + sphere canopy
     const canopyR = 1.2 + Math.random() * 0.8
-    const canopyGeo = new THREE.CircleGeometry(canopyR, 16)
-    const canopyMat = new THREE.MeshStandardMaterial({
-      color: 0x2d7a1e + Math.floor(Math.random() * 0x101010)
-    })
-    const canopy = new THREE.Mesh(canopyGeo, canopyMat)
-    canopy.rotation.x = -Math.PI / 2
-    canopy.position.set(
-      x + (Math.random() - 0.5) * 2,
-      0.02,
-      z + (Math.random() - 0.5) * 2
-    )
-    scene.add(canopy)
+    const trunkH = 1.0 + Math.random() * 0.4
+    const trunkR = 0.16
+
+    const treeGroup = new THREE.Group()
+    const px = x + (Math.random() - 0.5) * 2
+    const pz = z + (Math.random() - 0.5) * 2
+    treeGroup.position.set(px, 0, pz)
+
+    // Trunk
+    const trunkGeo = new THREE.CylinderGeometry(trunkR, trunkR * 1.2, trunkH, 7)
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 0.9, metalness: 0 })
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat)
+    trunk.position.y = trunkH / 2
+    trunk.castShadow = true
+    trunk.receiveShadow = true
+    treeGroup.add(trunk)
+
+    // Canopy sphere
+    const canopyColor = 0x2d7a1e + Math.floor(Math.random() * 0x101010)
+    const sphereGeo = new THREE.SphereGeometry(canopyR, 10, 8)
+    const sphereMat = new THREE.MeshStandardMaterial({ color: canopyColor, roughness: 0.85, metalness: 0 })
+    const canopy = new THREE.Mesh(sphereGeo, sphereMat)
+    canopy.position.y = trunkH + canopyR * 0.65
+    canopy.castShadow = true
+    canopy.receiveShadow = true
+    treeGroup.add(canopy)
+
+    scene.add(treeGroup)
   }
 }
 

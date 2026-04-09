@@ -65,7 +65,8 @@ export const TREE_DEFINITIONS = {
 }
 
 /**
- * Create a flat top-down tree mesh (circle representing canopy from above)
+ * Create a 3D tree mesh: cylinder trunk + sphere/cone canopy.
+ * Viewed top-down the canopy dominates; 3D geometry casts proper shadows.
  * @param {string} treeType - key in TREE_DEFINITIONS
  * @param {boolean} mature - whether to show fruits
  * @param {number} growthScale - 0..1 for growth animation
@@ -80,36 +81,79 @@ export function createTreeMesh (treeType, mature, growthScale) {
   group.userData.objectType = 'tree'
   group.userData.treeType = treeType
 
-  // Canopy circle (flat from above)
   const canopyR = def.canopySize * scale
-  const canopyGeo = new THREE.CircleGeometry(canopyR, 20)
-  const canopyMat = new THREE.MeshStandardMaterial({ color: def.canopyColor })
-  const canopy = new THREE.Mesh(canopyGeo, canopyMat)
-  canopy.rotation.x = -Math.PI / 2
-  canopy.position.y = 0.02
-  group.add(canopy)
+  const trunkH = 1.2 * scale
+  const trunkR = 0.18 * scale
 
-  // Small trunk circle in center (visible from above)
-  const trunkR = 0.2 * scale
-  const trunkGeo = new THREE.CircleGeometry(trunkR, 8)
-  const trunkMat = new THREE.MeshStandardMaterial({ color: def.trunkColor })
+  // Trunk — thin cylinder standing upright
+  const trunkGeo = new THREE.CylinderGeometry(trunkR, trunkR * 1.2, trunkH, 7)
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: def.trunkColor,
+    roughness: 0.9,
+    metalness: 0
+  })
   const trunk = new THREE.Mesh(trunkGeo, trunkMat)
-  trunk.rotation.x = -Math.PI / 2
-  trunk.position.y = 0.025
+  trunk.position.y = trunkH / 2
+  trunk.castShadow = true
+  trunk.receiveShadow = true
   group.add(trunk)
 
-  // Fruit dots (only on mature trees at full growth)
-  if (mature && scale >= 0.9) {
-    const fruitCount = 4 + Math.floor(Math.random() * 3)
-    for (let i = 0; i < fruitCount; i++) {
-      const angle = (i / fruitCount) * Math.PI * 2 + Math.random() * 0.5
-      const r = canopyR * (0.4 + Math.random() * 0.35)
-      const fruitGeo = new THREE.CircleGeometry(0.12, 6)
-      const fruitMat = new THREE.MeshStandardMaterial({ color: def.fruitColor })
-      const fruit = new THREE.Mesh(fruitGeo, fruitMat)
-      fruit.rotation.x = -Math.PI / 2
-      fruit.position.set(Math.cos(angle) * r, 0.03, Math.sin(angle) * r)
-      group.add(fruit)
+  if (def.isPine) {
+    // Pine: layered cones (stacked, decreasing radius upward)
+    const layers = 3
+    for (let i = 0; i < layers; i++) {
+      const t = i / (layers - 1)
+      const coneR = canopyR * (1 - t * 0.45)
+      const coneH = canopyR * 0.9
+      const coneGeo = new THREE.ConeGeometry(coneR, coneH, 10)
+      const coneMat = new THREE.MeshStandardMaterial({
+        color: def.canopyColor,
+        roughness: 0.85,
+        metalness: 0
+      })
+      const cone = new THREE.Mesh(coneGeo, coneMat)
+      cone.position.y = trunkH + (i * coneH * 0.55)
+      cone.castShadow = true
+      cone.receiveShadow = true
+      group.add(cone)
+    }
+  } else {
+    // Broadleaf: sphere canopy sitting atop trunk
+    const sphereGeo = new THREE.SphereGeometry(canopyR, 10, 8)
+    const sphereMat = new THREE.MeshStandardMaterial({
+      color: def.canopyColor,
+      roughness: 0.85,
+      metalness: 0
+    })
+    const canopy = new THREE.Mesh(sphereGeo, sphereMat)
+    canopy.position.y = trunkH + canopyR * 0.65
+    canopy.castShadow = true
+    canopy.receiveShadow = true
+    group.add(canopy)
+
+    // Fruit dots as small spheres embedded in the canopy (only on mature trees)
+    if (mature && scale >= 0.9) {
+      const fruitCount = 4 + Math.floor(Math.random() * 3)
+      const fruitR = 0.13
+      for (let i = 0; i < fruitCount; i++) {
+        const angle = (i / fruitCount) * Math.PI * 2 + Math.random() * 0.5
+        const elevAngle = Math.random() * Math.PI * 0.4 // upper hemisphere
+        const r = canopyR * 0.85
+        const fruitGeo = new THREE.SphereGeometry(fruitR, 5, 4)
+        const fruitMat = new THREE.MeshStandardMaterial({
+          color: def.fruitColor,
+          roughness: 0.7,
+          metalness: 0
+        })
+        const fruit = new THREE.Mesh(fruitGeo, fruitMat)
+        fruit.position.set(
+          Math.cos(angle) * Math.cos(elevAngle) * r,
+          canopy.position.y + Math.sin(elevAngle) * r * 0.5,
+          Math.sin(angle) * Math.cos(elevAngle) * r
+        )
+        fruit.castShadow = false
+        group.add(fruit)
+      }
     }
   }
 
