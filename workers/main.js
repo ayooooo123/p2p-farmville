@@ -1222,6 +1222,7 @@ function startPeriodicTasks () {
 
 async function handleIPCMessage (data) {
   try {
+    console.log('[worker] IPC message received:', data?.type, data)
     switch (data.type) {
       case 'init':
       case 'farm:init':

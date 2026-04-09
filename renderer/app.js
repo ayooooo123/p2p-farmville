@@ -969,7 +969,7 @@ function handleMarketBuy ({ category, key, def }) {
   hideMarket()
 }
 
-// ── Placement mode ───────────────────────────────────────────────────────────
+// ── Placement mode ──────────────────────────────────────────────��────────────
 function enterPlacementMode (category, key, def) {
   cancelPlacement()
   deselectTool()
@@ -3115,7 +3115,11 @@ function startGame () {
 
   // Initialize P2P
   if (window.IPCBridge && window.IPCBridge.available) {
+    console.log('[app] Calling IPCBridge.initP2P for farm:', name, 'available=', !!window.IPCBridge.available)
     window.IPCBridge.initP2P(name)
+    console.log('[app] IPCBridge.initP2P dispatched')
+  } else {
+    console.warn('[app] IPCBridge unavailable during startGame')
   }
 
   // Setup visiting mode callbacks
@@ -3135,7 +3139,10 @@ function startGame () {
   console.log('[app] Game started - Farm:', name)
 }
 
-startBtn.addEventListener('click', startGame)
+startBtn.addEventListener('click', () => {
+  console.log('[app] Start Farming button clicked')
+  startGame()
+})
 farmNameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') startGame()
   farmNameInput.style.borderColor = '#4caf50'

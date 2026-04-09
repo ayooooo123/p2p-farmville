@@ -1,6 +1,8 @@
 const electrobunTransport = globalThis.window?.__electrobunBunBridge || globalThis.window?.__rpc || null;
 const rpcMessageListeners = new Set();
 
+console.log('[ipc-bridge] script loaded', { hasElectrobunTransport: !!electrobunTransport, hasElectronBridge: !!window.ElectronIPCBridge })
+
 function postToBun(packet) {
   if (typeof electrobunTransport?.postMessage === 'function') {
     electrobunTransport.postMessage(packet);
@@ -32,6 +34,7 @@ if (electrobunTransport && !window.ElectronIPCBridge) {
 
   window.ElectronIPCBridge = {
     send(msg) {
+      console.log('[ipc-bridge] ElectronIPCBridge.send', msg?.type || msg);
       postToBun(JSON.stringify({ type: 'message', id: 'to-worker', payload: msg }));
     },
     onMessage(cb) {
@@ -111,12 +114,18 @@ const IPCBridge = {
   },
 
   sendToWorker(msg) {
+    console.log('[ipc-bridge] sendToWorker', msg?.type || msg);
     if (window.ElectronIPCBridge) {
+      console.log('[ipc-bridge] sendToWorker via ElectronIPCBridge');
       window.ElectronIPCBridge.send(msg);
       return;
     }
-    if (!electrobunTransport) return;
+    if (!electrobunTransport) {
+      console.warn('[ipc-bridge] sendToWorker aborted - no transport available');
+      return;
+    }
     const data = typeof msg === 'string' ? msg : JSON.stringify(msg);
+    console.log('[ipc-bridge] sendToWorker via Electrobun transport', data);
     postToBun(JSON.stringify({ type: 'message', id: 'to-worker', payload: JSON.parse(data) }));
   },
 
@@ -126,9 +135,11 @@ const IPCBridge = {
   onWorkerExit() {},
 
   initP2P(playerName) {
+    console.log('[ipc-bridge] initP2P', playerName);
     const startPayload = { type: 'start-farming', playerName };
     this.sendToWorker(startPayload);
     this.sendToWorker({ type: 'init', playerName });
+    console.log('[ipc-bridge] initP2P dispatched');
   },
 
   sendFarmUpdate(farmState) {

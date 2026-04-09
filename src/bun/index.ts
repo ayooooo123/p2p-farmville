@@ -67,7 +67,13 @@ function bindRendererBridge() {
 
   rendererBridgeBound = true;
   rpc.addMessageListener('to-worker', (payload: unknown) => {
-    workerMessage?.send(payload);
+    console.log('[main] Received renderer message for worker:', typeof payload === 'object' && payload ? (payload as { type?: string }).type || payload : payload);
+    if (!workerMessage) {
+      console.warn('[main] workerMessage not ready for renderer payload');
+      return;
+    }
+    console.log('[main] Forwarding renderer payload to worker');
+    workerMessage.send(payload);
   });
 }
 
@@ -277,6 +283,7 @@ async function startWorker() {
   workerMessage = ipcChannel.addMessage({
     encoding: cenc.json,
     onmessage(message: unknown) {
+      console.log('[main] Worker message for renderer:', typeof message === 'object' && message ? (message as { type?: string }).type || message : message);
       forwardToRenderer(message);
     },
   });
