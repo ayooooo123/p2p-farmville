@@ -33,6 +33,18 @@ let workerTransport: WorkerTransport | null = null;
 let workerMessage: WorkerMessagePort | null = null;
 let rendererBridgeBound = false;
 
+const appRPC = BrowserWindow.defineRPC({
+  maxRequestTime: 30000,
+  handlers: {
+    requests: {
+      startWorker: async () => ({ ok: true }),
+    },
+    messages: {
+      workerWrite: () => {},
+    },
+  },
+});
+
 function getStoragePath() {
   return path.join(process.env.APPDATA || process.env.HOME || '.', 'p2p-farmville');
 }
@@ -64,6 +76,7 @@ function createWindow(rendererUrl: string) {
     title: 'P2P FarmVille',
     frame: { x: 0, y: 0, width: 1200, height: 800 },
     url: rendererUrl,
+    rpc: appRPC,
   });
 
   bindRendererBridge();
