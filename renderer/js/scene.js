@@ -55,12 +55,12 @@ function initScene (canvasEl) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
   console.log('[scene] renderer created, drawingBuffer:', renderer.domElement.width, 'x', renderer.domElement.height)
 
-  // Ambient light — safer intensity to avoid flattening or black-screen artifacts
-  ambientLight = new THREE.AmbientLight(0xffeedd, 0.8)
+  // Ambient light — moderate intensity for stable visibility
+  ambientLight = new THREE.AmbientLight(0xffeedd, 1.0)
   scene.add(ambientLight)
 
-  // Directional sun light — safer intensity for stable visibility
-  sunLight = new THREE.DirectionalLight(0xffffff, 1.0)
+  // Directional sun light — moderate intensity for stable visibility
+  sunLight = new THREE.DirectionalLight(0xffffff, 1.2)
   sunLight.position.set(30, 50, -20)
   sunLight.castShadow = true
   sunLight.shadow.mapSize.set(1024, 1024)
