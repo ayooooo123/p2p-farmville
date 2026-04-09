@@ -8,24 +8,30 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const APP_NAME = 'p2p-farmville';
 const APP_VERSION = '1.0.0';
 
+type WorkerMessagePort = {
+  send: (payload: unknown) => void;
+};
+
+type WorkerProcess = ReturnType<PearRuntime['run']>;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-let mainWindow = null;
-let pear = null;
-let workerProcess = null;
-let workerMessage = null;
+let mainWindow: BrowserWindow | null = null;
+let pear: PearRuntime | null = null;
+let workerProcess: WorkerProcess | null = null;
+let workerMessage: WorkerMessagePort | null = null;
 let rendererBridgeBound = false;
 
 function getStoragePath() {
   return path.join(process.env.APPDATA || process.env.HOME || '.', 'p2p-farmville');
 }
 
-function forwardToRenderer(message) {
+function forwardToRenderer(message: unknown) {
   try {
     mainWindow?.webview?.sendMessageToWebviewViaExecute(message);
   } catch (error) {
-    console.error('[main] renderer forward error:', error?.message || error);
+    console.error('[main] renderer forward error:', error instanceof Error ? error.message : error);
   }
 }
 
@@ -38,12 +44,12 @@ function bindRendererBridge() {
   }
 
   rendererBridgeBound = true;
-  rpc.addMessageListener('to-worker', (payload) => {
+  rpc.addMessageListener('to-worker', (payload: unknown) => {
     workerMessage?.send(payload);
   });
 }
 
-function createWindow(rendererUrl) {
+function createWindow(rendererUrl: string) {
   mainWindow = new BrowserWindow({
     title: 'P2P FarmVille',
     frame: { x: 0, y: 0, width: 1200, height: 800 },
@@ -53,7 +59,7 @@ function createWindow(rendererUrl) {
   bindRendererBridge();
 }
 
-async function startWorker(storagePath) {
+async function startWorker(storagePath: string) {
   pear = new PearRuntime({
     dir: storagePath,
     version: APP_VERSION,
@@ -66,16 +72,16 @@ async function startWorker(storagePath) {
   const workerPath = path.join(__dirname, '..', 'workers', 'main.js');
   workerProcess = pear.run(workerPath, [storagePath]);
 
-  workerProcess.stdout?.on('data', (chunk) => {
-    console.log('[worker]', chunk.toString().trim());
+  workerProcess.stdout?.on('data', (chunk: Buffer | Uint8Array) => {
+    console.log('[worker]', Buffer.from(chunk).toString().trim());
   });
 
-  workerProcess.stderr?.on('data', (chunk) => {
-    console.error('[worker:err]', chunk.toString().trim());
+  workerProcess.stderr?.on('data', (chunk: Buffer | Uint8Array) => {
+    console.error('[worker:err]', Buffer.from(chunk).toString().trim());
   });
 
-  workerProcess.on?.('error', (error) => {
-    console.error('[main] worker error:', error?.message || error);
+  workerProcess.on?.('error', (error: unknown) => {
+    console.error('[main] worker error:', error instanceof Error ? error.message : error);
   });
 
   const ipcMux = new Protomux(workerProcess);
@@ -83,7 +89,7 @@ async function startWorker(storagePath) {
 
   workerMessage = ipcChannel.addMessage({
     encoding: cenc.json,
-    onmessage(message) {
+    onmessage(message: unknown) {
       forwardToRenderer(message);
     },
   });
