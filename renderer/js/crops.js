@@ -407,6 +407,125 @@ const STAGE_GEOM = [
   [0.10, 0.55, 0.28]    // 4: mature
 ]
 
+const cropSpriteTextureCache = new Map()
+
+function _hexToCss (hex) {
+  return '#' + new THREE.Color(hex).getHexString()
+}
+
+function _makeCropSpriteTexture (cropType, stage, withered = false) {
+  const def = CROP_DEFINITIONS[cropType]
+  const maxStage = def ? def.stages - 1 : 0
+  const clampedStage = Math.max(0, Math.min(stage, maxStage))
+  const cacheKey = cropType + ':' + clampedStage + ':' + (withered ? 'w' : 'n')
+  const cached = cropSpriteTextureCache.get(cacheKey)
+  if (cached) return cached
+
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 128
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  const seed = def ? new THREE.Color(def.colors[clampedStage]) : new THREE.Color(0x44aa44)
+  const leaf = withered ? new THREE.Color(0x7b5d3c) : seed.clone().lerp(new THREE.Color(0x228b22), 0.35)
+  const fruit = withered ? new THREE.Color(0x6a5842) : seed.clone()
+  const stem = withered ? new THREE.Color(0x5a4530) : new THREE.Color(0x2f7d32)
+  const bark = withered ? 'rgba(90,69,48,0.45)' : 'rgba(25,60,25,0.25)'
+
+  const cx = 64
+  const cy = 66
+  const stageScale = 0.48 + clampedStage * 0.08
+  const leafCount = withered ? 3 : Math.min(6, 2 + clampedStage)
+
+  // Soft shadow under the plant to anchor it to the plot without looking like a debug dot.
+  const shadowGrad = ctx.createRadialGradient(cx, cy + 10, 2, cx, cy + 10, 30)
+  shadowGrad.addColorStop(0, 'rgba(0,0,0,0.22)')
+  shadowGrad.addColorStop(0.7, 'rgba(0,0,0,0.08)')
+  shadowGrad.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = shadowGrad
+  ctx.beginPath()
+  ctx.ellipse(cx, cy + 12, 22 + stageScale * 4, 8 + stageScale * 1.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Stem
+  ctx.strokeStyle = _hexToCss(stem.getHex())
+  ctx.lineWidth = withered ? 6 : 5
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(cx, cy + 18)
+  ctx.quadraticCurveTo(cx + (withered ? -2 : 0), cy + 3, cx, cy - 10 + (withered ? 2 : 0))
+  ctx.stroke()
+
+  // Leaves / petals built from curved lobes rather than circles.
+  for (let i = 0; i < leafCount; i++) {
+    const angle = (Math.PI * 2 / leafCount) * i + (withered ? 0.15 : 0)
+    const len = 18 + stageScale * 10 + (withered ? -2 : 0)
+    const spread = withered ? 0.55 : 0.85
+    const x1 = cx + Math.cos(angle) * 3
+    const y1 = cy + Math.sin(angle) * 3
+    const x2 = cx + Math.cos(angle) * len
+    const y2 = cy + Math.sin(angle) * len
+    const ctrlX = cx + Math.cos(angle + Math.PI / 2) * len * spread
+    const ctrlY = cy + Math.sin(angle + Math.PI / 2) * len * spread
+
+    ctx.fillStyle = _hexToCss((withered ? leaf.clone().lerp(new THREE.Color(0x3f2f20), 0.35) : leaf).getHex())
+    ctx.beginPath()
+    ctx.moveTo(x1, y1)
+    ctx.quadraticCurveTo(ctrlX, ctrlY, x2, y2)
+    ctx.quadraticCurveTo((cx + x2) / 2, (cy + y2) / 2, x1, y1)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.strokeStyle = bark
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(cx, cy + 12)
+    ctx.lineTo(x2, y2)
+    ctx.stroke()
+  }
+
+  // Fruit / flower cluster for larger stages to make the crop read as a real plant.
+  if (!withered && clampedStage >= Math.max(1, maxStage - 1)) {
+    const berryCount = Math.max(3, Math.min(8, 2 + clampedStage))
+    for (let i = 0; i < berryCount; i++) {
+      const a = (Math.PI * 2 / berryCount) * i + 0.5
+      const r = 10 + stageScale * 6
+      const bx = cx + Math.cos(a) * r
+      const by = cy + Math.sin(a) * r - 5
+      ctx.fillStyle = _hexToCss(fruit.getHex())
+      ctx.beginPath()
+      ctx.arc(bx, by, 4 + (clampedStage >= maxStage ? 1 : 0), 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.needsUpdate = true
+  tex.transparent = true
+  cropSpriteTextureCache.set(cacheKey, tex)
+  return tex
+}
+
+function _makeCropSprite (cropType, stage, withered = false) {
+  const spriteMat = new THREE.SpriteMaterial({
+    map: _makeCropSpriteTexture(cropType, stage, withered),
+    transparent: true,
+    depthWrite: false,
+    alphaTest: 0.1
+  })
+  const sprite = new THREE.Sprite(spriteMat)
+  const def = CROP_DEFINITIONS[cropType]
+  const maxStage = def ? def.stages - 1 : 0
+  const clampedStage = Math.max(0, Math.min(stage, maxStage))
+  const baseSize = withered ? 0.82 : 0.86
+  const size = baseSize + clampedStage * 0.09
+  sprite.scale.set(size, size, 1)
+  sprite.position.y = withered ? 0.16 : 0.22 + clampedStage * 0.02
+  sprite.userData.isCropSprite = true
+  return sprite
+}
+
 /**
  * Create a 3D growth-stage mesh for a crop (works well from top-down orthographic view).
  * @param {string} cropType - key in CROP_DEFINITIONS
@@ -426,44 +545,37 @@ export function createCropMesh (cropType, stage) {
   const geomIdx = Math.min(clampedStage, 4)
   const [cylR, cylH, sphR] = STAGE_GEOM[geomIdx]
 
-  if (clampedStage === 0) {
-    // Seed: tiny flat disc pressed into the soil, dark brown
-    const discGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.03, 8)
-    const discMat = new THREE.MeshStandardMaterial({ color: 0x5c4a1e, roughness: 0.9 })
-    const disc = new THREE.Mesh(discGeo, discMat)
-    disc.position.y = 0.04
-    group.add(disc)
-  } else {
-    // Stem cylinder
-    const stemColor = clampedStage <= 2 ? 0x228b22 : new THREE.Color(color).lerp(new THREE.Color(0x228b22), 0.3).getHex()
-    const stemGeo = new THREE.CylinderGeometry(cylR * 0.5, cylR * 0.7, cylH, 7)
-    const stemMat = new THREE.MeshStandardMaterial({ color: stemColor, roughness: 0.85 })
-    const stem = new THREE.Mesh(stemGeo, stemMat)
-    stem.position.y = cylH / 2 + 0.02
-    stem.castShadow = true
-    stem.userData.isStem = true
-    stem.userData.stemHeight = cylH
-    group.add(stem)
+  // Stem cylinder provides the 3D read and still sways in the wind animation.
+  const stemColor = clampedStage <= 2 ? 0x228b22 : new THREE.Color(color).lerp(new THREE.Color(0x228b22), 0.3).getHex()
+  const stemGeo = new THREE.CylinderGeometry(cylR * 0.5, cylR * 0.7, Math.max(0.12, cylH), 7)
+  const stemMat = new THREE.MeshStandardMaterial({ color: stemColor, roughness: 0.85 })
+  const stem = new THREE.Mesh(stemGeo, stemMat)
+  stem.position.y = Math.max(0.08, cylH / 2 + 0.02)
+  stem.castShadow = true
+  stem.userData.isStem = true
+  stem.userData.stemHeight = cylH
+  group.add(stem)
 
-    // Top sphere (canopy / fruit cluster)
-    const sphereGeo = new THREE.SphereGeometry(sphR, 10, 8)
-    const sphereColor = clampedStage <= 1 ? 0x32cd32 : color
-    const sphereMat = new THREE.MeshStandardMaterial({
-      color: sphereColor,
-      roughness: 0.75,
-      metalness: 0.0,
-      emissive: isReady ? new THREE.Color(color).multiplyScalar(0.15) : 0x000000
-    })
-    const sphere = new THREE.Mesh(sphereGeo, sphereMat)
-    sphere.position.y = cylH + sphR * 0.75 + 0.02
-    sphere.castShadow = true
-    group.add(sphere)
+  // Sprite-backed canopy/plant silhouette so crops read like planted assets instead of circles.
+  const sprite = _makeCropSprite(cropType, clampedStage, false)
+  sprite.position.y = cylH + 0.12
+  group.add(sprite)
+
+  // Seed stage gets a tiny extra sprout so it doesn't read as a debug dot.
+  if (clampedStage === 0) {
+    const sproutGeo = new THREE.CylinderGeometry(0.025, 0.05, 0.12, 6)
+    const sproutMat = new THREE.MeshStandardMaterial({ color: 0x2f7d32, roughness: 0.9 })
+    const sprout = new THREE.Mesh(sproutGeo, sproutMat)
+    sprout.position.y = 0.08
+    sprout.rotation.z = 0.25
+    sprout.castShadow = true
+    group.add(sprout)
   }
 
   // Glow ring for ready/mature crops (pulsing handled in app.js animate loop via userData)
   if (isReady) {
-    const ringInner = 0.30
-    const ringOuter = 0.48
+    const ringInner = 0.28
+    const ringOuter = 0.46
     const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 32)
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xffee44,
@@ -481,8 +593,8 @@ export function createCropMesh (cropType, stage) {
 
   // Progress arc for growing (non-seed, non-mature) crops
   if (clampedStage > 0 && !isReady) {
-    const arcInner = 0.28
-    const arcOuter = 0.38
+    const arcInner = 0.26
+    const arcOuter = 0.36
     const arcLen = 2 * Math.PI * (clampedStage / maxStage)
     const arcGeo = new THREE.RingGeometry(arcInner, arcOuter, 32, 1, -Math.PI / 2, arcLen)
     const arcMat = new THREE.MeshBasicMaterial({
@@ -514,13 +626,18 @@ export function createWitheredMesh (cropType) {
 
   const group = new THREE.Group()
 
-  // Gray circle for withered crop
-  const circleGeo = new THREE.CircleGeometry(0.4, 16)
-  const circleMat = new THREE.MeshStandardMaterial({ color: 0x808080 })
-  const circle = new THREE.Mesh(circleGeo, circleMat)
-  circle.rotation.x = -Math.PI / 2
-  circle.position.y = 0.02
-  group.add(circle)
+  const stemGeo = new THREE.CylinderGeometry(0.035, 0.055, 0.16, 5)
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0x6a5842, roughness: 1.0 })
+  const stem = new THREE.Mesh(stemGeo, stemMat)
+  stem.position.y = 0.12
+  stem.rotation.z = -0.1
+  stem.castShadow = true
+  group.add(stem)
+
+  const sprite = _makeCropSprite(cropType, Math.max(0, def.stages - 1), true)
+  sprite.position.y = 0.18
+  sprite.scale.multiplyScalar(0.95)
+  group.add(sprite)
 
   group.userData.cropType = cropType
   group.userData.withered = true
