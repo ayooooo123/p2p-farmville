@@ -1,19 +1,18 @@
 const DEFAULT_IPC_URL = 'ws://localhost:50002';
 const BUNDLE_BASE_URL = new URL('../', import.meta.url);
 
-function resolveRendererAssetUrl(relativePath) {
-  const normalizedPath = String(relativePath ?? '').replace(/^\/+/, '');
-  return new URL(normalizedPath, BUNDLE_BASE_URL).href;
+function createSafeGameState() {
+  return { placedAnimals: [] };
 }
 
 function ensureSafeGameState() {
   try {
     const current = globalThis.gameState;
     if (!current || typeof current !== 'object') {
-      const safeState = { placedAnimals: [] };
+      const safeState = createSafeGameState();
       globalThis.gameState = safeState;
       if (typeof window !== 'undefined') window.gameState = safeState;
-      return;
+      return safeState;
     }
 
     if (!Array.isArray(current.placedAnimals)) {
@@ -28,34 +27,55 @@ function ensureSafeGameState() {
         window.gameState.placedAnimals = [];
       }
     }
-  } catch {}
+
+    return current;
+  } catch {
+    const fallbackState = createSafeGameState();
+    try {
+      globalThis.gameState = fallbackState;
+      if (typeof window !== 'undefined') window.gameState = fallbackState;
+    } catch {}
+    return fallbackState;
+  }
+}
+
+function resolveRendererAssetUrl(relativePath) {
+  const normalizedPath = String(relativePath ?? '').replace(/^\/+/, '');
+  return new URL(normalizedPath, BUNDLE_BASE_URL).href;
 }
 
 function setBridgeAliases(bridge) {
   const aliases = [
     'P2PFarmVilleIPC',
+    'P2P_FARMVILLE_IPC',
+    'P2PFarmVilleIPC',
     'p2pFarmVilleIPC',
     'p2pFarmVilleIpc',
+    'farmvilleIPC',
     'ipc',
     'ipcBridge',
+    'bridge',
     'electronIPC',
     '__P2P_FARMVILLE_IPC__',
   ];
 
   try {
     globalThis.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
+    globalThis.__P2P_FARMVILLE_GAME_STATE__ = ensureSafeGameState();
     for (const name of aliases) {
       globalThis[name] = bridge;
     }
 
     if (typeof window !== 'undefined') {
       window.__P2P_FARMVILLE_RESOLVE_ASSET__ = resolveRendererAssetUrl;
+      window.__P2P_FARMVILLE_GAME_STATE__ = globalThis.__P2P_FARMVILLE_GAME_STATE__;
       for (const name of aliases) {
         window[name] = bridge;
       }
     }
 
     if (typeof document !== 'undefined') {
+      document.__P2P_FARMVILLE_GAME_STATE__ = globalThis.__P2P_FARMVILLE_GAME_STATE__;
       for (const name of aliases) {
         document[name] = bridge;
       }
@@ -141,14 +161,15 @@ function decodeMessageData(data) {
   return '';
 }
 
+// Initialize safe globals immediately, before any WebSocket activity.
+ensureSafeGameState();
+
 function createWebSocketBridge(url = DEFAULT_IPC_URL) {
   const listeners = new Set();
   const pendingOutbound = [];
   let socket = null;
   let ready = false;
   let closed = false;
-
-  ensureSafeGameState();
 
   const notify = (message) => {
     for (const listener of listeners) {
@@ -246,13 +267,17 @@ function createWebSocketBridge(url = DEFAULT_IPC_URL) {
   return bridge;
 }
 
-const defaultBridge = typeof WebSocket !== 'undefined' ? createWebSocketBridge() : {
-  url: DEFAULT_IPC_URL,
-  send() {},
-  onMessage() { return () => {}; },
-  close() {},
-  ready: false,
-};
+const defaultBridge = typeof WebSocket !== 'undefined' ? createWebSocketBridge() : (() => {
+  const bridge = {
+    url: DEFAULT_IPC_URL,
+    send() {},
+    onMessage() { return () => {}; },
+    close() {},
+    ready: false,
+  };
+  setBridgeAliases(bridge);
+  return bridge;
+})();
 
 export default defaultBridge;
 export const sendToWorker = (payload) => defaultBridge.send(payload);
