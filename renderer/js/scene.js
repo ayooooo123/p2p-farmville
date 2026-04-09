@@ -150,7 +150,7 @@ function initScene (canvasEl) {
   // Force one frame immediately so the canvas isn't blank if the loop hasn't started
   renderer.render(scene, camera)
 
-  return { scene, camera, renderer, terrainData, sunLight, ambientLight, hemiLight: null }
+  return { scene, camera, renderer, terrainData, sunLight, ambientLight, hemiLight }
 }
 
 function _addBorderTrees (scene) {

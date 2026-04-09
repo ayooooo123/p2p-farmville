@@ -3126,7 +3126,7 @@ function startGame () {
   // ── Initialize day/night cycle ─────────────────────────────────────────────
   // Wire up the full day/night system: controls sunLight + ambientLight colour,
   // sky background, stars, and firefly visibility based on a 10-minute game day.
-  initDayNight(sceneData.scene, sceneData.sunLight, sceneData.ambientLight, null)
+  initDayNight(sceneData.scene, sceneData.sunLight, sceneData.ambientLight, sceneData.hemiLight)
   _updateTimeHUD()
 
   // Register weather change listener → update HUD + toast
