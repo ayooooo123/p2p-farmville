@@ -1,11 +1,10 @@
 import { BrowserWindow, BrowserView } from 'electrobun/bun';
+import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const appDir = import.meta.dir ?? path.dirname(new URL(import.meta.url).pathname);
-const rendererRoot = path.join(appDir, 'app', 'renderer');
-const workerEntry = path.join(appDir, 'app', 'workers', 'main.cjs');
 
 type BareProcess = ReturnType<typeof spawn>;
 
@@ -26,6 +25,49 @@ const appRPC = BrowserView.defineRPC({
 function isDevelopment() {
   return process.env.NODE_ENV !== 'production' || process.env.ELECTROBUN_DEV === '1' || process.env.ELECTROBUN_MODE === 'dev';
 }
+
+function findPath(candidates: string[], exists: (candidate: string) => boolean) {
+  for (const candidate of candidates) {
+    if (exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0];
+}
+
+const rendererRoot = findPath(
+  [
+    path.resolve(appDir, 'renderer'),
+    path.resolve(appDir, 'app', 'renderer'),
+    path.resolve(appDir, '..', 'renderer'),
+    path.resolve(appDir, '..', 'app', 'renderer'),
+    path.resolve(appDir, '..', 'Resources', 'app', 'renderer'),
+    path.resolve(appDir, '..', '..', 'Resources', 'app', 'renderer'),
+    path.resolve(process.cwd(), 'renderer'),
+  ],
+  (candidate) => fs.existsSync(path.join(candidate, 'index.html'))
+);
+
+const workerEntry = findPath(
+  [
+    path.resolve(appDir, 'workers', 'main.cjs'),
+    path.resolve(appDir, 'app', 'workers', 'main.cjs'),
+    path.resolve(appDir, '..', 'workers', 'main.cjs'),
+    path.resolve(appDir, '..', 'app', 'workers', 'main.cjs'),
+    path.resolve(appDir, '..', 'Resources', 'app', 'workers', 'main.cjs'),
+    path.resolve(appDir, '..', '..', 'Resources', 'app', 'workers', 'main.cjs'),
+    path.resolve(process.cwd(), 'workers', 'main.cjs'),
+  ],
+  (candidate) => fs.existsSync(candidate)
+);
+
+console.log('[main] resolved bundle paths', {
+  appDir,
+  rendererRoot,
+  rendererIndex: path.join(rendererRoot, 'index.html'),
+  workerEntry,
+});
 
 function getRendererUrl() {
   if (isDevelopment()) {
@@ -58,10 +100,11 @@ function startRendererDevServer() {
     port: 50001,
     fetch: async (request) => {
       const requestedUrl = request.url;
-      try {
-        const url = new URL(request.url);
 
+      try {
+        const url = new URL(requestedUrl);
         let decodedPath = url.pathname;
+
         try {
           decodedPath = decodeURIComponent(url.pathname);
         } catch {}
@@ -81,12 +124,20 @@ function startRendererDevServer() {
                   ? normalizedPath.slice('renderer/'.length)
                   : normalizedPath;
 
-        const resolvedPath = path.join(rendererRoot, relativePath);
+        const resolvedPath = path.resolve(rendererRoot, relativePath);
         console.log('[main] renderer request', { requestedUrl, resolvedPath });
+
+        const rootPrefix = rendererRoot.endsWith(path.sep) ? rendererRoot : rendererRoot + path.sep;
+        if (resolvedPath !== rendererRoot && !resolvedPath.startsWith(rootPrefix)) {
+          return new Response('Forbidden', {
+            status: 403,
+            headers: { 'content-type': 'text/plain; charset=utf-8' },
+          });
+        }
 
         const file = Bun.file(resolvedPath);
         if (!(await file.exists())) {
-          return new Response(`Not Found: ${relativePath}`, {
+          return new Response(`Not Found: ${relativePath || 'index.html'}`, {
             status: 404,
             headers: { 'content-type': 'text/plain; charset=utf-8' },
           });
@@ -95,7 +146,7 @@ function startRendererDevServer() {
         const body = await file.text();
         return new Response(body, {
           status: 200,
-          headers: { 'content-type': contentTypeFor(relativePath) },
+          headers: { 'content-type': contentTypeFor(relativePath || 'index.html') },
         });
       } catch (error) {
         console.error('[main] renderer request handler error', { requestedUrl, error });
