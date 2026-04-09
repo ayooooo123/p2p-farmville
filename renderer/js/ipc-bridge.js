@@ -1,246 +1,268 @@
-/* global __rpc */
+const electrobunTransport = globalThis.window?.__electrobunBunBridge || globalThis.window?.__rpc || null;
+const rpcMessageListeners = new Set();
 
-// IPC Bridge - supports Electron (window.ElectronIPCBridge) and Electrobun (window.__rpc)
+function postToBun(packet) {
+  if (typeof electrobunTransport?.postMessage === 'function') {
+    electrobunTransport.postMessage(packet);
+    return true;
+  }
+  if (typeof electrobunTransport?.send === 'function') {
+    electrobunTransport.send(packet);
+    return true;
+  }
+  return false;
+}
 
-const IPCBridge = {
-  // Available in Electron mode or Electrobun mode
-  available: typeof window !== 'undefined' && (!!window.ElectronIPCBridge || !!window.__rpc),
-
-  _listeners: {
-    neighbors: [],
-    chatMessage: [],
-    farmUpdate: [],
-    peerCount: [],
-    initialized: [],
-    error: [],
-    tradeOffer: [],
-    tradeResult: [],
-    tradeCancelled: [],
-    giftReceived: [],
-    giftSent: [],
-    coopUpdate: [],
-    helpRequest: [],
-    helpResponse: [],
-    playerJoined: [],
-    playerLeft: [],
-    visitorFarmAction: [],
-    farmActionResult: []
-  },
-
-  // ── Internal: called by the view entrypoint when RPC events arrive ──────
-  _emitWorkerStdout (data) {
-    console.log('[ipc-bridge] worker stdout:', data.trimEnd())
-  },
-
-  _emitWorkerStderr (data) {
-    console.warn('[ipc-bridge] worker stderr:', data.trimEnd())
-  },
-
-  _emitWorkerExit (code) {
-    console.log('[ipc-bridge] worker exited with code:', code)
-  },
-
-  _emitWorkerMessage (data) {
+if (electrobunTransport && !window.ElectronIPCBridge) {
+  const previousReceive = window.__electrobun?.receiveMessageFromBun;
+  window.__electrobun = window.__electrobun || {};
+  window.__electrobun.receiveMessageFromBun = (msg) => {
     try {
-      const msg = JSON.parse(data)
-      this._routeMessage(msg)
-    } catch (e) {
-      console.warn('[ipc-bridge] Failed to parse worker message:', e)
+      previousReceive?.(msg);
+    } finally {
+      for (const listener of rpcMessageListeners) {
+        try {
+          listener(msg);
+        } catch (error) {
+          console.error('[ipc-bridge] listener error:', error);
+        }
+      }
     }
-  },
+  };
 
-  // ── Worker lifecycle ───────────────────────────────────────────────────
-  startWorker () {
-    if (window.ElectronIPCBridge) {
-      // Worker already spawned by Electron main process; wire up the listener
-      window.ElectronIPCBridge.onMessage(msg => this._routeMessage(msg))
-      return Promise.resolve({ ok: true })
+  window.ElectronIPCBridge = {
+    send(msg) {
+      postToBun(JSON.stringify({ type: 'message', id: 'to-worker', payload: msg }));
+    },
+    onMessage(cb) {
+      rpcMessageListeners.add(cb);
+      return cb;
     }
-    if (!window.__rpc) {
-      console.warn('[ipc-bridge] no IPC transport available')
-      return Promise.resolve({ ok: false })
-    }
-    return window.__rpc.startWorker()
-  },
+  };
+}
 
-  sendToWorker (msg) {
-    if (window.ElectronIPCBridge) {
-      const data = typeof msg === 'string' ? JSON.parse(msg) : msg
-      window.ElectronIPCBridge.send(data)
-      return
-    }
-    if (!window.__rpc) return
-    const data = typeof msg === 'string' ? msg : JSON.stringify(msg)
-    window.__rpc.sendToWorker(data)
-  },
+const listeners = {
+  neighbors: [],
+  chatMessage: [],
+  farmUpdate: [],
+  peerCount: [],
+  initialized: [],
+  error: [],
+  tradeOffer: [],
+  tradeResult: [],
+  tradeCancelled: [],
+  giftReceived: [],
+  giftSent: [],
+  coopUpdate: [],
+  helpRequest: [],
+  helpResponse: [],
+  playerJoined: [],
+  playerLeft: [],
+  visitorFarmAction: [],
+  farmActionResult: []
+};
 
-  onWorkerMessage (cb) {
-    // No-op: messages are routed via _routeMessage
-  },
-
-  onWorkerStdout (cb) {
-    // No-op: handled in view entrypoint
-  },
-
-  onWorkerStderr (cb) {
-    // No-op: handled in view entrypoint
-  },
-
-  onWorkerExit (cb) {
-    // No-op: handled in view entrypoint
-  },
-
-  // ── P2P High-Level Methods ──────────────────────────────────────────────
-
-  initP2P (playerName) {
-    this.sendToWorker({ type: 'init', playerName })
-  },
-
-  sendFarmUpdate (farmState) {
-    this.sendToWorker({ type: 'update-farm', farmState })
-  },
-
-  // ── Chat Methods ────────────────────────────────────────────────────────
-
-  sendChatMessage (message) {
-    this.sendToWorker({ type: 'chat', message })
-  },
-
-  sendPrivateMessage (targetKey, message) {
-    this.sendToWorker({ type: 'chat-private', targetKey, message })
-  },
-
-  sendEmote (emote) {
-    this.sendToWorker({ type: 'chat-emote', emote })
-  },
-
-  // ── Trade Methods ───────────────────────────────────────────────────────
-
-  sendTradeOffer (targetKey, items, wants) {
-    this.sendToWorker({ type: 'trade-offer', targetKey, items, wants })
-  },
-
-  respondToTrade (tradeId, accept) {
-    this.sendToWorker({ type: 'trade-respond', tradeId, accept })
-  },
-
-  cancelTrade (tradeId) {
-    this.sendToWorker({ type: 'trade-cancel', tradeId })
-  },
-
-  // ── Gift Methods ────────────────────────────────────────────────────────
-
-  sendGift (targetKey, items, message) {
-    this.sendToWorker({ type: 'send-gift', targetKey, items, message })
-  },
-
-  // ── Co-op Methods ───────────────────────────────────────────────────────
-
-  createCoopMission (cropType, targetQty, reward) {
-    this.sendToWorker({ type: 'create-coop', cropType, targetQty, reward })
-  },
-
-  contributeToCoopMission (missionId, amount) {
-    this.sendToWorker({ type: 'contribute-coop', missionId, amount })
-  },
-
-  // ── Help Methods ────────────────────────────────────────────────────────
-
-  requestHelp (helpType, plotId) {
-    this.sendToWorker({ type: 'request-help', helpType, plotId })
-  },
-
-  respondToHelp (requestId) {
-    this.sendToWorker({ type: 'respond-help', requestId })
-  },
-
-  // ── Event Listeners ─────────────────────────────────────────────────────
-
-  onNeighbors (callback) { this._listeners.neighbors.push(callback) },
-  onChatMessage (callback) { this._listeners.chatMessage.push(callback) },
-  onNeighborFarmUpdate (callback) { this._listeners.farmUpdate.push(callback) },
-  onPeerCount (callback) { this._listeners.peerCount.push(callback) },
-  onInitialized (callback) { this._listeners.initialized.push(callback) },
-  onError (callback) { this._listeners.error.push(callback) },
-  onTradeOffer (callback) { this._listeners.tradeOffer.push(callback) },
-  onTradeResult (callback) { this._listeners.tradeResult.push(callback) },
-  onTradeCancelled (callback) { this._listeners.tradeCancelled.push(callback) },
-  onGiftReceived (callback) { this._listeners.giftReceived.push(callback) },
-  onGiftSent (callback) { this._listeners.giftSent.push(callback) },
-  onCoopUpdate (callback) { this._listeners.coopUpdate.push(callback) },
-  onHelpRequest (callback) { this._listeners.helpRequest.push(callback) },
-  onHelpResponse (callback) { this._listeners.helpResponse.push(callback) },
-  onPlayerJoined (callback) { this._listeners.playerJoined.push(callback) },
-  onPlayerLeft (callback) { this._listeners.playerLeft.push(callback) },
-  onVisitorFarmAction (callback) { this._listeners.visitorFarmAction.push(callback) },
-  onFarmActionResult (callback) { this._listeners.farmActionResult.push(callback) },
-
-  // ── Internal message router ─────────────────────────────────────────────
-
-  _routeMessage (msg) {
-    const fire = (key, data) => {
-      this._listeners[key].forEach(cb => {
-        try { cb(data) } catch (e) { console.error('[ipc-bridge]', key, 'listener error:', e) }
-      })
-    }
-
-    switch (msg.type) {
-      case 'neighbors':
-        fire('neighbors', msg.neighbors)
-        break
-      case 'chat-message':
-        fire('chatMessage', { from: msg.from, fromKey: msg.fromKey, message: msg.message, timestamp: msg.timestamp, channel: msg.channel, to: msg.to })
-        break
-      case 'farm-update':
-        fire('farmUpdate', { playerKey: msg.playerKey, farmState: msg.farmState })
-        break
-      case 'connected':
-        fire('peerCount', msg.count)
-        break
-      case 'initialized':
-        fire('initialized', { playerKey: msg.playerKey, playerName: msg.playerName })
-        break
-      case 'error':
-        fire('error', msg.error)
-        break
-      case 'trade-offer':
-        fire('tradeOffer', msg.trade)
-        break
-      case 'trade-result':
-        fire('tradeResult', { tradeId: msg.tradeId, accepted: msg.accepted })
-        break
-      case 'trade-cancelled':
-        fire('tradeCancelled', { tradeId: msg.tradeId })
-        break
-      case 'gift-received':
-        fire('giftReceived', { from: msg.from, fromKey: msg.fromKey, items: msg.items, message: msg.message })
-        break
-      case 'gift-sent':
-        fire('giftSent', { remaining: msg.remaining })
-        break
-      case 'coop-update':
-        fire('coopUpdate', msg.missions)
-        break
-      case 'help-request':
-        fire('helpRequest', msg.request)
-        break
-      case 'help-response':
-        fire('helpResponse', { requestId: msg.requestId, responderKey: msg.responderKey, responderName: msg.responderName })
-        break
-      case 'player-joined':
-        fire('playerJoined', { playerName: msg.playerName, playerKey: msg.playerKey })
-        break
-      case 'player-left':
-        fire('playerLeft', { playerName: msg.playerName, playerKey: msg.playerKey })
-        break
-      case 'visitor-farm-action':
-        fire('visitorFarmAction', { action: msg.action, targetId: msg.targetId, visitorKey: msg.visitorKey, visitorName: msg.visitorName, timestamp: msg.timestamp })
-        break
-      case 'farm-action-result':
-        fire('farmActionResult', { action: msg.action, targetId: msg.targetId, success: msg.success, reason: msg.reason, reward: msg.reward })
-        break
+function emit(key, data) {
+  for (const callback of listeners[key]) {
+    try {
+      callback(data);
+    } catch (error) {
+      console.error('[ipc-bridge]', key, 'listener error:', error);
     }
   }
 }
 
-window.IPCBridge = IPCBridge
+const IPCBridge = {
+  available: typeof window !== 'undefined' && (!!window.ElectronIPCBridge || !!electrobunTransport),
+
+  _listeners: listeners,
+
+  _emitWorkerStdout(data) {
+    console.log('[ipc-bridge] worker stdout:', String(data).trimEnd());
+  },
+
+  _emitWorkerStderr(data) {
+    console.warn('[ipc-bridge] worker stderr:', String(data).trimEnd());
+  },
+
+  _emitWorkerExit(code) {
+    console.log('[ipc-bridge] worker exited with code:', code);
+  },
+
+  _emitWorkerMessage(data) {
+    try {
+      const msg = typeof data === 'string' ? JSON.parse(data) : data;
+      this._routeMessage(msg);
+    } catch (error) {
+      console.warn('[ipc-bridge] failed to parse worker message:', error);
+    }
+  },
+
+  startWorker() {
+    if (window.ElectronIPCBridge) {
+      window.ElectronIPCBridge.onMessage((msg) => this._routeMessage(msg));
+      return Promise.resolve({ ok: true });
+    }
+    if (!electrobunTransport) {
+      console.warn('[ipc-bridge] no IPC transport available');
+      return Promise.resolve({ ok: false });
+    }
+    return Promise.resolve({ ok: true });
+  },
+
+  sendToWorker(msg) {
+    if (window.ElectronIPCBridge) {
+      window.ElectronIPCBridge.send(msg);
+      return;
+    }
+    if (!electrobunTransport) return;
+    const data = typeof msg === 'string' ? msg : JSON.stringify(msg);
+    postToBun(JSON.stringify({ type: 'message', id: 'to-worker', payload: JSON.parse(data) }));
+  },
+
+  onWorkerMessage() {},
+  onWorkerStdout() {},
+  onWorkerStderr() {},
+  onWorkerExit() {},
+
+  initP2P(playerName) {
+    this.sendToWorker({ type: 'init', playerName });
+  },
+
+  sendFarmUpdate(farmState) {
+    this.sendToWorker({ type: 'update-farm', farmState });
+  },
+
+  sendChatMessage(message) {
+    this.sendToWorker({ type: 'chat', message });
+  },
+
+  sendPrivateMessage(targetKey, message) {
+    this.sendToWorker({ type: 'chat-private', targetKey, message });
+  },
+
+  sendEmote(emote) {
+    this.sendToWorker({ type: 'chat-emote', emote });
+  },
+
+  sendTradeOffer(targetKey, items, wants) {
+    this.sendToWorker({ type: 'trade-offer', targetKey, items, wants });
+  },
+
+  respondToTrade(tradeId, accept) {
+    this.sendToWorker({ type: 'trade-respond', tradeId, accept });
+  },
+
+  cancelTrade(tradeId) {
+    this.sendToWorker({ type: 'trade-cancel', tradeId });
+  },
+
+  sendGift(targetKey, items, message) {
+    this.sendToWorker({ type: 'send-gift', targetKey, items, message });
+  },
+
+  createCoopMission(cropType, targetQty, reward) {
+    this.sendToWorker({ type: 'create-coop', cropType, targetQty, reward });
+  },
+
+  contributeToCoopMission(missionId, amount) {
+    this.sendToWorker({ type: 'contribute-coop', missionId, amount });
+  },
+
+  requestHelp(helpType, plotId) {
+    this.sendToWorker({ type: 'request-help', helpType, plotId });
+  },
+
+  respondToHelp(requestId) {
+    this.sendToWorker({ type: 'respond-help', requestId });
+  },
+
+  onNeighbors(callback) { listeners.neighbors.push(callback); },
+  onChatMessage(callback) { listeners.chatMessage.push(callback); },
+  onNeighborFarmUpdate(callback) { listeners.farmUpdate.push(callback); },
+  onPeerCount(callback) { listeners.peerCount.push(callback); },
+  onInitialized(callback) { listeners.initialized.push(callback); },
+  onError(callback) { listeners.error.push(callback); },
+  onTradeOffer(callback) { listeners.tradeOffer.push(callback); },
+  onTradeResult(callback) { listeners.tradeResult.push(callback); },
+  onTradeCancelled(callback) { listeners.tradeCancelled.push(callback); },
+  onGiftReceived(callback) { listeners.giftReceived.push(callback); },
+  onGiftSent(callback) { listeners.giftSent.push(callback); },
+  onCoopUpdate(callback) { listeners.coopUpdate.push(callback); },
+  onHelpRequest(callback) { listeners.helpRequest.push(callback); },
+  onHelpResponse(callback) { listeners.helpResponse.push(callback); },
+  onPlayerJoined(callback) { listeners.playerJoined.push(callback); },
+  onPlayerLeft(callback) { listeners.playerLeft.push(callback); },
+  onVisitorFarmAction(callback) { listeners.visitorFarmAction.push(callback); },
+  onFarmActionResult(callback) { listeners.farmActionResult.push(callback); },
+
+  _routeMessage(msg) {
+    if (!msg || typeof msg !== 'object') return;
+
+    switch (msg.type) {
+      case 'neighbors':
+        emit('neighbors', msg.neighbors);
+        break;
+      case 'chat-message':
+        emit('chatMessage', {
+          from: msg.from,
+          fromKey: msg.fromKey,
+          message: msg.message,
+          timestamp: msg.timestamp,
+          channel: msg.channel,
+          to: msg.to
+        });
+        break;
+      case 'farm-update':
+        emit('farmUpdate', { playerKey: msg.playerKey, farmState: msg.farmState });
+        break;
+      case 'connected':
+        emit('peerCount', msg.count);
+        break;
+      case 'initialized':
+        emit('initialized', { playerKey: msg.playerKey, playerName: msg.playerName });
+        break;
+      case 'error':
+        emit('error', msg.error);
+        break;
+      case 'trade-offer':
+        emit('tradeOffer', msg.trade);
+        break;
+      case 'trade-result':
+        emit('tradeResult', { tradeId: msg.tradeId, accepted: msg.accepted });
+        break;
+      case 'trade-cancelled':
+        emit('tradeCancelled', { tradeId: msg.tradeId });
+        break;
+      case 'gift-received':
+        emit('giftReceived', { from: msg.from, fromKey: msg.fromKey, items: msg.items, message: msg.message });
+        break;
+      case 'gift-sent':
+        emit('giftSent', { remaining: msg.remaining });
+        break;
+      case 'coop-update':
+        emit('coopUpdate', msg.missions);
+        break;
+      case 'help-request':
+        emit('helpRequest', msg.request);
+        break;
+      case 'help-response':
+        emit('helpResponse', { requestId: msg.requestId, responderKey: msg.responderKey, responderName: msg.responderName });
+        break;
+      case 'player-joined':
+        emit('playerJoined', { playerName: msg.playerName, playerKey: msg.playerKey });
+        break;
+      case 'player-left':
+        emit('playerLeft', { playerName: msg.playerName, playerKey: msg.playerKey });
+        break;
+      case 'visitor-farm-action':
+        emit('visitorFarmAction', { action: msg.action, targetId: msg.targetId, visitorKey: msg.visitorKey, visitorName: msg.visitorName, timestamp: msg.timestamp });
+        break;
+      case 'farm-action-result':
+        emit('farmActionResult', { action: msg.action, targetId: msg.targetId, success: msg.success, reason: msg.reason, reward: msg.reward });
+        break;
+    }
+  }
+};
+
+window.IPCBridge = IPCBridge;
