@@ -50,7 +50,8 @@ const Hyperswarm = require('hyperswarm')
 const Protomux = require('protomux')
 const cenc = require('compact-encoding')
 const b4a = require('b4a')
-const crypto = require('hypercore-crypto')
+const crypto = require("hypercore-crypto")
+const { Server: WebSocketServer } = require("bare-ws")
 
 const WORLD_TOPIC = 'p2p-farmville-world-v1'
 const ANNOUNCE_INTERVAL = 30000 // re-announce every 30s
@@ -630,7 +631,7 @@ function handleTradeMessage (remoteKey, buf) {
   }
 }
 
-// ── Gift message handler ────────────────��───────────────────────────────────
+// ── Gift message handler ────────────────────────────────────────────────────
 function handleGiftMessage (remoteKey, buf) {
   try {
     const msg = JSON.parse(b4a.toString(buf))
@@ -757,7 +758,7 @@ function handleHelpMessage (remoteKey, buf) {
   }
 }
 
-// ── Farm action message handler (visitor actions) ───��──────────────────────
+// ── Farm action message handler (visitor actions) ──────────────────────────
 function handleFarmActionMessage (remoteKey, buf) {
   try {
     const msg = JSON.parse(b4a.toString(buf))
