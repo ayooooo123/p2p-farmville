@@ -32,6 +32,7 @@ let mainWindow: BrowserWindow | null = null;
 let workerTransport: WorkerTransport | null = null;
 let workerMessage: WorkerMessagePort | null = null;
 let rendererBridgeBound = false;
+let rendererServer: { stop?: () => void } | null = null;
 
 const appRPC = BrowserView.defineRPC({
   maxRequestTime: 30000,
@@ -49,15 +50,68 @@ function getStoragePath() {
   return path.join(process.env.APPDATA || process.env.HOME || '.', 'p2p-farmville');
 }
 
-function getRendererUrl() {
-  const isDev = process.env.NODE_ENV !== 'production' || process.env.ELECTROBUN_DEV === '1' || process.env.ELECTROBUN_MODE === 'dev';
+function isDevelopment() {
+  return process.env.NODE_ENV !== 'production' || process.env.ELECTROBUN_DEV === '1' || process.env.ELECTROBUN_MODE === 'dev';
+}
 
-  if (isDev) {
+function getRendererRoot() {
+  return path.resolve(__dirname, '..', '..', 'renderer');
+}
+
+function getRendererUrl() {
+  if (isDevelopment()) {
     const baseUrl = process.env.ELECTROBUN_DEV_SERVER_URL || 'http://localhost:50000';
     return new URL('/renderer/index.html', baseUrl).href;
   }
 
   return pathToFileURL(path.join(__dirname, '..', 'renderer', 'index.html')).href;
+}
+
+async function serveRendererRequest(pathname: string) {
+  const normalizedPath = pathname === '/' || pathname === '/renderer' || pathname === '/renderer/'
+    ? '/renderer/index.html'
+    : pathname;
+
+  if (!normalizedPath.startsWith('/renderer/')) {
+    return null;
+  }
+
+  const rendererRoot = path.resolve(getRendererRoot());
+  const relativePath = normalizedPath.slice('/renderer/'.length);
+  const filePath = path.resolve(rendererRoot, relativePath || 'index.html');
+
+  if (filePath !== rendererRoot && !filePath.startsWith(rendererRoot + path.sep)) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) {
+    return null;
+  }
+
+  return new Response(file);
+}
+
+function startRendererDevServer() {
+  if (!isDevelopment() || rendererServer) {
+    return;
+  }
+
+  rendererServer = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 50000,
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const response = await serveRendererRequest(url.pathname);
+      if (response) {
+        return response;
+      }
+
+      return new Response('Not Found', { status: 404 });
+    },
+  });
+
+  console.log('[main] renderer dev server listening on http://127.0.0.1:50000');
 }
 
 function forwardToRenderer(message: unknown) {
@@ -303,6 +357,8 @@ async function startWorker() {
 }
 
 async function createApp() {
+  startRendererDevServer();
+
   const rendererUrl = getRendererUrl();
 
   createWindow(rendererUrl);
@@ -314,5 +370,9 @@ await createApp();
 process.on('beforeExit', async () => {
   try {
     workerTransport?.destroy();
+  } catch {}
+
+  try {
+    rendererServer?.stop?.();
   } catch {}
 });
