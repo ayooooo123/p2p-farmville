@@ -126,6 +126,8 @@ const IPCBridge = {
   onWorkerExit() {},
 
   initP2P(playerName) {
+    const startPayload = { type: 'start-farming', playerName };
+    this.sendToWorker(startPayload);
     this.sendToWorker({ type: 'init', playerName });
   },
 
