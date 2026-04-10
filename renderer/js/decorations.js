@@ -302,11 +302,12 @@ function _buildLampPost (g, def) {
   pole.position.y = 1.25
   pole.castShadow = true
   g.add(pole)
-  // Lamp head
-  const lampMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 0.5 })
+  // Lamp head — starts dim, brightened at night by applyWindowGlow
+  const lampMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xfff0a0, emissiveIntensity: 0.0 })
   const lampGeo = new THREE.SphereGeometry(0.2, 8, 6)
   const lamp = new THREE.Mesh(lampGeo, lampMat)
   lamp.position.y = 2.6
+  lamp.userData.isLampGlow = true // tagged for day/night wiring in app.js
   g.add(lamp)
   // Arm
   const armGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4)
@@ -314,6 +315,14 @@ function _buildLampPost (g, def) {
   arm.rotation.z = Math.PI / 3
   arm.position.set(0.1, 2.5, 0)
   g.add(arm)
+  // PointLight — warm yellow, only active at night (intensity driven by app.js)
+  const ptLight = new THREE.PointLight(0xffd070, 0, 8, 2)
+  ptLight.position.set(0, 2.8, 0)
+  ptLight.userData.isLampLight = true
+  g.add(ptLight)
+  // Store refs on group for fast access
+  g.userData.lampGlowMesh = lamp
+  g.userData.lampPointLight = ptLight
 }
 
 function _buildBench (g, def) {

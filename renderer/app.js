@@ -2758,6 +2758,20 @@ function applyWindowGlow () {
       pane.material.emissiveIntensity = pane.userData.baseEmissiveIntensity * nightFactor
     }
   }
+
+  // Lamp posts: drive emissive sphere + PointLight intensity with night factor
+  for (const deco of farmState.decorations) {
+    const mesh = deco.mesh
+    if (!mesh) continue
+    const lampGlow = mesh.userData.lampGlowMesh
+    const lampLight = mesh.userData.lampPointLight
+    if (lampGlow && lampGlow.material) {
+      lampGlow.material.emissiveIntensity = nightFactor * 1.8
+    }
+    if (lampLight) {
+      lampLight.intensity = nightFactor * 1.2
+    }
+  }
 }
 
 function updateWindowGlow (dtMs) {
