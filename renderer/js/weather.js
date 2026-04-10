@@ -22,10 +22,29 @@ let currentWeather = 'clear'
 let nextWeatherChange = 0
 let weatherListeners = []
 
-// Rain particles
-let rainGroup = null
-const MAX_RAIN_DROPS = 500
-let rainDrops = []
+// Rain particles — InstancedMesh for one draw call regardless of drop count
+let rainMesh = null       // InstancedMesh for rain streaks
+let snowMesh = null       // InstancedMesh for snow flakes
+const MAX_RAIN_DROPS = 600
+const MAX_SNOW_FLAKES = 300
+
+// Per-instance state stored in typed arrays (no per-frame GC)
+const rainX   = new Float32Array(MAX_RAIN_DROPS)
+const rainY   = new Float32Array(MAX_RAIN_DROPS)
+const rainZ   = new Float32Array(MAX_RAIN_DROPS)
+const rainSpd = new Float32Array(MAX_RAIN_DROPS)
+const snowX   = new Float32Array(MAX_SNOW_FLAKES)
+const snowY   = new Float32Array(MAX_SNOW_FLAKES)
+const snowZ   = new Float32Array(MAX_SNOW_FLAKES)
+const snowAngle = new Float32Array(MAX_SNOW_FLAKES) // wander angle
+
+// Reusable matrix + color for instanced updates
+const _iMat = new THREE.Matrix4()
+const _iPos = new THREE.Vector3()
+const _iQuat = new THREE.Quaternion()
+const _iScl = new THREE.Vector3(1, 1, 1)
+// Rain is tilted ~15° toward +X to look like angled streaks from top-down view
+const _rainTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.26)
 
 // Cloud system
 let cloudGroup = null
@@ -66,65 +85,108 @@ function _pickNextWeather () {
   return 'clear'
 }
 
-// ── Rain System ─────────────────────────────────────────────────────────────
+// ── Rain System — InstancedMesh (one draw call for all drops) ────────────────
 
-function _createRainSystem () {
-  rainGroup = new THREE.Group()
-  rainGroup.visible = false
-
-  const dropGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.5, 3)
-  const dropMat = new THREE.MeshBasicMaterial({ color: 0x6688cc, transparent: true, opacity: 0.6 })
-
-  for (let i = 0; i < MAX_RAIN_DROPS; i++) {
-    const drop = new THREE.Mesh(dropGeo, dropMat.clone())
-    _resetRainDrop(drop)
-    rainGroup.add(drop)
-    rainDrops.push(drop)
-  }
-
-  if (scene) scene.add(rainGroup)
+function _initRainInstance (i) {
+  rainX[i]   = (Math.random() - 0.5) * 120
+  rainY[i]   = 5 + Math.random() * 30
+  rainZ[i]   = (Math.random() - 0.5) * 120
+  rainSpd[i] = 18 + Math.random() * 12
 }
 
-function _resetRainDrop (drop) {
-  drop.position.set(
-    (Math.random() - 0.5) * 100,
-    20 + Math.random() * 30,
-    (Math.random() - 0.5) * 100
-  )
-  drop.userData.speed = 15 + Math.random() * 10
+function _initSnowInstance (i) {
+  snowX[i]     = (Math.random() - 0.5) * 120
+  snowY[i]     = 5 + Math.random() * 25
+  snowZ[i]     = (Math.random() - 0.5) * 120
+  snowAngle[i] = Math.random() * Math.PI * 2
+}
+
+function _createRainSystem () {
+  // ── Rain: thin elongated capsule (streak) ──────────────────────────────────
+  // CylinderGeometry gives a clean streak that reads well from top-down
+  const dropGeo = new THREE.CylinderGeometry(0.025, 0.012, 0.65, 4, 1)
+  const dropMat = new THREE.MeshBasicMaterial({
+    color: 0x88aadd,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false
+  })
+  rainMesh = new THREE.InstancedMesh(dropGeo, dropMat, MAX_RAIN_DROPS)
+  rainMesh.visible = false
+  rainMesh.frustumCulled = false // spans the whole map, skip frustum test
+
+  // Initialise all instance positions
+  for (let i = 0; i < MAX_RAIN_DROPS; i++) {
+    _initRainInstance(i)
+    // Push instances into buffer
+    _iPos.set(rainX[i], rainY[i], rainZ[i])
+    _iMat.compose(_iPos, _rainTilt, _iScl)
+    rainMesh.setMatrixAt(i, _iMat)
+  }
+  rainMesh.instanceMatrix.needsUpdate = true
+  if (scene) scene.add(rainMesh)
+
+  // ── Snow: flat disc (seen from top-down as a dot / flake) ─────────────────
+  const flakeGeo = new THREE.CircleGeometry(0.18, 5)
+  const flakeMat = new THREE.MeshBasicMaterial({
+    color: 0xeeeeff,
+    transparent: true,
+    opacity: 0.75,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  })
+  snowMesh = new THREE.InstancedMesh(flakeGeo, flakeMat, MAX_SNOW_FLAKES)
+  snowMesh.visible = false
+  snowMesh.frustumCulled = false
+
+  const flatRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
+  for (let i = 0; i < MAX_SNOW_FLAKES; i++) {
+    _initSnowInstance(i)
+    _iPos.set(snowX[i], snowY[i], snowZ[i])
+    _iMat.compose(_iPos, flatRot, _iScl)
+    snowMesh.setMatrixAt(i, _iMat)
+  }
+  snowMesh.instanceMatrix.needsUpdate = true
+  if (scene) scene.add(snowMesh)
 }
 
 function _updateRain (dtMs) {
-  if (!rainGroup) return
+  if (!rainMesh) return
 
   const isRaining = currentWeather === 'rainy' || currentWeather === 'stormy'
-  rainGroup.visible = isRaining
-
+  rainMesh.visible = isRaining
   if (!isRaining) return
 
   const dt = dtMs / 1000
-  const dropCount = currentWeather === 'stormy' ? MAX_RAIN_DROPS : Math.floor(MAX_RAIN_DROPS * 0.5)
+  const activeCount = currentWeather === 'stormy' ? MAX_RAIN_DROPS : Math.floor(MAX_RAIN_DROPS * 0.55)
+  const windX = currentWeather === 'stormy' ? 4 * dt : 0
 
-  for (let i = 0; i < rainDrops.length; i++) {
-    const drop = rainDrops[i]
-    drop.visible = i < dropCount
+  // Storm tilt is steeper; normal rain uses _rainTilt
+  const tilt = currentWeather === 'stormy'
+    ? new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.45)
+    : _rainTilt
 
-    if (!drop.visible) continue
-
-    drop.position.y -= drop.userData.speed * dt
-
-    // Wind effect for storms
-    if (currentWeather === 'stormy') {
-      drop.position.x += 3 * dt
-      drop.rotation.z = 0.3
-    } else {
-      drop.rotation.z = 0
+  for (let i = 0; i < MAX_RAIN_DROPS; i++) {
+    if (i >= activeCount) {
+      // Park invisible instances far below ground
+      _iPos.set(0, -100, 0)
+      _iMat.compose(_iPos, tilt, _iScl)
+      rainMesh.setMatrixAt(i, _iMat)
+      continue
     }
 
-    if (drop.position.y < 0) {
-      _resetRainDrop(drop)
+    rainY[i] -= rainSpd[i] * dt
+    rainX[i] += windX
+
+    if (rainY[i] < -1) {
+      _initRainInstance(i)
     }
+
+    _iPos.set(rainX[i], rainY[i], rainZ[i])
+    _iMat.compose(_iPos, tilt, _iScl)
+    rainMesh.setMatrixAt(i, _iMat)
   }
+  rainMesh.instanceMatrix.needsUpdate = true
 }
 
 // ── Cloud System ────────────────────────────────────────────────────────────
@@ -240,33 +302,35 @@ function _updateLightning (dtMs, sunLight) {
   }
 }
 
-// ── Snow (reuses rain group with modified behavior) ─────────────────────────
+// ── Snow — InstancedMesh flat disc flakes ────────────────────────────────────
 
 function _updateSnow (dtMs) {
-  if (currentWeather !== 'snowy' || !rainGroup) return
+  if (!snowMesh) return
+  const isSnowing = currentWeather === 'snowy'
+  snowMesh.visible = isSnowing
+  if (!isSnowing) return
 
-  rainGroup.visible = true
   const dt = dtMs / 1000
-  const snowCount = Math.floor(MAX_RAIN_DROPS * 0.4)
+  const now = Date.now() * 0.001
+  // Gentle flat rotation so flakes face upward (top-down visible)
+  const flatRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
 
-  for (let i = 0; i < rainDrops.length; i++) {
-    const drop = rainDrops[i]
-    drop.visible = i < snowCount
+  for (let i = 0; i < MAX_SNOW_FLAKES; i++) {
+    // Slow fall + gentle circular drift
+    snowY[i] -= 1.8 * dt
+    snowAngle[i] += 0.35 * dt
+    snowX[i] += Math.cos(snowAngle[i]) * 0.4 * dt
+    snowZ[i] += Math.sin(snowAngle[i]) * 0.4 * dt
 
-    if (!drop.visible) continue
-
-    // Snow falls slowly and drifts
-    drop.position.y -= 2 * dt
-    drop.position.x += Math.sin(Date.now() * 0.001 + i) * 0.5 * dt
-    drop.material.color.setHex(0xffffff)
-    drop.material.opacity = 0.8
-    drop.scale.set(3, 1, 3)
-    drop.rotation.z = 0
-
-    if (drop.position.y < 0) {
-      _resetRainDrop(drop)
+    if (snowY[i] < -1) {
+      _initSnowInstance(i)
     }
+
+    _iPos.set(snowX[i], snowY[i], snowZ[i])
+    _iMat.compose(_iPos, flatRot, _iScl)
+    snowMesh.setMatrixAt(i, _iMat)
   }
+  snowMesh.instanceMatrix.needsUpdate = true
 }
 
 // ── Main Update ─────────────────────────────────────────────────────────────
@@ -285,28 +349,17 @@ function updateWeather (dtMs, sunLight) {
     nextWeatherChange = now + _randomInterval()
     hasAutoWateredThisCycle = false
 
-    // Reset rain appearance when switching from snow
-    if (oldWeather === 'snowy') {
-      for (const drop of rainDrops) {
-        drop.material.color.setHex(0x6688cc)
-        drop.material.opacity = 0.6
-        drop.scale.set(1, 1, 1)
-      }
-    }
-
     // Notify listeners
     for (const listener of weatherListeners) {
       listener(currentWeather, oldWeather)
     }
   }
 
-  // Update particles
-  if (currentWeather === 'snowy') {
-    _updateSnow(dtMs)
-    _updateClouds(dtMs)
-  } else {
-    _updateRain(dtMs)
-    _updateClouds(dtMs)
+  // Update precipitation — both meshes manage their own visibility
+  _updateRain(dtMs)
+  _updateSnow(dtMs)
+  _updateClouds(dtMs)
+  if (currentWeather !== 'snowy') {
     _updateLightning(dtMs, sunLight)
   }
 
