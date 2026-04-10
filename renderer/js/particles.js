@@ -131,6 +131,18 @@ const EFFECT_CONFIGS = {
     gravity: 5,
     direction: { x: 0, y: 1, z: 0 },
     fadeOut: true
+  },
+  smoke: {
+    count: 4,
+    color: 0x888888,
+    colorPalette: [0x999999, 0x888888, 0x777777, 0xaaaaaa, 0x666666],
+    size: 0.22,
+    speed: 0.55,
+    spread: 0.25,
+    lifetime: 1800,
+    gravity: -0.4,           // negative = rises upward
+    direction: { x: 0, y: 1, z: 0 },
+    fadeOut: true
   }
 }
 

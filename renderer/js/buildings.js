@@ -274,11 +274,12 @@ export function createBuildingMesh (buildingType) {
     chim.castShadow = true
     group.add(chim)
 
-    // Chimney cap (small wider cylinder)
+    // Chimney cap (small wider cylinder) — tagged so app.js can find it for smoke
     const capGeo = new THREE.CylinderGeometry(chimW * 0.7, chimW * 0.55, 0.12, 6)
     const capMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 })
     const cap = new THREE.Mesh(capGeo, capMat)
     cap.position.set(w * 0.25, wallTop + chimH + roofH * 0.35 + 0.06, -d * 0.2)
+    cap.userData.isChimneyTop = true
     group.add(cap)
   }
 

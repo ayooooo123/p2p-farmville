@@ -2710,6 +2710,34 @@ function updateDecorations (time) {
   }
 }
 
+// ── Chimney smoke particles ───────────────────────────────────────────────────
+// Emit a lazy smoke puff from each building chimney cap every ~800ms daytime,
+// ~2400ms at night. Uses the InstancedMesh particle pool — no GC overhead.
+const _chimneyLastEmit = new Map()  // chimneyMesh.uuid → last emit timestamp (ms)
+const _chimneyWorldPos = new THREE.Vector3()
+
+function animateChimneySmoke (time) {
+  if (!farmState.buildings || !farmState.buildings.length) return
+
+  // Emit less often at night (buildings still active but quieter)
+  const tod = getTimeOfDay()
+  const isNightTime = tod > 0.62 || tod < 0.08
+  const interval = isNightTime ? 2400 : 800
+
+  for (const building of farmState.buildings) {
+    if (!building.mesh) continue
+    building.mesh.traverse(child => {
+      if (!child.userData.isChimneyTop) return
+      const last = _chimneyLastEmit.get(child.uuid) || 0
+      if (time - last < interval) return
+      _chimneyLastEmit.set(child.uuid, time)
+      child.getWorldPosition(_chimneyWorldPos)
+      _chimneyWorldPos.y += 0.12  // start just above cap
+      createParticleEffect('smoke', _chimneyWorldPos)
+    })
+  }
+}
+
 // ── Tree growth update ───────────────────────────────────────────────────────
 function updateTrees (dtMs) {
   const effects = getBuildingEffects(farmState.buildings)
@@ -3093,6 +3121,7 @@ function gameLoop (time) {
   updateBuildings(dtMs)
   updateWindowGlow(dtMs)
   updateDecorations(time)
+  animateChimneySmoke(time)
   updateParticles(dtMs)
   _updateFireflies(dtMs)
 
