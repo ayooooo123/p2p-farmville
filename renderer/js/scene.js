@@ -185,6 +185,8 @@ function _addBorderTrees (scene) {
     trunk.position.y = trunkH / 2
     trunk.castShadow = true
     trunk.receiveShadow = true
+    trunk.userData.isBorderTrunk = true
+    trunk.userData.trunkHeight = trunkH
     treeGroup.add(trunk)
 
     // Canopy sphere
@@ -195,7 +197,12 @@ function _addBorderTrees (scene) {
     canopy.position.y = trunkH + canopyR * 0.65
     canopy.castShadow = true
     canopy.receiveShadow = true
+    canopy.userData.isBorderCanopy = true
+    canopy.userData.canopyRadius = canopyR
     treeGroup.add(canopy)
+
+    // Per-tree phase offset for independent wind sway (based on world position)
+    treeGroup.userData.windPhase = px * 1.31 + pz * 0.97 + Math.random() * 0.5
 
     scene.add(treeGroup)
     borderTreeGroups.push(treeGroup)

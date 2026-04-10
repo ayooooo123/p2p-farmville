@@ -2522,6 +2522,40 @@ function animateCropWind (time) {
   }
 }
 
+// ── Border tree wind sway animation ──────────────────────────────────────────
+// Gently sways the canopy spheres and trunks of the 12 decorative border trees
+// around the farm perimeter. Each tree has a unique windPhase so they wave
+// independently. Frequency is slower than crop sway (bigger/heavier trees).
+// Amplitude: trunk gets half the sway, canopy gets full sway scaled by radius.
+let _borderTrees = null  // cached once on first call
+function animateBorderTreeWind (time) {
+  if (!_borderTrees) _borderTrees = getBorderTrees()
+  if (!_borderTrees || _borderTrees.length === 0) return
+
+  const WIND_FREQ   = 0.0009   // slower than crop freq (0.0014) — big trees move ponderous
+  const TRUNK_STR   = 0.022    // max trunk rotation in radians (subtle)
+  const CANOPY_STR  = 0.055    // canopy sways more than trunk
+  const CANOPY_SCL  = 0.012    // extra scale per unit of canopy radius
+
+  for (const treeGroup of _borderTrees) {
+    const phase = treeGroup.userData.windPhase || 0
+    const swayZ = Math.sin(time * WIND_FREQ + phase)
+    const swayX = Math.cos(time * WIND_FREQ * 0.73 + phase)
+
+    for (const child of treeGroup.children) {
+      if (child.userData.isBorderTrunk) {
+        child.rotation.z = swayZ * TRUNK_STR
+        child.rotation.x = swayX * TRUNK_STR * 0.5
+      } else if (child.userData.isBorderCanopy) {
+        const r = child.userData.canopyRadius || 1.2
+        const amp = CANOPY_STR + r * CANOPY_SCL
+        child.rotation.z = swayZ * amp
+        child.rotation.x = swayX * amp * 0.55
+      }
+    }
+  }
+}
+
 // ── Crop timer labels (world-to-screen DOM overlay) ──────────────────────────
 // Map from 'row,col' -> div element
 const _cropTimerEls = new Map()
@@ -3144,6 +3178,7 @@ function gameLoop (time) {
   updateCrops(dtMs)
   animateReadyCrops(time)
   animateCropWind(time)
+  animateBorderTreeWind(time)
   updateCropTimers(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
