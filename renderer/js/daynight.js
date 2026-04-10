@@ -17,78 +17,93 @@ const PHASE_RANGES = {
 }
 
 // Light configs per phase
+// ambientColor uses proper colour temperature:
+//   dawn/dusk  → warm deep orange-amber (CCT ~2000 K feel)
+//   morning    → warm golden (CCT ~3500 K)
+//   noon       → neutral warm white (CCT ~6000 K)
+//   afternoon  → slightly warm white (CCT ~5000 K)
+//   night      → cool blue-purple moonlight
+// dirExposure is a per-phase renderer toneMappingExposure target so the whole
+// scene brightens / dims naturally rather than just shifting one light channel.
 const PHASE_CONFIGS = {
   dawn: {
-    sunColor: new THREE.Color(0xff9944),
-    sunIntensity: 0.5,
-    ambientColor: new THREE.Color(0x553322),
-    ambientIntensity: 0.3,
-    skyColor: new THREE.Color(0xff7744),
-    fogColor: new THREE.Color(0xff8855),
-    hemiSky: new THREE.Color(0xff8855),
-    hemiGround: new THREE.Color(0x443322),
-    hemiIntensity: 0.55
+    sunColor: new THREE.Color(0xff8822),      // deep orange sunrise
+    sunIntensity: 0.55,
+    ambientColor: new THREE.Color(0x7a3a18),  // warm deep amber (↑ from 0x553322)
+    ambientIntensity: 0.38,
+    skyColor: new THREE.Color(0xff7033),
+    fogColor: new THREE.Color(0xff7744),
+    hemiSky: new THREE.Color(0xff8033),
+    hemiGround: new THREE.Color(0x4a2a12),
+    hemiIntensity: 0.55,
+    dirExposure: 0.85                         // dim exposure at horizon
   },
   morning: {
-    sunColor: new THREE.Color(0xffeebb),
-    sunIntensity: 0.9,
-    ambientColor: new THREE.Color(0x505050),
-    ambientIntensity: 0.5,
+    sunColor: new THREE.Color(0xffe8a0),      // golden morning sun
+    sunIntensity: 1.0,
+    ambientColor: new THREE.Color(0x9a7240),  // warm golden-brown (↑ saturated)
+    ambientIntensity: 0.55,
     skyColor: new THREE.Color(0x87ceeb),
-    fogColor: new THREE.Color(0x87ceeb),
+    fogColor: new THREE.Color(0x90d0ee),
     hemiSky: new THREE.Color(0x87ceeb),
     hemiGround: new THREE.Color(0x556b2f),
-    hemiIntensity: 1.0
+    hemiIntensity: 1.0,
+    dirExposure: 1.1
   },
   noon: {
-    sunColor: new THREE.Color(0xffffff),
-    sunIntensity: 1.2,
-    ambientColor: new THREE.Color(0x606060),
-    ambientIntensity: 0.6,
+    sunColor: new THREE.Color(0xffffff),      // pure white noon sun
+    sunIntensity: 1.3,
+    ambientColor: new THREE.Color(0xd8e8f8),  // cool near-white sky fill (↑ was gray)
+    ambientIntensity: 0.65,
     skyColor: new THREE.Color(0x87ceeb),
     fogColor: new THREE.Color(0x87ceeb),
     hemiSky: new THREE.Color(0x87ceeb),
     hemiGround: new THREE.Color(0x556b2f),
-    hemiIntensity: 1.4
+    hemiIntensity: 1.4,
+    dirExposure: 1.3                          // brightest point of day
   },
   afternoon: {
-    sunColor: new THREE.Color(0xffeedd),
-    sunIntensity: 1.0,
-    ambientColor: new THREE.Color(0x555555),
-    ambientIntensity: 0.5,
+    sunColor: new THREE.Color(0xffe8cc),      // warm-white afternoon
+    sunIntensity: 1.05,
+    ambientColor: new THREE.Color(0xb09060),  // warm golden-tan (↑ was flat gray)
+    ambientIntensity: 0.52,
     skyColor: new THREE.Color(0x7ab8d8),
     fogColor: new THREE.Color(0x7ab8d8),
     hemiSky: new THREE.Color(0x7ab8d8),
     hemiGround: new THREE.Color(0x556b2f),
-    hemiIntensity: 1.1
+    hemiIntensity: 1.1,
+    dirExposure: 1.2
   },
   dusk: {
-    sunColor: new THREE.Color(0xdd6644),
-    sunIntensity: 0.5,
-    ambientColor: new THREE.Color(0x443355),
-    ambientIntensity: 0.3,
-    skyColor: new THREE.Color(0x884466),
-    fogColor: new THREE.Color(0x775566),
+    sunColor: new THREE.Color(0xcc4422),      // deep red-orange sunset
+    sunIntensity: 0.45,
+    ambientColor: new THREE.Color(0x6a2a55),  // deep purple-magenta dusk (↑ richer)
+    ambientIntensity: 0.32,
+    skyColor: new THREE.Color(0x993366),
+    fogColor: new THREE.Color(0x884466),
     hemiSky: new THREE.Color(0x884466),
-    hemiGround: new THREE.Color(0x332244),
-    hemiIntensity: 0.45
+    hemiGround: new THREE.Color(0x3a1a44),
+    hemiIntensity: 0.45,
+    dirExposure: 0.88                         // dusk dims slightly faster than dawn
   },
   night: {
-    sunColor: new THREE.Color(0x334466),
-    sunIntensity: 0.15,
-    ambientColor: new THREE.Color(0x111122),
-    ambientIntensity: 0.15,
-    skyColor: new THREE.Color(0x0a0a1a),
-    fogColor: new THREE.Color(0x0a0a1a),
-    hemiSky: new THREE.Color(0x111133),
-    hemiGround: new THREE.Color(0x050510),
-    hemiIntensity: 0.12
+    sunColor: new THREE.Color(0x2a3a66),      // moonlight blue
+    sunIntensity: 0.12,
+    ambientColor: new THREE.Color(0x0d1833),  // cool deep blue night (↑ was near-black)
+    ambientIntensity: 0.18,
+    skyColor: new THREE.Color(0x060a18),
+    fogColor: new THREE.Color(0x06080f),
+    hemiSky: new THREE.Color(0x0d1a33),
+    hemiGround: new THREE.Color(0x03050e),
+    hemiIntensity: 0.12,
+    dirExposure: 0.60                         // night — deep exposure drop
   }
 }
 
 let sunLight = null
 let ambientLight = null
 let hemiLight = null
+let renderer = null   // optional — set in initDayNight to drive toneMappingExposure
 let scene = null
 let startTime = 0
 let cycleDuration = DAY_CYCLE_MS
@@ -122,6 +137,11 @@ function initDayNight (sceneRef, sunRef, ambientRef, hemiRef, options) {
 
   if (options && options.cycleDuration) {
     cycleDuration = options.cycleDuration
+  }
+
+  // Accept optional renderer ref so we can drive toneMappingExposure per-phase
+  if (options && options.renderer) {
+    renderer = options.renderer
   }
 
   // Create stars group
@@ -283,10 +303,20 @@ function updateDayNight (dtMs) {
     30
   )
 
-  // Update ambient light
+  // Update ambient light — color temperature shifts:
+  //   dawn/dusk → warm orange-amber, noon → near-white, night → cool blue
   if (ambientLight) {
     ambientLight.color.copy(_lerpColor(_tmpAmb, current.ambientColor, next.ambientColor, t))
     ambientLight.intensity = _lerp(current.ambientIntensity, next.ambientIntensity, t)
+  }
+
+  // Drive renderer toneMappingExposure to match phase brightness:
+  //   noon → 1.3 (peak bright), night → 0.60 (deep dark), dawn/dusk → 0.85–0.88
+  // Smooth lerp prevents jarring jumps at phase boundaries.
+  if (renderer && current.dirExposure !== undefined && next.dirExposure !== undefined) {
+    const targetExposure = _lerp(current.dirExposure, next.dirExposure, t)
+    // Soft-lerp renderer exposure toward target (avoids 1-frame snap)
+    renderer.toneMappingExposure += (targetExposure - renderer.toneMappingExposure) * 0.05
   }
 
   // Update hemisphere light — color temperature + intensity follow day/night arc
