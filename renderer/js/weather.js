@@ -109,7 +109,8 @@ function _createRainSystem () {
     color: 0x88aadd,
     transparent: true,
     opacity: 0.55,
-    depthWrite: false
+    depthWrite: false,
+    fog: false  // weather VFX should not be washed out by atmospheric fog
   })
   rainMesh = new THREE.InstancedMesh(dropGeo, dropMat, MAX_RAIN_DROPS)
   rainMesh.visible = false
@@ -133,7 +134,8 @@ function _createRainSystem () {
     transparent: true,
     opacity: 0.75,
     depthWrite: false,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    fog: false  // weather VFX should not be washed out by atmospheric fog
   })
   snowMesh = new THREE.InstancedMesh(flakeGeo, flakeMat, MAX_SNOW_FLAKES)
   snowMesh.visible = false

@@ -95,6 +95,15 @@ let cycleDuration = DAY_CYCLE_MS
 let currentPhase = 'noon'
 let timeOfDay = 0.3 // fraction 0-1
 
+// Scratch Color objects reused every frame to avoid per-frame GC pressure.
+// Each caller passes its own 'out' Color so there's no shared-reference aliasing risk.
+const _tmpSun    = new THREE.Color()
+const _tmpAmb    = new THREE.Color()
+const _tmpHemSky = new THREE.Color()
+const _tmpHemGnd = new THREE.Color()
+const _tmpSky    = new THREE.Color()
+const _tmpFog    = new THREE.Color()
+
 // Stars
 let starsGroup = null
 const STAR_COUNT = 200
@@ -127,7 +136,8 @@ function _createStars () {
   starsGroup.visible = false
 
   const starGeo = new THREE.SphereGeometry(0.15, 4, 4)
-  const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+  // fog: false so scene fog doesn't wash out stars into the sky colour
+  const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })
 
   for (let i = 0; i < STAR_COUNT; i++) {
     const star = new THREE.Mesh(starGeo, starMat)
@@ -162,7 +172,8 @@ function _createFireflies () {
     const mat = new THREE.MeshBasicMaterial({
       color: col,
       transparent: true,
-      opacity: 0
+      opacity: 0,
+      fog: false  // don't let scene fog wash out firefly glow
     })
     const mesh = new THREE.Mesh(ffGeo, mat)
 
@@ -227,12 +238,12 @@ function _getPhase (t) {
   return 'night'
 }
 
-function _lerpColor (a, b, t) {
-  const result = new THREE.Color()
-  result.r = a.r + (b.r - a.r) * t
-  result.g = a.g + (b.g - a.g) * t
-  result.b = a.b + (b.b - a.b) * t
-  return result
+function _lerpColor (out, a, b, t) {
+  // Write into caller-supplied 'out' Color — no shared mutable scratch, no aliasing risk
+  out.r = a.r + (b.r - a.r) * t
+  out.g = a.g + (b.g - a.g) * t
+  out.b = a.b + (b.b - a.b) * t
+  return out
 }
 
 function _lerp (a, b, t) {
@@ -261,7 +272,7 @@ function updateDayNight (dtMs) {
   const t = Math.min(1, Math.max(0, phaseProgress))
 
   // Update sun light
-  sunLight.color.copy(_lerpColor(current.sunColor, next.sunColor, t))
+  sunLight.color.copy(_lerpColor(_tmpSun, current.sunColor, next.sunColor, t))
   sunLight.intensity = _lerp(current.sunIntensity, next.sunIntensity, t)
 
   // Move sun position based on time
@@ -274,22 +285,24 @@ function updateDayNight (dtMs) {
 
   // Update ambient light
   if (ambientLight) {
-    ambientLight.color.copy(_lerpColor(current.ambientColor, next.ambientColor, t))
+    ambientLight.color.copy(_lerpColor(_tmpAmb, current.ambientColor, next.ambientColor, t))
     ambientLight.intensity = _lerp(current.ambientIntensity, next.ambientIntensity, t)
   }
 
   // Update hemisphere light — color temperature + intensity follow day/night arc
   if (hemiLight) {
-    hemiLight.color.copy(_lerpColor(current.hemiSky, next.hemiSky, t))
-    hemiLight.groundColor.copy(_lerpColor(current.hemiGround, next.hemiGround, t))
+    hemiLight.color.copy(_lerpColor(_tmpHemSky, current.hemiSky, next.hemiSky, t))
+    hemiLight.groundColor.copy(_lerpColor(_tmpHemGnd, current.hemiGround, next.hemiGround, t))
     hemiLight.intensity = _lerp(current.hemiIntensity, next.hemiIntensity, t)
   }
 
-  // Update sky/fog
-  const skyColor = _lerpColor(current.skyColor, next.skyColor, t)
-  scene.background = skyColor
+  // Update sky/fog — each uses its own dedicated scratch Color, no aliasing possible
+  if (!scene.background || !(scene.background instanceof THREE.Color)) {
+    scene.background = new THREE.Color()
+  }
+  scene.background.copy(_lerpColor(_tmpSky, current.skyColor, next.skyColor, t))
   if (scene.fog) {
-    scene.fog.color.copy(_lerpColor(current.fogColor, next.fogColor, t))
+    scene.fog.color.copy(_lerpColor(_tmpFog, current.fogColor, next.fogColor, t))
   }
 
   // Stars visibility - show during night and dusk/dawn edges

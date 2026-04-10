@@ -195,7 +195,8 @@ function initParticles (sceneRef) {
   scene = sceneRef
 
   const geo = new THREE.SphereGeometry(1, 4, 4)
-  const mat = new THREE.MeshBasicMaterial({ vertexColors: true })
+  // fog: false — particles are close-range VFX; scene fog would wash out their colours
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false })
   instancedMesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES)
   instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   instancedMesh.frustumCulled = false // particles can be anywhere

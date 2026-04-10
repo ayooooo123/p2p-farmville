@@ -21,6 +21,10 @@ function initScene (canvasEl) {
   // Scene
   scene = new THREE.Scene()
   scene.background = new THREE.Color(0x87ceeb) // sky blue
+  // Atmospheric fog: mild FogExp2 softens distant terrain edges without affecting
+  // the close-up farm. daynight.js already updates scene.fog.color each frame.
+  // Density 0.005 → very subtle at <40 units, noticeable soft haze beyond 80 units.
+  scene.fog = new THREE.FogExp2(0x87ceeb, 0.005)
 
   // Use clientWidth/Height — window.innerWidth/Height may be 0 in WebView at init time
   const initW = canvasEl.parentElement
