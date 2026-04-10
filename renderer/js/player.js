@@ -13,6 +13,8 @@ let playerBody = null   // cylinder body ref for bob
 let playerHead = null   // sphere head ref for bob
 let leftLegPivot = null   // Group pivot at hip for left leg swing
 let rightLegPivot = null  // Group pivot at hip for right leg swing
+let leftArmPivot = null   // Group pivot at shoulder for left arm swing
+let rightArmPivot = null  // Group pivot at shoulder for right arm swing
 let dirIndicator = null
 let bobTime = 0
 const keys = { w: false, a: false, s: false, d: false }
@@ -61,6 +63,29 @@ function initPlayer (scene) {
   rightLegPivotGroup.add(rightLegMesh)
   group.add(rightLegPivotGroup)
   rightLegPivot = rightLegPivotGroup
+
+  // Arms: two short cylinders hanging from shoulder pivots, counter-swing to legs
+  // Shoulder pivot sits near top of body (y=0.78), offset laterally
+  const armGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.36, 6)
+  const armMat = new THREE.MeshStandardMaterial({ color: 0x1a6bc7 })
+
+  const leftArmPivotGroup = new THREE.Group()
+  leftArmPivotGroup.position.set(-0.40, 0.78, 0)
+  const leftArmMesh = new THREE.Mesh(armGeo, armMat)
+  leftArmMesh.position.set(0, -0.18, 0)
+  leftArmMesh.castShadow = true
+  leftArmPivotGroup.add(leftArmMesh)
+  group.add(leftArmPivotGroup)
+  leftArmPivot = leftArmPivotGroup
+
+  const rightArmPivotGroup = new THREE.Group()
+  rightArmPivotGroup.position.set(0.40, 0.78, 0)
+  const rightArmMesh = new THREE.Mesh(armGeo, armMat)
+  rightArmMesh.position.set(0, -0.18, 0)
+  rightArmMesh.castShadow = true
+  rightArmPivotGroup.add(rightArmMesh)
+  group.add(rightArmPivotGroup)
+  rightArmPivot = rightArmPivotGroup
 
   // Head: sphere (skin tone)
   const headGeo = new THREE.SphereGeometry(0.28, 12, 10)
@@ -157,16 +182,26 @@ function updatePlayer (dt) {
       leftLegPivot.rotation.x  =  Math.sin(bobTime) * LEG_SWING
       rightLegPivot.rotation.x = -Math.sin(bobTime) * LEG_SWING
     }
+    // Arms counter-swing: left arm back when left leg forward (natural gait)
+    const ARM_SWING = 0.38
+    if (leftArmPivot && rightArmPivot) {
+      leftArmPivot.rotation.x  = -Math.sin(bobTime) * ARM_SWING
+      rightArmPivot.rotation.x =  Math.sin(bobTime) * ARM_SWING
+    }
   } else {
     // Idle: slow gentle float, legs return to neutral
     bobTime += dt * 1.5
     const idleY = Math.sin(bobTime) * 0.03
     playerMesh.position.y = idleY
     playerMesh.rotation.z = 0
-    // Smoothly reset legs to neutral when idle
+    // Smoothly reset legs and arms to neutral when idle
     if (leftLegPivot && rightLegPivot) {
       leftLegPivot.rotation.x  *= 0.85
       rightLegPivot.rotation.x *= 0.85
+    }
+    if (leftArmPivot && rightArmPivot) {
+      leftArmPivot.rotation.x  *= 0.85
+      rightArmPivot.rotation.x *= 0.85
     }
   }
 

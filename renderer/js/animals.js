@@ -66,8 +66,9 @@ export const ANIMAL_DEFINITIONS = {
 }
 
 /**
- * Create a flat top-down animal mesh (colored circle/oval from above)
- * @param {string} animalType - key in ANIMAL_DEFINITIONS
+ * Create a 3D animal mesh with leg pivot groups for animation.
+ * group.userData.legPivots = [p0, p1, ...] — rotate .rotation.x to swing.
+ * @param {string} animalType
  * @returns {THREE.Group}
  */
 export function createAnimalMesh (animalType) {
@@ -78,24 +79,24 @@ export function createAnimalMesh (animalType) {
   group.userData.objectType = 'animal'
   group.userData.animalType = animalType
 
-  // ── 3D body: box geometry with proper height ─────────────────────────────
+  // ── 3D body: box geometry ─────────────────────────────────────────────────
   const bodyH = def.bodyH
   const bodyGeo = new THREE.BoxGeometry(def.bodyW, bodyH, def.bodyD)
   const bodyMat = new THREE.MeshStandardMaterial({ color: def.bodyColor, roughness: 0.85, metalness: 0.0 })
   const body = new THREE.Mesh(bodyGeo, bodyMat)
-  body.position.y = bodyH / 2  // sit on the ground
+  body.position.y = bodyH / 2
   body.castShadow = true
   body.receiveShadow = true
   group.add(body)
 
-  // Woolly overlay for sheep — fluffy white sphere on top of body
+  // Woolly overlay for sheep
   if (def.woolly) {
     const woolR = Math.max(def.bodyW, def.bodyD) * 0.55
     const woolGeo = new THREE.SphereGeometry(woolR, 10, 8)
     const woolMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.98, metalness: 0.0 })
     const wool = new THREE.Mesh(woolGeo, woolMat)
     wool.position.y = bodyH * 0.75
-    wool.scale.set(1, 0.65, 1)  // flatten into fluffy puff from top view
+    wool.scale.set(1, 0.65, 1)
     wool.castShadow = true
     group.add(wool)
   }
@@ -108,7 +109,9 @@ export function createAnimalMesh (animalType) {
   head.castShadow = true
   group.add(head)
 
-  // ── Legs: cylinders at body corners ──────────────────────────────────────
+  // ── Legs: each wrapped in a pivot Group for rotation ─────────────────────
+  // Pivot is placed at the body-bottom attachment point.
+  // The leg mesh hangs downward from the pivot (position.y = -legH/2).
   const legH = bodyH * 0.55
   const legR = 0.04
   const legGeo = new THREE.CylinderGeometry(legR, legR * 1.1, legH, 5)
@@ -116,19 +119,28 @@ export function createAnimalMesh (animalType) {
   const legCount = def.legs === 2 ? 2 : 4
   const lxOff = def.bodyW * 0.32
   const lzOff = def.bodyD * 0.32
-  // Legs sit on the ground: center at legH/2 above y=0
-  const legY = legH / 2
+  // Pivot sits at y=0 (ground level body bottom attachment).
+  const pivotY = 0
   const legPositions = legCount === 2
-    ? [[-lxOff * 0.5, 0], [lxOff * 0.5, 0]]  // [x, z] only
+    ? [[-lxOff * 0.5, lzOff * 0.3], [lxOff * 0.5, -lzOff * 0.3]]
     : [[-lxOff, lzOff], [lxOff, lzOff], [-lxOff, -lzOff], [lxOff, -lzOff]]
-  for (const [lx, lz] of legPositions) {
-    const leg = new THREE.Mesh(legGeo, legMat)
-    leg.position.set(lx, legY, lz)
-    leg.castShadow = true
-    group.add(leg)
-  }
 
-  // ── Spots for cow: small spheres on top of body ───────────────────────────
+  const legPivots = []
+  for (const [lx, lz] of legPositions) {
+    const pivot = new THREE.Group()
+    pivot.position.set(lx, pivotY, lz)
+    const leg = new THREE.Mesh(legGeo, legMat)
+    // Leg mesh center at -legH/2 so top of leg is at pivot
+    leg.position.y = -legH / 2
+    leg.castShadow = true
+    pivot.add(leg)
+    group.add(pivot)
+    legPivots.push(pivot)
+  }
+  group.userData.legPivots = legPivots
+  group.userData.legCount = legCount
+
+  // ── Spots for cow ─────────────────────────────────────────────────────────
   if (def.spots) {
     const spotMat = new THREE.MeshStandardMaterial({ color: def.spotColor, roughness: 0.9 })
     for (let i = 0; i < 3; i++) {
@@ -147,33 +159,51 @@ export function createAnimalMesh (animalType) {
 }
 
 /**
- * Create animal instance data
+ * Create animal instance data.
+ * Includes wander state for idle movement.
  */
 export function createAnimalData (animalType, x, z) {
   return {
     type: animalType,
     x,
     z,
+    // home position — animal stays near this
+    homeX: x,
+    homeZ: z,
     placedAt: Date.now(),
     lastFed: 0,
     fed: false,
     productReady: false,
     mesh: null,
-    bobPhase: Math.random() * Math.PI * 2
+    // animation
+    bobPhase: Math.random() * Math.PI * 2,
+    walkPhase: Math.random() * Math.PI * 2,
+    // wander
+    wanderAngle: Math.random() * Math.PI * 2,
+    wanderTimer: Math.random() * 2000,   // ms until next state change
+    walking: false,
+    walkSpeed: 0.8 + Math.random() * 0.5  // world units / second
   }
 }
 
+const LEG_SWING = 0.45  // radians peak swing
+const WALK_CYCLE_SPEED = 7.0  // rad/s at full walk
+const WANDER_RADIUS = 0.8     // max distance from home tile center
+
 /**
- * Update animal state
- * @returns {boolean} true if visual state changed
+ * Update animal state — wander movement + leg swing + body bob.
+ * @param {object} animal
+ * @param {number} dtMs — delta time in milliseconds
+ * @returns {boolean} true if visual state changed (product ready)
  */
 export function updateAnimalState (animal, dtMs) {
   const def = ANIMAL_DEFINITIONS[animal.type]
   if (!def) return false
 
   let changed = false
+  const dt = dtMs / 1000  // seconds
 
-  // Check if product is ready
+  // ── Product ready check ───────────────────────────────────────────────────
   if (animal.fed && !animal.productReady) {
     const elapsed = Date.now() - animal.lastFed
     if (elapsed >= def.harvestTime) {
@@ -182,11 +212,85 @@ export function updateAnimalState (animal, dtMs) {
     }
   }
 
-  // Idle bobbing animation
-  if (animal.mesh) {
-    animal.bobPhase += dtMs * 0.003
-    animal.mesh.position.y = Math.sin(animal.bobPhase) * 0.03
+  if (!animal.mesh) return changed
+
+  const legPivots = animal.mesh.userData.legPivots
+  const legCount = animal.mesh.userData.legCount || 0
+
+  // ── Wander state machine ──────────────────────────────────────────────────
+  animal.wanderTimer -= dtMs
+  if (animal.wanderTimer <= 0) {
+    if (animal.walking) {
+      // Stop walking, pause 2-5 seconds
+      animal.walking = false
+      animal.wanderTimer = 2000 + Math.random() * 3000
+    } else {
+      // Start walking — pick a new random heading biased back toward home
+      const dx = animal.homeX - animal.x
+      const dz = animal.homeZ - animal.z
+      const distFromHome = Math.sqrt(dx * dx + dz * dz)
+      if (distFromHome > WANDER_RADIUS * 0.6) {
+        // Drift back toward home with some noise
+        animal.wanderAngle = Math.atan2(dz, dx) + (Math.random() - 0.5) * 1.0
+      } else {
+        animal.wanderAngle = Math.random() * Math.PI * 2
+      }
+      animal.walking = true
+      animal.wanderTimer = 800 + Math.random() * 1500
+    }
   }
+
+  // ── Movement ──────────────────────────────────────────────────────────────
+  if (animal.walking) {
+    const speed = animal.walkSpeed
+    const nx = animal.x + Math.cos(animal.wanderAngle) * speed * dt
+    const nz = animal.z + Math.sin(animal.wanderAngle) * speed * dt
+    // Clamp to wander radius around home
+    const dxH = nx - animal.homeX
+    const dzH = nz - animal.homeZ
+    const dist = Math.sqrt(dxH * dxH + dzH * dzH)
+    if (dist <= WANDER_RADIUS) {
+      animal.x = nx
+      animal.z = nz
+    } else {
+      // Hit boundary — stop and turn
+      animal.walking = false
+      animal.wanderTimer = 500
+    }
+    animal.mesh.position.x = animal.x
+    animal.mesh.position.z = animal.z
+    // Face direction of travel
+    animal.mesh.rotation.y = -animal.wanderAngle + Math.PI / 2
+  }
+
+  // ── Walk cycle (leg swing) ────────────────────────────────────────────────
+  if (animal.walking) {
+    animal.walkPhase += WALK_CYCLE_SPEED * dt
+  } else {
+    // Smoothly return legs to neutral
+    animal.walkPhase *= 0.9
+  }
+
+  if (legPivots && legPivots.length > 0) {
+    const phase = animal.walkPhase
+    if (legCount === 4) {
+      // Diagonal trot gait: FL+BR swing together, FR+BL counter-swing
+      // [0]=FL, [1]=FR, [2]=BL, [3]=BR
+      legPivots[0].rotation.x =  Math.sin(phase) * LEG_SWING  // FL
+      legPivots[3].rotation.x =  Math.sin(phase) * LEG_SWING  // BR — same phase as FL
+      legPivots[1].rotation.x = -Math.sin(phase) * LEG_SWING  // FR
+      legPivots[2].rotation.x = -Math.sin(phase) * LEG_SWING  // BL — same as FR
+    } else if (legCount === 2) {
+      // Biped alternating
+      legPivots[0].rotation.x =  Math.sin(phase) * LEG_SWING
+      legPivots[1].rotation.x = -Math.sin(phase) * LEG_SWING
+    }
+  }
+
+  // ── Body bob ──────────────────────────────────────────────────────────────
+  animal.bobPhase += dtMs * (animal.walking ? 0.008 : 0.002)
+  const bobY = Math.sin(animal.bobPhase) * (animal.walking ? 0.04 : 0.02)
+  animal.mesh.position.y = bobY
 
   return changed
 }
@@ -197,7 +301,7 @@ export function updateAnimalState (animal, dtMs) {
 export function feedAnimal (animal) {
   const def = ANIMAL_DEFINITIONS[animal.type]
   if (!def) return null
-  if (animal.fed && !animal.productReady) return null // already fed, waiting
+  if (animal.fed && !animal.productReady) return null
 
   animal.lastFed = Date.now()
   animal.fed = true
