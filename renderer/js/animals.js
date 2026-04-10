@@ -155,6 +155,129 @@ export function createAnimalMesh (animalType) {
     }
   }
 
+  // ── Per-animal characteristic features ────────────────────────────────────
+  const headFwdZ = -(def.bodyD / 2 + def.headSize * 0.55)
+
+  if (animalType === 'chicken' || animalType === 'duck') {
+    // Beak: small flat cone pointing forward
+    const beakGeo = new THREE.ConeGeometry(0.045, 0.14, 5)
+    const beakMat = new THREE.MeshStandardMaterial({ color: animalType === 'duck' ? 0xff8c00 : 0xffaa00, roughness: 0.7 })
+    const beak = new THREE.Mesh(beakGeo, beakMat)
+    beak.rotation.x = Math.PI / 2
+    beak.position.set(0, bodyH * 0.85, headFwdZ - def.headSize * 0.9)
+    beak.castShadow = true
+    group.add(beak)
+
+    if (animalType === 'chicken') {
+      // Red comb: two small rounded bumps on top of head
+      const combMat = new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.8, emissive: 0x440000, emissiveIntensity: 0.3 })
+      for (let i = 0; i < 2; i++) {
+        const combGeo = new THREE.SphereGeometry(0.04 - i * 0.01, 6, 5)
+        const comb = new THREE.Mesh(combGeo, combMat)
+        comb.position.set(i * 0.04 - 0.02, bodyH * 0.85 + def.headSize + 0.04, headFwdZ)
+        group.add(comb)
+      }
+    }
+  }
+
+  if (animalType === 'pig') {
+    // Snout: flat disc (cylinder) on nose
+    const snoutGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8)
+    const snoutMat = new THREE.MeshStandardMaterial({ color: 0xff8fa0, roughness: 0.9 })
+    const snout = new THREE.Mesh(snoutGeo, snoutMat)
+    snout.rotation.x = Math.PI / 2
+    snout.position.set(0, bodyH * 0.78, headFwdZ - def.headSize * 0.85)
+    snout.castShadow = true
+    group.add(snout)
+    // Nostrils: two tiny dark spheres on snout face
+    const nostrilMat = new THREE.MeshStandardMaterial({ color: 0xcc4455, roughness: 1 })
+    for (const nx of [-0.03, 0.03]) {
+      const nGeo = new THREE.SphereGeometry(0.02, 5, 4)
+      const n = new THREE.Mesh(nGeo, nostrilMat)
+      n.position.set(nx, bodyH * 0.78, headFwdZ - def.headSize * 0.85 - 0.03)
+      group.add(n)
+    }
+  }
+
+  if (animalType === 'rabbit') {
+    // Long upright ears: two tall thin cylinders with pink inner ear
+    const earMat = new THREE.MeshStandardMaterial({ color: def.headColor, roughness: 0.9 })
+    const innerEarMat = new THREE.MeshStandardMaterial({ color: 0xffb6c1, roughness: 0.95 })
+    for (const ex of [-0.07, 0.07]) {
+      const earGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.38, 5)
+      const ear = new THREE.Mesh(earGeo, earMat)
+      ear.position.set(ex, bodyH * 0.85 + def.headSize + 0.19, headFwdZ)
+      ear.castShadow = true
+      group.add(ear)
+      const innerGeo = new THREE.CylinderGeometry(0.012, 0.016, 0.28, 5)
+      const inner = new THREE.Mesh(innerGeo, innerEarMat)
+      inner.position.set(ex, bodyH * 0.85 + def.headSize + 0.19, headFwdZ - 0.018)
+      group.add(inner)
+    }
+  }
+
+  if (animalType === 'horse' || animalType === 'donkey') {
+    // Mane: elongated sphere along the neck top
+    const maneColor = animalType === 'horse' ? 0x4a2a10 : 0x444444
+    const maneMat = new THREE.MeshStandardMaterial({ color: maneColor, roughness: 0.95 })
+    const maneGeo = new THREE.SphereGeometry(def.headSize * 0.55, 8, 6)
+    const mane = new THREE.Mesh(maneGeo, maneMat)
+    mane.scale.set(0.5, 0.6, 2.2)
+    mane.position.set(0, bodyH * 0.95, headFwdZ * 0.45)
+    mane.castShadow = true
+    group.add(mane)
+    // Tail: small tuft at rear
+    const tailGeo = new THREE.SphereGeometry(def.headSize * 0.35, 6, 5)
+    const tail = new THREE.Mesh(tailGeo, maneMat)
+    tail.scale.set(0.5, 0.9, 1.4)
+    tail.position.set(0, bodyH * 0.7, def.bodyD / 2 + 0.12)
+    group.add(tail)
+  }
+
+  if (animalType === 'cow' || animalType === 'goat') {
+    // Horns: two small cones on head top
+    const hornColor = animalType === 'cow' ? 0xc8a96e : 0xd4b483
+    const hornMat = new THREE.MeshStandardMaterial({ color: hornColor, roughness: 0.7 })
+    for (const hx of [-def.headSize * 0.5, def.headSize * 0.5]) {
+      const hornGeo = new THREE.ConeGeometry(0.025, 0.12, 5)
+      const horn = new THREE.Mesh(hornGeo, hornMat)
+      horn.position.set(hx, bodyH * 0.85 + def.headSize + 0.05, headFwdZ)
+      horn.rotation.z = hx < 0 ? 0.3 : -0.3
+      horn.castShadow = true
+      group.add(horn)
+    }
+  }
+
+  if (animalType === 'sheep') {
+    // Small dark snout protrusion visible through wool
+    const snoutMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 })
+    const snoutGeo = new THREE.SphereGeometry(0.06, 6, 5)
+    const snout = new THREE.Mesh(snoutGeo, snoutMat)
+    snout.scale.set(1, 0.7, 0.8)
+    snout.position.set(0, bodyH * 0.78, headFwdZ - def.headSize * 0.5)
+    group.add(snout)
+  }
+
+  if (animalType === 'llama') {
+    // Pointed ears
+    const earMat = new THREE.MeshStandardMaterial({ color: def.headColor, roughness: 0.9 })
+    for (const ex of [-0.1, 0.1]) {
+      const earGeo = new THREE.CylinderGeometry(0.02, 0.035, 0.2, 5)
+      const ear = new THREE.Mesh(earGeo, earMat)
+      ear.position.set(ex, bodyH * 0.85 + def.headSize + 0.1, headFwdZ)
+      ear.rotation.z = ex < 0 ? 0.2 : -0.2
+      group.add(ear)
+    }
+    // Fluffy elongated neck
+    const neckMat = new THREE.MeshStandardMaterial({ color: def.bodyColor, roughness: 0.98 })
+    const neckGeo = new THREE.SphereGeometry(def.headSize * 0.7, 8, 6)
+    const neck = new THREE.Mesh(neckGeo, neckMat)
+    neck.scale.set(0.6, 2.0, 0.6)
+    neck.position.set(0, bodyH * 0.85, headFwdZ * 0.55)
+    neck.castShadow = true
+    group.add(neck)
+  }
+
   return group
 }
 
