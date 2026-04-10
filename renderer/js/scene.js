@@ -12,6 +12,7 @@ let hemiLight = null
 let resizeObserver = null
 let viewportWidth = 1
 let viewportHeight = 1
+let borderTreeGroups = [] // cached refs for wind sway animation
 
 // Orthographic frustum size (vertical extent in world units)
 let frustumSize = 72
@@ -154,6 +155,7 @@ function initScene (canvasEl) {
 }
 
 function _addBorderTrees (scene) {
+  borderTreeGroups = []
   const treePositions = [
     [-24, -24], [-24, 0], [-24, 24],
     [24, -24], [24, 0], [24, 24],
@@ -192,8 +194,11 @@ function _addBorderTrees (scene) {
     treeGroup.add(canopy)
 
     scene.add(treeGroup)
+    borderTreeGroups.push(treeGroup)
   }
 }
+
+function getBorderTrees () { return borderTreeGroups }
 
 function animate () {
   updateCamera()
@@ -309,5 +314,5 @@ function getCameraOffset () {
 }
 
 // Export to window for non-module scripts and as ES module
-window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset }
-export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset }
+window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees }
+export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees }

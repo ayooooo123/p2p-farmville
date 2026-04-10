@@ -1,5 +1,5 @@
 import * as THREE from './js/three.module.min.js'
-import { initScene, animate as renderScene, initCameraControls, updateCamera, resetCamera } from './js/scene.js'
+import { initScene, animate as renderScene, initCameraControls, updateCamera, resetCamera, getBorderTrees } from './js/scene.js'
 import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop } from './js/crops.js'
 import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, loadPinnedSeeds, pinSeedToSlot, getPinnedSeeds, renderSeedHotbar, CONSUMABLE_DEFINITIONS } from './js/market.js'
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
@@ -2699,12 +2699,42 @@ function updateAnimalProductIndicators () {
 }
 
 // ── Decoration animations (windmill blade rotation) ──────────────────────────
+// ── Water animation helpers ──────────────────────────────────────────────────
+// _waterBaseOpacity: stable base opacity per waterType so we don't fight construction values
+const _WATER_BASE_OPACITY = { fountain: 0.70, pond: 0.70, well: 0.60 }
+
 function updateDecorations (time) {
+  const t = time * 0.001 // seconds
   for (const deco of farmState.decorations) {
     if (!deco.mesh) continue
     deco.mesh.traverse(child => {
       if (child.userData.isWindmillRotor) {
+        // Windmill blades rotate with time
         child.rotation.z = time * 0.0005
+      }
+
+      if (child.userData.isWater && child.material) {
+        const wt = child.userData.waterType
+        const base = _WATER_BASE_OPACITY[wt] ?? 0.65
+
+        // 1. Slow scale pulse — water surface expands/contracts slightly
+        const pulseFreq = wt === 'pond' ? 0.4 : 0.6  // Hz-ish
+        const pulseMag  = wt === 'pond' ? 0.012 : 0.018
+        const s = 1.0 + Math.sin(t * pulseFreq * Math.PI * 2) * pulseMag
+        child.scale.set(s, 1, s)
+
+        // 2. Opacity shimmer — subtle glint
+        const shimmerFreq = wt === 'well' ? 0.8 : 1.1
+        const shimmerMag  = 0.08
+        child.material.opacity = base + Math.sin(t * shimmerFreq * Math.PI * 2 + 1.3) * shimmerMag
+
+        // 3. Color temperature drift — cool to bright blue and back
+        //    hue stays steel-blue, lightness drifts slightly
+        const drift = (Math.sin(t * 0.25 * Math.PI * 2) + 1) * 0.5  // 0..1
+        const r = 0x46 / 255 + drift * 0.04
+        const g = 0x82 / 255 + drift * 0.06
+        const b = 0xb4 / 255 + drift * 0.08
+        child.material.color.setRGB(Math.min(1, r), Math.min(1, g), Math.min(1, b))
       }
     })
   }
