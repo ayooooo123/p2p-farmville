@@ -101,7 +101,7 @@ const HAS_CHIMNEY = new Set(['barn', 'bakery', 'winery', 'kitchen'])
  * winW/winH = window size, zOffset = how far from wall center along Z (or X).
  * axis = 'z' for front/back walls, 'x' for side walls.
  */
-function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, glowDef) {
+function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, glowDef, panesArray) {
   const thk = 0.13  // protrusion thickness
   // Frame (slightly larger, dark wood)
   const frameW = winW + 0.12
@@ -126,6 +126,9 @@ function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, glowDef) {
     opacity: 0.88
   })
   const pane = new THREE.Mesh(paneGeo, paneMat)
+  pane.userData.isWindowPane = true
+  pane.userData.baseEmissiveIntensity = glowDef.emissiveIntensity
+  if (Array.isArray(panesArray)) panesArray.push(pane)
 
   const winGroup = new THREE.Group()
   winGroup.add(frame)
@@ -151,6 +154,7 @@ export function createBuildingMesh (buildingType) {
   const group = new THREE.Group()
   group.userData.objectType = 'building'
   group.userData.buildingType = buildingType
+  group.userData.windowPanes = []
 
   const w = def.width
   const d = def.depth
@@ -235,26 +239,26 @@ export function createBuildingMesh (buildingType) {
   if (buildingType !== 'greenhouse') {
     // Front face windows (flanking the door, +Z side)
     const frontZ = d / 2 + 0.07
+    const wp = group.userData.windowPanes
     if (w >= 4) {
       // Two front windows symmetrically placed
       const offset = w * 0.28
-      group.add(_makeWindow(winW, winH, winY, -offset, frontZ, 'z', glowDef))
-      group.add(_makeWindow(winW, winH, winY,  offset, frontZ, 'z', glowDef))
+      group.add(_makeWindow(winW, winH, winY, -offset, frontZ, 'z', glowDef, wp))
+      group.add(_makeWindow(winW, winH, winY,  offset, frontZ, 'z', glowDef, wp))
     } else {
       // Narrow building: one small front window
-      group.add(_makeWindow(winW * 0.85, winH * 0.85, winY, 0, frontZ, 'z', glowDef))
+      group.add(_makeWindow(winW * 0.85, winH * 0.85, winY, 0, frontZ, 'z', glowDef, wp))
     }
 
     // Back face windows (-Z side)
     const backZ = -(d / 2 + 0.07)
-    group.add(_makeWindow(winW, winH, winY, 0, backZ, 'z', glowDef))
+    group.add(_makeWindow(winW, winH, winY, 0, backZ, 'z', glowDef, wp))
 
     // Side windows (+X / -X faces)
     const sideWinW = Math.min(d * 0.2, 0.75)
     if (d >= 4) {
-      const sideZ = 0  // center of depth
-      group.add(_makeWindow(sideWinW, winH, winY, 0, w / 2 + 0.07, 'x', glowDef))
-      group.add(_makeWindow(sideWinW, winH, winY, 0, -(w / 2 + 0.07), 'x', glowDef))
+      group.add(_makeWindow(sideWinW, winH, winY, 0, w / 2 + 0.07, 'x', glowDef, wp))
+      group.add(_makeWindow(sideWinW, winH, winY, 0, -(w / 2 + 0.07), 'x', glowDef, wp))
     }
   }
 

@@ -11,6 +11,8 @@ const WORLD_HALF_D = 50 // slightly beyond farm depth
 let playerMesh = null
 let playerBody = null   // cylinder body ref for bob
 let playerHead = null   // sphere head ref for bob
+let leftLegPivot = null   // Group pivot at hip for left leg swing
+let rightLegPivot = null  // Group pivot at hip for right leg swing
 let dirIndicator = null
 let bobTime = 0
 const keys = { w: false, a: false, s: false, d: false }
@@ -37,19 +39,28 @@ function initPlayer (scene) {
   group.add(body)
   playerBody = body
 
-  // Legs: two small cylinders below body
+  // Legs: two small cylinders below body, wrapped in pivot groups for swing animation
+  // Each pivot sits at hip height (y=0.30); the mesh is offset -0.15 so it hangs down from the pivot.
   const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.3, 8)
   const legMat = new THREE.MeshStandardMaterial({ color: 0x1565c0 })
 
-  const leftLeg = new THREE.Mesh(legGeo, legMat)
-  leftLeg.position.set(-0.14, 0.15, 0)
-  leftLeg.castShadow = true
-  group.add(leftLeg)
+  const leftLegPivotGroup = new THREE.Group()
+  leftLegPivotGroup.position.set(-0.14, 0.30, 0)
+  const leftLegMesh = new THREE.Mesh(legGeo, legMat)
+  leftLegMesh.position.set(0, -0.15, 0)
+  leftLegMesh.castShadow = true
+  leftLegPivotGroup.add(leftLegMesh)
+  group.add(leftLegPivotGroup)
+  leftLegPivot = leftLegPivotGroup
 
-  const rightLeg = new THREE.Mesh(legGeo, legMat)
-  rightLeg.position.set(0.14, 0.15, 0)
-  rightLeg.castShadow = true
-  group.add(rightLeg)
+  const rightLegPivotGroup = new THREE.Group()
+  rightLegPivotGroup.position.set(0.14, 0.30, 0)
+  const rightLegMesh = new THREE.Mesh(legGeo, legMat)
+  rightLegMesh.position.set(0, -0.15, 0)
+  rightLegMesh.castShadow = true
+  rightLegPivotGroup.add(rightLegMesh)
+  group.add(rightLegPivotGroup)
+  rightLegPivot = rightLegPivotGroup
 
   // Head: sphere (skin tone)
   const headGeo = new THREE.SphereGeometry(0.28, 12, 10)
@@ -140,12 +151,23 @@ function updatePlayer (dt) {
     playerMesh.position.y = bobY
     // Slight lean in movement direction (roll)
     playerMesh.rotation.z = Math.sin(bobTime) * 0.06
+    // Leg swing: alternating fore/aft rotation on X, out of phase by π
+    const LEG_SWING = 0.55  // max swing angle in radians (~31°)
+    if (leftLegPivot && rightLegPivot) {
+      leftLegPivot.rotation.x  =  Math.sin(bobTime) * LEG_SWING
+      rightLegPivot.rotation.x = -Math.sin(bobTime) * LEG_SWING
+    }
   } else {
-    // Idle: slow gentle float
+    // Idle: slow gentle float, legs return to neutral
     bobTime += dt * 1.5
     const idleY = Math.sin(bobTime) * 0.03
     playerMesh.position.y = idleY
     playerMesh.rotation.z = 0
+    // Smoothly reset legs to neutral when idle
+    if (leftLegPivot && rightLegPivot) {
+      leftLegPivot.rotation.x  *= 0.85
+      rightLegPivot.rotation.x *= 0.85
+    }
   }
 
   // Check if player has crossed farm boundary

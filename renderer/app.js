@@ -20,7 +20,7 @@ import { QuestSystem } from './js/quests.js'
 import { openAlmanac, closeAlmanac, isAlmanacOpen } from './js/almanac.js'
 import { SoundSystem } from './js/sounds.js'
 import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
-import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon } from './js/daynight.js'
+import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon, getTimeOfDay } from './js/daynight.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -1122,6 +1122,8 @@ function confirmPlacement () {
       sceneData.scene.add(mesh)
       data.mesh = mesh
       farmState.buildings.push(data)
+      // Apply correct window glow for current time of day immediately
+      applyWindowGlow()
       // Update building effects
       const effects = getBuildingEffects(farmState.buildings)
       setCapacityBonus(effects.storageBonus)
@@ -2731,6 +2733,40 @@ function updateAnimals (dtMs) {
   }
 }
 
+// ── Building window night glow ───────────────────────────────────────────────
+// nightFactor: 0 = full day (noon), 1 = full night. Uses a cosine curve so
+// windows ramp up smoothly at dusk and ramp down at dawn.
+let _lastWindowGlowMs = 0
+
+function _nightFactorFromTime (t) {
+  // t is 0..1 fraction of a full day cycle where 0.33 = noon (sun angle π/2)
+  // We want nightFactor=0 at noon (t≈0.33) and nightFactor=1 at midnight (t≈0.83).
+  // Map to sun elevation angle: sunAngle = t*2π - π/2 (matches daynight.js)
+  const sunAngle = t * Math.PI * 2 - Math.PI / 2
+  const elevation = Math.sin(sunAngle) // 1 at noon, -1 at midnight
+  return Math.max(0, Math.min(1, (1 - elevation) / 2)) // 0 at noon, 1 at midnight
+}
+
+function applyWindowGlow () {
+  const nightFactor = _nightFactorFromTime(getTimeOfDay())
+  for (const building of farmState.buildings) {
+    const panes = building.mesh && building.mesh.userData.windowPanes
+    if (!Array.isArray(panes)) continue
+    for (const pane of panes) {
+      if (!pane.isMesh || !pane.userData.isWindowPane) continue
+      if (Array.isArray(pane.material)) continue
+      pane.material.emissiveIntensity = pane.userData.baseEmissiveIntensity * nightFactor
+    }
+  }
+}
+
+function updateWindowGlow (dtMs) {
+  _lastWindowGlowMs += dtMs
+  if (_lastWindowGlowMs < 200) return
+  _lastWindowGlowMs = 0
+  applyWindowGlow()
+}
+
 // ── Building crafting update ─────────────────────────────────────────────────
 function updateBuildings (dtMs) {
   for (const building of farmState.buildings) {
@@ -3041,6 +3077,7 @@ function gameLoop (time) {
   updateAnimals(dtMs)
   updateAnimalProductIndicators()
   updateBuildings(dtMs)
+  updateWindowGlow(dtMs)
   updateDecorations(time)
   updateParticles(dtMs)
   _updateFireflies(dtMs)
@@ -3428,6 +3465,8 @@ function loadGame () {
         data.craftQueue = b.craftQueue || []
         farmState.buildings.push(data)
       }
+      // Apply window glow for the current time of day immediately after load
+      applyWindowGlow()
       const effects = getBuildingEffects(farmState.buildings)
       setCapacityBonus(effects.storageBonus)
     }
