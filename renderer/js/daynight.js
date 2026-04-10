@@ -26,7 +26,8 @@ const PHASE_CONFIGS = {
     skyColor: new THREE.Color(0xff7744),
     fogColor: new THREE.Color(0xff8855),
     hemiSky: new THREE.Color(0xff8855),
-    hemiGround: new THREE.Color(0x443322)
+    hemiGround: new THREE.Color(0x443322),
+    hemiIntensity: 0.55
   },
   morning: {
     sunColor: new THREE.Color(0xffeebb),
@@ -36,7 +37,8 @@ const PHASE_CONFIGS = {
     skyColor: new THREE.Color(0x87ceeb),
     fogColor: new THREE.Color(0x87ceeb),
     hemiSky: new THREE.Color(0x87ceeb),
-    hemiGround: new THREE.Color(0x556b2f)
+    hemiGround: new THREE.Color(0x556b2f),
+    hemiIntensity: 1.0
   },
   noon: {
     sunColor: new THREE.Color(0xffffff),
@@ -46,7 +48,8 @@ const PHASE_CONFIGS = {
     skyColor: new THREE.Color(0x87ceeb),
     fogColor: new THREE.Color(0x87ceeb),
     hemiSky: new THREE.Color(0x87ceeb),
-    hemiGround: new THREE.Color(0x556b2f)
+    hemiGround: new THREE.Color(0x556b2f),
+    hemiIntensity: 1.4
   },
   afternoon: {
     sunColor: new THREE.Color(0xffeedd),
@@ -56,7 +59,8 @@ const PHASE_CONFIGS = {
     skyColor: new THREE.Color(0x7ab8d8),
     fogColor: new THREE.Color(0x7ab8d8),
     hemiSky: new THREE.Color(0x7ab8d8),
-    hemiGround: new THREE.Color(0x556b2f)
+    hemiGround: new THREE.Color(0x556b2f),
+    hemiIntensity: 1.1
   },
   dusk: {
     sunColor: new THREE.Color(0xdd6644),
@@ -66,7 +70,8 @@ const PHASE_CONFIGS = {
     skyColor: new THREE.Color(0x884466),
     fogColor: new THREE.Color(0x775566),
     hemiSky: new THREE.Color(0x884466),
-    hemiGround: new THREE.Color(0x332244)
+    hemiGround: new THREE.Color(0x332244),
+    hemiIntensity: 0.45
   },
   night: {
     sunColor: new THREE.Color(0x334466),
@@ -76,7 +81,8 @@ const PHASE_CONFIGS = {
     skyColor: new THREE.Color(0x0a0a1a),
     fogColor: new THREE.Color(0x0a0a1a),
     hemiSky: new THREE.Color(0x111133),
-    hemiGround: new THREE.Color(0x050510)
+    hemiGround: new THREE.Color(0x050510),
+    hemiIntensity: 0.12
   }
 }
 
@@ -272,10 +278,11 @@ function updateDayNight (dtMs) {
     ambientLight.intensity = _lerp(current.ambientIntensity, next.ambientIntensity, t)
   }
 
-  // Update hemisphere light
+  // Update hemisphere light — color temperature + intensity follow day/night arc
   if (hemiLight) {
     hemiLight.color.copy(_lerpColor(current.hemiSky, next.hemiSky, t))
     hemiLight.groundColor.copy(_lerpColor(current.hemiGround, next.hemiGround, t))
+    hemiLight.intensity = _lerp(current.hemiIntensity, next.hemiIntensity, t)
   }
 
   // Update sky/fog
