@@ -121,6 +121,8 @@ export function createTreeMesh (treeType, mature, growthScale) {
       cone.receiveShadow = true
       cone.userData.isFarmCanopy = true
       cone.userData.canopyRadius = coneR
+      cone.userData.baseColor = def.canopyColor
+      cone.userData.isPine = true
       group.add(cone)
     }
   } else {
@@ -137,6 +139,8 @@ export function createTreeMesh (treeType, mature, growthScale) {
     canopy.receiveShadow = true
     canopy.userData.isFarmCanopy = true
     canopy.userData.canopyRadius = canopyR
+    canopy.userData.baseColor = def.canopyColor
+    canopy.userData.isPine = false
     group.add(canopy)
 
     // Fruit dots as small spheres embedded in the canopy (only on mature trees)
@@ -240,4 +244,44 @@ export function harvestTree (tree) {
   }
 }
 
-window.TreeSystem = { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree }
+// ── Seasonal canopy color shift ───────────────────────────────────────────────
+// Scratch THREE.Color instances — no per-call allocation.
+const _sc_base   = new THREE.Color()
+const _sc_target = new THREE.Color()
+
+const CANOPY_SEASON_TARGETS = {
+  spring: { deciduous: { hex: 0x4ccf30, t: 0.30 }, pine: null },
+  summer: { deciduous: null,                         pine: null },
+  autumn: { deciduous: { hex: 0xd4780a, t: 0.72 }, pine: null },
+  winter: { deciduous: { hex: 0x8a7a6a, t: 0.80 }, pine: { hex: 0xccddcc, t: 0.15 } }
+}
+
+/**
+ * Update canopy material colors on all placed trees to match the given season.
+ * Called only on season change — zero per-frame cost.
+ * @param {Array} placedTrees — array of tree data objects with a .mesh property
+ * @param {string} season — 'spring' | 'summer' | 'autumn' | 'winter'
+ */
+export function setFarmTreeSeasonColors (placedTrees, season) {
+  const seasonDef = CANOPY_SEASON_TARGETS[season]
+  if (!seasonDef) return
+
+  for (const tree of placedTrees) {
+    if (!tree.mesh) continue
+    tree.mesh.traverse((child) => {
+      if (!child.isMesh || !child.userData.isFarmCanopy) return
+      const isPine = child.userData.isPine
+      const blend  = isPine ? seasonDef.pine : seasonDef.deciduous
+      _sc_base.set(child.userData.baseColor)
+      if (!blend) {
+        // summer (no shift) or spring/autumn pine: restore base color
+        child.material.color.copy(_sc_base)
+      } else {
+        _sc_target.set(blend.hex)
+        child.material.color.copy(_sc_base).lerp(_sc_target, blend.t)
+      }
+    })
+  }
+}
+
+window.TreeSystem = { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree, setFarmTreeSeasonColors }

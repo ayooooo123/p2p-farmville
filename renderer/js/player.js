@@ -283,11 +283,14 @@ function isOnOwnFarm () {
   return Math.abs(playerPos.x) <= FARM_HALF_W && Math.abs(playerPos.z) <= FARM_HALF_D
 }
 
+function isPlayerMoving () { return isMoving }
+
 window.PlayerController = {
   initPlayer,
   updatePlayer,
   updateCamera,
   getPlayerPos,
+  isPlayerMoving,
   isVisiting,
   getVisitingInfo,
   setVisitingNeighbor,

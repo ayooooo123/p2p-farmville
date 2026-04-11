@@ -143,6 +143,21 @@ const EFFECT_CONFIGS = {
     gravity: -0.4,           // negative = rises upward
     direction: { x: 0, y: 1, z: 0 },
     fadeOut: true
+  },
+  footstep: {
+    // Tiny dust puff spawned at player feet while walking.
+    // Low count + short lifetime keeps GPU pressure negligible.
+    count: 4,
+    color: 0xc8a87a,
+    colorPalette: [0xc8a87a, 0xb89860, 0xd4b488, 0xa88858, 0xc0b080],
+    size: 0.10,
+    speed: 0.9,
+    spread: 0.5,
+    lifetime: 380,
+    gravity: -0.6,           // slight upward drift (negative = rises)
+    direction: { x: 0, y: 0.5, z: 0 },
+    fadeOut: true,
+    radialBurst: true        // spread outward in XZ — reads cleanly top-down
   }
 }
 
@@ -356,9 +371,19 @@ function dispose () {
   }
 }
 
+/**
+ * Convenience wrapper — spawn a footstep dust puff at the given XZ position.
+ * Caller is responsible for throttling (recommended: every 150-200 ms while moving).
+ * @param {{ x: number, y: number, z: number }} position  World-space position (player feet)
+ */
+function createFootstepDust (position) {
+  createParticleEffect('footstep', position)
+}
+
 export {
   initParticles,
   createParticleEffect,
+  createFootstepDust,
   updateParticles,
   getActiveEffectCount,
   dispose

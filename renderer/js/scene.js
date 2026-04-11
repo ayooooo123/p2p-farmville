@@ -199,6 +199,7 @@ function _addBorderTrees (scene) {
     canopy.receiveShadow = true
     canopy.userData.isBorderCanopy = true
     canopy.userData.canopyRadius = canopyR
+    canopy.userData.baseColor = canopyColor
     treeGroup.add(canopy)
 
     // Per-tree phase offset for independent wind sway (based on world position)
@@ -324,6 +325,38 @@ function getCameraOffset () {
   return { x: camera.position.x, z: camera.position.z }
 }
 
+// ── Seasonal border-tree canopy color shift ───────────────────────────────────
+const _bt_base   = new THREE.Color()
+const _bt_target = new THREE.Color()
+
+const BORDER_CANOPY_SEASON = {
+  spring: { hex: 0x4ccf30, t: 0.30 },
+  summer: null,
+  autumn: { hex: 0xd4780a, t: 0.72 },
+  winter: { hex: 0x8a7a6a, t: 0.80 }
+}
+
+/**
+ * Shift border tree canopy colors to match the current season.
+ * Zero per-frame cost — only called when season changes.
+ * @param {string} season — 'spring' | 'summer' | 'autumn' | 'winter'
+ */
+function setBorderTreeSeasonColors (season) {
+  const blend = BORDER_CANOPY_SEASON[season]
+  for (const treeGroup of borderTreeGroups) {
+    treeGroup.traverse((child) => {
+      if (!child.isMesh || !child.userData.isBorderCanopy) return
+      _bt_base.set(child.userData.baseColor)
+      if (!blend) {
+        child.material.color.copy(_bt_base)
+      } else {
+        _bt_target.set(blend.hex)
+        child.material.color.copy(_bt_base).lerp(_bt_target, blend.t)
+      }
+    })
+  }
+}
+
 // Export to window for non-module scripts and as ES module
-window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees }
-export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees }
+window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees, setBorderTreeSeasonColors }
+export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees, setBorderTreeSeasonColors }

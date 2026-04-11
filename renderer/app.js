@@ -13,7 +13,7 @@ import { initMastery, recordHarvest, getMasteryData, getMasteryStars, getMastery
 import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel, isSetComplete, getCompletedSetsCount, getTotalItemsFound, COLLECTION_DEFINITIONS } from './js/collections.js'
 import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
-import { initParticles, createParticleEffect, updateParticles } from './js/particles.js'
+import { initParticles, createParticleEffect, createFootstepDust, updateParticles } from './js/particles.js'
 import { FarmActions } from './js/farm-actions.js'
 import { showToast } from './js/toasts.js'
 import { QuestSystem } from './js/quests.js'
@@ -440,6 +440,8 @@ function updateSeasonIfChanged () {
   const season = getSeasonFromDate()
   if (terrainData && terrainData.getCurrentSeason() !== season) {
     terrainData.setSeasonColors(season)
+    SceneManager.setBorderTreeSeasonColors(season)
+    TreeSystem.setFarmTreeSeasonColors(gameState.trees || [], season)
     showToast(SEASON_INFO[season].label + ' has arrived!', 'level',
       season === 'spring' ? 'Flowers bloom across the farm' :
       season === 'summer' ? 'Long sunny days ahead' :
@@ -2514,6 +2516,13 @@ function animateReadyCrops (time) {
 let _windDriftAngle = 0   // accumulated wind direction offset (radians)
 let _windGustPhase  = 0   // drives irregular gust amplitude during storms
 
+// ── Footstep dust throttle ───────────────────────────────────────────────────
+// Emit a dust puff every FOOTSTEP_INTERVAL_MS while the player is moving.
+// Keeping this at ~180 ms means 5-6 puffs/s — enough for a continuous trail
+// without overwhelming the particle pool (4 particles × 6/s = 24 active max).
+const FOOTSTEP_INTERVAL_MS = 180
+let _footstepTimer = 0   // ms since last footstep puff
+
 const WEATHER_WIND = {
   clear:  { str: 0.6,  freq: 0.0012, treeStr: 0.6  },
   cloudy: { str: 0.85, freq: 0.0014, treeStr: 0.85 },
@@ -3299,6 +3308,18 @@ function gameLoop (time) {
   window.PlayerController.updatePlayer(clampedDt)
   window.PlayerController.updateCamera(sceneData.camera)
   updateCamera()
+
+  // Footstep dust: emit a tiny dust puff at player feet while walking
+  if (window.PlayerController.isPlayerMoving && window.PlayerController.isPlayerMoving()) {
+    _footstepTimer += dtMs
+    if (_footstepTimer >= FOOTSTEP_INTERVAL_MS) {
+      _footstepTimer = 0
+      const fpos = window.PlayerController.getPlayerPos()
+      createFootstepDust({ x: fpos.x, y: 0.05, z: fpos.z })
+    }
+  } else {
+    _footstepTimer = FOOTSTEP_INTERVAL_MS // reset so next step fires immediately
+  }
 
   // Update systems
   updateWeather(dtMs, sceneData.sunLight)
