@@ -80,6 +80,8 @@ export function createTreeMesh (treeType, mature, growthScale) {
   const group = new THREE.Group()
   group.userData.objectType = 'tree'
   group.userData.treeType = treeType
+  // Per-tree random phase offset so placed trees sway independently in the wind
+  group.userData.windPhase = Math.random() * Math.PI * 2
 
   const canopyR = def.canopySize * scale
   const trunkH = 1.2 * scale
@@ -96,6 +98,8 @@ export function createTreeMesh (treeType, mature, growthScale) {
   trunk.position.y = trunkH / 2
   trunk.castShadow = true
   trunk.receiveShadow = true
+  trunk.userData.isFarmTrunk = true
+  trunk.userData.trunkHeight = trunkH
   group.add(trunk)
 
   if (def.isPine) {
@@ -115,6 +119,8 @@ export function createTreeMesh (treeType, mature, growthScale) {
       cone.position.y = trunkH + (i * coneH * 0.55)
       cone.castShadow = true
       cone.receiveShadow = true
+      cone.userData.isFarmCanopy = true
+      cone.userData.canopyRadius = coneR
       group.add(cone)
     }
   } else {
@@ -129,6 +135,8 @@ export function createTreeMesh (treeType, mature, growthScale) {
     canopy.position.y = trunkH + canopyR * 0.65
     canopy.castShadow = true
     canopy.receiveShadow = true
+    canopy.userData.isFarmCanopy = true
+    canopy.userData.canopyRadius = canopyR
     group.add(canopy)
 
     // Fruit dots as small spheres embedded in the canopy (only on mature trees)

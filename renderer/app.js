@@ -2633,6 +2633,58 @@ function animateBorderTreeWind (time) {
   }
 }
 
+// ── Farm-placed tree wind sway animation ─────────────────────────────────────
+// Applies the same physics-accurate wind sway to trees placed on the farm by
+// the player. Matches the visual language of border tree sway: trunk gets a
+// gentler rotation than the canopy, and both axes are modulated so the tree
+// sways in a figure-eight pattern rather than a simple pendulum.
+// Each tree group carries a unique userData.windPhase set at mesh creation time
+// so adjacent trees don't wave in lockstep.
+function animateFarmTreeWind (time) {
+  if (!farmState || !farmState.trees || farmState.trees.length === 0) return
+
+  const wp = _getWindParams()
+  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+
+  // Same frequency ratio as border trees (heavier/slower than crops)
+  const WIND_FREQ  = 0.0009 * wp.freq / 0.0014
+  const TRUNK_STR  = 0.020  * wp.treeStr    // slightly tighter than border trees (smaller grid trees)
+  const CANOPY_STR = 0.048  * wp.treeStr    // canopy sways more visibly
+  const CANOPY_SCL = 0.010  * wp.treeStr    // scale per unit of canopy radius
+
+  // Stormy gust envelope (reuses _windGustPhase from animateCropWind)
+  const gustEnvelope = weather === 'stormy'
+    ? 1.0 + 0.35 * Math.sin(_windGustPhase * 0.73 + time * 0.00035)
+    : 1.0
+
+  // Reuse the same drift trig as border trees for a unified wind direction
+  const treeSinDrift = Math.sin(_windDriftAngle)
+  const treeCosDrift = Math.cos(_windDriftAngle)
+
+  for (const tree of farmState.trees) {
+    if (!tree.mesh) continue
+
+    const phase = tree.mesh.userData.windPhase || 0
+    const swayBase = Math.sin(time * WIND_FREQ + phase)
+    const swayOrth = Math.cos(time * WIND_FREQ * 0.73 + phase)
+
+    const swayZ = (swayBase * treeCosDrift + swayOrth * treeSinDrift) * gustEnvelope
+    const swayX = (swayBase * treeSinDrift - swayOrth * treeCosDrift) * gustEnvelope
+
+    tree.mesh.traverse(child => {
+      if (child.userData.isFarmTrunk) {
+        child.rotation.z = swayZ * TRUNK_STR
+        child.rotation.x = swayX * TRUNK_STR * 0.5
+      } else if (child.userData.isFarmCanopy) {
+        const r = child.userData.canopyRadius || 1.0
+        const amp = CANOPY_STR + r * CANOPY_SCL
+        child.rotation.z = swayZ * amp
+        child.rotation.x = swayX * amp * 0.55
+      }
+    })
+  }
+}
+
 // ── Crop timer labels (world-to-screen DOM overlay) ──────────────────────────
 // Map from 'row,col' -> div element
 const _cropTimerEls = new Map()
@@ -3256,6 +3308,7 @@ function gameLoop (time) {
   animateReadyCrops(time)
   animateCropWind(time)
   animateBorderTreeWind(time)
+  animateFarmTreeWind(time)
   updateCropTimers(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
