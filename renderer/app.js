@@ -2501,23 +2501,81 @@ function animateReadyCrops (time) {
   }
 }
 
+// ── Weather-responsive wind system ───────────────────────────────────────────
+// Wind strength and frequency scale with current weather:
+//   clear   → gentle breeze  (0.6×)
+//   cloudy  → light wind     (0.85×)
+//   rainy   → moderate wind  (1.3×)
+//   stormy  → strong gusts   (2.6×) + direction drift + turbulence
+//   snowy   → calm drift     (0.45×)
+//
+// windDriftAngle accumulates slowly during stormy weather, rotating the dominant
+// wind direction so gusts shift across the farm realistically.
+let _windDriftAngle = 0   // accumulated wind direction offset (radians)
+let _windGustPhase  = 0   // drives irregular gust amplitude during storms
+
+const WEATHER_WIND = {
+  clear:  { str: 0.6,  freq: 0.0012, treeStr: 0.6  },
+  cloudy: { str: 0.85, freq: 0.0014, treeStr: 0.85 },
+  rainy:  { str: 1.3,  freq: 0.0018, treeStr: 1.3  },
+  stormy: { str: 2.6,  freq: 0.0028, treeStr: 2.5  },
+  snowy:  { str: 0.45, freq: 0.0008, treeStr: 0.40 }
+}
+
+function _getWindParams () {
+  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+  return WEATHER_WIND[weather] || WEATHER_WIND.clear
+}
+
 // ── Crop wind sway animation ─────────────────────────────────────────────────
 // Applies a gentle per-stem rotation each frame using per-plot phase offsets
 // so crops wave independently rather than in lockstep.
+// Wind strength and frequency now scale with current weather conditions.
 function animateCropWind (time) {
   if (!terrainData) return
-  const WIND_FREQ = 0.0014     // oscillations per ms
-  const WIND_STR  = 0.18       // max rotation (radians) per unit of stem height
+
+  const wp = _getWindParams()
+  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+
+  // Base wind parameters scaled by weather
+  const WIND_FREQ = wp.freq                         // weather-scaled frequency
+  const WIND_STR  = 0.18   * wp.str                // weather-scaled amplitude
+
+  // Stormy-only: drift the wind direction and add irregular gusts
+  if (weather === 'stormy') {
+    _windDriftAngle = (_windDriftAngle + 0.000035) % (Math.PI * 2)  // slow direction rotation
+    _windGustPhase  = (_windGustPhase  + 0.000031) % (Math.PI * 2)  // irregular gust cycle
+  } else {
+    // Gently decay drift in non-stormy conditions
+    _windDriftAngle *= 0.9998
+    _windGustPhase  *= 0.9995
+  }
+
+  // Gust envelope: in stormy weather adds ±40% amplitude variation
+  const gustEnvelope = weather === 'stormy'
+    ? 1.0 + 0.4 * Math.sin(_windGustPhase + time * 0.00041)
+    : 1.0
+
+  // Hoist drift trig outside the per-plot loop — same values for all stems this frame
+  const sinDrift = Math.sin(_windDriftAngle)
+  const cosDrift = Math.cos(_windDriftAngle)
+
   const allPlots = terrainData.getAllPlots()
   for (const plot of allPlots) {
     if (!plot.cropMesh || !plot.crop || plot.crop.withered) continue
     if (plot.crop.stage === 0) continue  // seeds stay flush with soil
+
     const phase = plot.x * 1.31 + plot.z * 0.97
+    const swayBase = Math.sin(time * WIND_FREQ + phase)
+    const swayOrth = Math.cos(time * WIND_FREQ * 0.71 + phase) * 0.45
+
     plot.cropMesh.traverse(child => {
       if (!child.userData.isStem) return
-      const amp = child.userData.stemHeight * WIND_STR
-      child.rotation.z = Math.sin(time * WIND_FREQ + phase) * amp
-      child.rotation.x = Math.cos(time * WIND_FREQ * 0.71 + phase) * amp * 0.45
+      const amp = child.userData.stemHeight * WIND_STR * gustEnvelope
+
+      // Apply wind direction drift: rotate the sway axes by the drift angle
+      child.rotation.z = (swayBase * cosDrift + swayOrth * sinDrift) * amp
+      child.rotation.x = (swayBase * sinDrift - swayOrth * cosDrift) * amp
     })
   }
 }
@@ -2527,20 +2585,39 @@ function animateCropWind (time) {
 // around the farm perimeter. Each tree has a unique windPhase so they wave
 // independently. Frequency is slower than crop sway (bigger/heavier trees).
 // Amplitude: trunk gets half the sway, canopy gets full sway scaled by radius.
+// Wind strength scales with current weather (stormy = dramatic swaying).
 let _borderTrees = null  // cached once on first call
 function animateBorderTreeWind (time) {
   if (!_borderTrees) _borderTrees = getBorderTrees()
   if (!_borderTrees || _borderTrees.length === 0) return
 
-  const WIND_FREQ   = 0.0009   // slower than crop freq (0.0014) — big trees move ponderous
-  const TRUNK_STR   = 0.022    // max trunk rotation in radians (subtle)
-  const CANOPY_STR  = 0.055    // canopy sways more than trunk
-  const CANOPY_SCL  = 0.012    // extra scale per unit of canopy radius
+  const wp = _getWindParams()
+  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+
+  // Trees sway at 64% of crop frequency (ponderous mass)
+  const WIND_FREQ  = 0.0009 * wp.freq / 0.0014
+  const TRUNK_STR  = 0.022  * wp.treeStr    // max trunk rotation in radians
+  const CANOPY_STR = 0.055  * wp.treeStr    // canopy sways more than trunk
+  const CANOPY_SCL = 0.012  * wp.treeStr    // extra scale per unit of canopy radius
+
+  // Stormy: use the same gust envelope from crop wind
+  const gustEnvelope = weather === 'stormy'
+    ? 1.0 + 0.35 * Math.sin(_windGustPhase * 0.73 + time * 0.00035)
+    : 1.0
+
+  // Hoist drift trig — same for every tree this frame
+  const treeSinDrift = Math.sin(_windDriftAngle)
+  const treeCosDrift = Math.cos(_windDriftAngle)
 
   for (const treeGroup of _borderTrees) {
     const phase = treeGroup.userData.windPhase || 0
-    const swayZ = Math.sin(time * WIND_FREQ + phase)
-    const swayX = Math.cos(time * WIND_FREQ * 0.73 + phase)
+
+    // Apply drift angle to tree sway for consistency with crop wind
+    const swayBase = Math.sin(time * WIND_FREQ + phase)
+    const swayOrth = Math.cos(time * WIND_FREQ * 0.73 + phase)
+
+    const swayZ = (swayBase * treeCosDrift + swayOrth * treeSinDrift) * gustEnvelope
+    const swayX = (swayBase * treeSinDrift - swayOrth * treeCosDrift) * gustEnvelope
 
     for (const child of treeGroup.children) {
       if (child.userData.isBorderTrunk) {
