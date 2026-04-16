@@ -54,6 +54,12 @@ let clouds = []
 // Lightning
 let lastLightningTime = 0
 
+// Puddle system
+const MAX_PUDDLES = 12
+let puddleGroup  = null
+let puddleMeshes = []
+let puddleMat    = null  // shared material — one opacity write per frame
+
 // Auto-water callback
 let autoWaterCallback = null
 
@@ -68,6 +74,7 @@ function initWeather (sceneRef, options) {
 
   _createRainSystem()
   _createCloudSystem()
+  _createPuddleSystem()
 }
 
 function _randomInterval () {
@@ -189,6 +196,76 @@ function _updateRain (dtMs) {
     rainMesh.setMatrixAt(i, _iMat)
   }
   rainMesh.instanceMatrix.needsUpdate = true
+}
+
+// ── Puddle System ────────────────────────────────────────────────────────────
+
+function _createPuddleSystem () {
+  if (puddleGroup) return  // idempotent — don't double-create on re-init
+
+  puddleGroup = new THREE.Group()
+  puddleGroup.visible = false
+
+  // Shared material — opacity is uniform across all puddles, updated once per frame.
+  // MeshStandardMaterial gives a lit specular "wet" look from the scene's directional light.
+  puddleMat = new THREE.MeshStandardMaterial({
+    color: 0x6f9fbb,
+    roughness: 0.2,
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    fog: false
+  })
+
+  // One base unit-radius geometry; per-puddle size is set via mesh.scale
+  const baseGeo = new THREE.CircleGeometry(1, 10)
+
+  for (let i = 0; i < MAX_PUDDLES; i++) {
+    const r = 0.7 + Math.random() * 0.7              // 0.7–1.4 world units (base scale)
+    const mesh = new THREE.Mesh(baseGeo, puddleMat)
+    mesh.rotation.x = -Math.PI / 2                   // flat on XZ plane, face up
+    mesh.position.set(
+      (Math.random() - 0.5) * 44,                    // ±22 — covers farm + perimeter
+      0.025,                                          // above plots (0.01), below grid lines (0.03)
+      (Math.random() - 0.5) * 44
+    )
+    mesh.scale.set(r, 1.0, r)                        // base radius baked into scale
+    mesh.renderOrder = 1                              // draw after opaque terrain
+    mesh.raycast = () => {}                           // never intercept plot clicks
+    mesh.userData.baseScale = r
+    mesh.userData.phase = Math.random() * Math.PI * 2
+    puddleGroup.add(mesh)
+    puddleMeshes.push(mesh)
+  }
+
+  if (scene) scene.add(puddleGroup)
+}
+
+function _updatePuddles (dtMs) {
+  if (!puddleMat || !puddleGroup) return
+
+  const isWet = currentWeather === 'rainy' || currentWeather === 'stormy'
+  const targetOpacity = currentWeather === 'stormy' ? 0.70 : isWet ? 0.55 : 0.0
+
+  // Frame-rate-independent damping: fast fill (k=2.8 ≈ 0.7s), slow drain (k=0.2 ≈ 7s)
+  const k = isWet ? 2.8 : 0.2
+  const factor = 1 - Math.exp(-k * dtMs / 1000)
+  puddleMat.opacity += (targetOpacity - puddleMat.opacity) * factor
+
+  // Skip render when fully transparent
+  puddleGroup.visible = puddleMat.opacity > 0.005
+
+  if (!puddleGroup.visible) return
+
+  // Per-puddle scale ripple — gentle expansion pulse with individual phase offsets.
+  // Ripple is applied on top of baseScale so puddle sizes stay proportional.
+  const now = Date.now() * 0.0025
+  for (const mesh of puddleMeshes) {
+    const ripple = 1.0 + 0.06 * Math.sin(now + mesh.userData.phase)
+    const s = mesh.userData.baseScale * ripple
+    mesh.scale.set(s, 1.0, s)
+  }
 }
 
 // ── Cloud System ────────────────────────────────────────────────────────────
@@ -361,6 +438,7 @@ function updateWeather (dtMs, sunLight) {
   _updateRain(dtMs)
   _updateSnow(dtMs)
   _updateClouds(dtMs)
+  _updatePuddles(dtMs)
   if (currentWeather !== 'snowy') {
     _updateLightning(dtMs, sunLight)
   }
