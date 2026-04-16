@@ -2870,19 +2870,54 @@ function updateAnimalProductIndicators () {
   }
 }
 
-// ── Decoration animations (windmill blade rotation) ──────────────────────────
-// ── Water animation helpers ──────────────────────────────────────────────────
+// ── Decoration animations (weather-reactive wind + water) ───────────────────
 // _waterBaseOpacity: stable base opacity per waterType so we don't fight construction values
 const _WATER_BASE_OPACITY = { fountain: 0.70, pond: 0.70, well: 0.60 }
+let _lastDecorationAnimMs = 0
 
 function updateDecorations (time) {
   const t = time * 0.001 // seconds
+  const wp = _getWindParams()
+  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+  const dtMs = _lastDecorationAnimMs > 0
+    ? Math.max(0, Math.min(50, time - _lastDecorationAnimMs))
+    : 16.67
+  _lastDecorationAnimMs = time
+
+  const gustEnvelope = weather === 'stormy'
+    ? 1.0 + 0.35 * Math.sin(_windGustPhase * 0.79 + time * 0.00045)
+    : 1.0
+  const decoWindFreq = 0.0016 * wp.freq / 0.0014
+  const sinDrift = Math.sin(_windDriftAngle)
+  const cosDrift = Math.cos(_windDriftAngle)
+
   for (const deco of farmState.decorations) {
     if (!deco.mesh) continue
     deco.mesh.traverse(child => {
       if (child.userData.isWindmillRotor) {
-        // Windmill blades rotate with time
-        child.rotation.z = time * 0.0005
+        // Weather-reactive rotor speed — calm days turn lazily, storms spin faster.
+        const rotorSpeed = (0.00018 + 0.00022 * wp.str) * gustEnvelope
+        const nextAngle = (child.userData.rotorAngle ?? child.rotation.z) + rotorSpeed * dtMs
+        child.userData.rotorAngle = nextAngle % (Math.PI * 2)
+        child.rotation.z = child.userData.rotorAngle
+      }
+
+      if (child.userData.isWindDecoration) {
+        const phase = child.userData.windPhase || 0
+        const swayBase = Math.sin(time * decoWindFreq + phase)
+        const swayOrth = Math.cos(time * decoWindFreq * 0.83 + phase * 1.7)
+        const swayZ = (swayBase * cosDrift + swayOrth * sinDrift) * gustEnvelope
+        const swayX = (swayBase * sinDrift - swayOrth * cosDrift) * gustEnvelope
+        const baseRotX = child.userData.baseRotationX || 0
+        const baseRotZ = child.userData.baseRotationZ || 0
+
+        if (child.userData.windKind === 'mailboxFlag') {
+          child.rotation.z = baseRotZ + swayZ * (0.18 * wp.str)
+          child.rotation.x = baseRotX + swayX * (0.06 * wp.str)
+        } else {
+          child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
+          child.rotation.x = baseRotX + swayX * (0.04 * wp.str)
+        }
       }
 
       if (child.userData.isWater && child.material) {

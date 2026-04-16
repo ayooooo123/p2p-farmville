@@ -265,11 +265,16 @@ function _buildScarecrow (g) {
   const brim = new THREE.Mesh(brimGeo, hatMat)
   brim.position.y = 2.32
   g.add(brim)
-  // Cloth on arms
+  // Cloth on arms — tagged so app.js can sway it with the weather-driven wind system
   const clothMat = new THREE.MeshStandardMaterial({ color: 0xcd5c5c })
   const clothGeo = new THREE.BoxGeometry(0.5, 0.6, 0.05)
   const cloth = new THREE.Mesh(clothGeo, clothMat)
   cloth.position.set(0, 1.2, 0)
+  cloth.userData.isWindDecoration = true
+  cloth.userData.windKind = 'scarecrowCloth'
+  cloth.userData.baseRotationX = cloth.rotation.x
+  cloth.userData.baseRotationZ = cloth.rotation.z
+  cloth.userData.windPhase = Math.random() * Math.PI * 2
   g.add(cloth)
 }
 
@@ -288,11 +293,17 @@ function _buildMailbox (g, def) {
   box.position.y = 1.1
   box.castShadow = true
   g.add(box)
-  // Flag
+  // Flag — tagged so the weather-driven wind system can flutter it
   const flagMat = new THREE.MeshStandardMaterial({ color: 0xff0000 })
   const flagGeo = new THREE.BoxGeometry(0.04, 0.15, 0.04)
   const flag = new THREE.Mesh(flagGeo, flagMat)
   flag.position.set(0.2, 1.2, 0)
+  flag.castShadow = true
+  flag.userData.isWindDecoration = true
+  flag.userData.windKind = 'mailboxFlag'
+  flag.userData.baseRotationX = flag.rotation.x
+  flag.userData.baseRotationZ = flag.rotation.z
+  flag.userData.windPhase = Math.random() * Math.PI * 2
   g.add(flag)
 }
 
