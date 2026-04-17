@@ -151,14 +151,16 @@ function disposeMesh (mesh) {
 
   mesh.traverse(child => {
     if (child.isMesh) {
-      if (child.geometry) {
+      if (child.geometry && !child.geometry.userData?.sharedAsset) {
         child.geometry.dispose()
         disposedCount++
       }
       if (child.material) {
         if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose())
-        } else {
+          child.material.forEach(m => {
+            if (!m.userData?.sharedAsset) m.dispose()
+          })
+        } else if (!child.material.userData?.sharedAsset) {
           child.material.dispose()
         }
       }

@@ -447,15 +447,22 @@ function removeNeighborFarm (key) {
   // Dispose all meshes
   data.group.traverse(child => {
     if (child.isMesh) {
-      if (child.geometry) child.geometry.dispose()
+      if (child.geometry && !child.geometry.userData?.sharedAsset) child.geometry.dispose()
       if (child.material) {
-        if (child.material.map) child.material.map.dispose()
-        child.material.dispose()
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => {
+            if (m.map && !m.map.userData?.sharedAsset) m.map.dispose()
+            if (!m.userData?.sharedAsset) m.dispose()
+          })
+        } else {
+          if (child.material.map && !child.material.map.userData?.sharedAsset) child.material.map.dispose()
+          if (!child.material.userData?.sharedAsset) child.material.dispose()
+        }
       }
     }
-    if (child.isSprite) {
-      if (child.material.map) child.material.map.dispose()
-      child.material.dispose()
+    if (child.isSprite && child.material) {
+      if (child.material.map && !child.material.map.userData?.sharedAsset) child.material.map.dispose()
+      if (!child.material.userData?.sharedAsset) child.material.dispose()
     }
   })
 
@@ -467,8 +474,16 @@ function disposeMesh (mesh) {
   if (!mesh) return
   mesh.traverse(child => {
     if (child.isMesh) {
-      if (child.geometry) child.geometry.dispose()
-      if (child.material) child.material.dispose()
+      if (child.geometry && !child.geometry.userData?.sharedAsset) child.geometry.dispose()
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => {
+            if (!m.userData?.sharedAsset) m.dispose()
+          })
+        } else if (!child.material.userData?.sharedAsset) {
+          child.material.dispose()
+        }
+      }
     }
   })
 }

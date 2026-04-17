@@ -408,6 +408,41 @@ const STAGE_GEOM = [
 ]
 
 const cropSpriteTextureCache = new Map()
+const cropSpriteMaterialCache = new Map()
+const cropStemGeometryCache = new Map()
+const cropStemMaterialCache = new Map()
+
+function _markSharedAsset (asset) {
+  if (!asset) return asset
+  asset.userData = asset.userData || {}
+  asset.userData.sharedAsset = true
+  return asset
+}
+
+const sproutGeometry = _markSharedAsset(new THREE.CylinderGeometry(0.025, 0.05, 0.12, 6))
+const sproutMaterial = _markSharedAsset(new THREE.MeshStandardMaterial({ color: 0x2f7d32, roughness: 0.9 }))
+const witheredStemGeometry = _markSharedAsset(new THREE.CylinderGeometry(0.035, 0.055, 0.16, 5))
+const witheredStemMaterial = _markSharedAsset(new THREE.MeshStandardMaterial({ color: 0x6a5842, roughness: 1.0 }))
+
+function _getCropStemGeometry (radiusTop, radiusBottom, height, radialSegments) {
+  const cacheKey = radiusTop + ':' + radiusBottom + ':' + height + ':' + radialSegments
+  let geo = cropStemGeometryCache.get(cacheKey)
+  if (!geo) {
+    geo = _markSharedAsset(new THREE.CylinderGeometry(radiusTop, radiusBottom, height, radialSegments))
+    cropStemGeometryCache.set(cacheKey, geo)
+  }
+  return geo
+}
+
+function _getCropStemMaterial (color, roughness = 0.85) {
+  const cacheKey = color + ':' + roughness
+  let mat = cropStemMaterialCache.get(cacheKey)
+  if (!mat) {
+    mat = _markSharedAsset(new THREE.MeshStandardMaterial({ color, roughness }))
+    cropStemMaterialCache.set(cacheKey, mat)
+  }
+  return mat
+}
 
 function _hexToCss (hex) {
   return '#' + new THREE.Color(hex).getHexString()
@@ -500,21 +535,33 @@ function _makeCropSpriteTexture (cropType, stage, withered = false) {
     }
   }
 
-  const tex = new THREE.CanvasTexture(canvas)
+  const tex = _markSharedAsset(new THREE.CanvasTexture(canvas))
   tex.needsUpdate = true
   tex.transparent = true
   cropSpriteTextureCache.set(cacheKey, tex)
   return tex
 }
 
+function _getCropSpriteMaterial (cropType, stage, withered = false) {
+  const def = CROP_DEFINITIONS[cropType]
+  const maxStage = def ? def.stages - 1 : 0
+  const clampedStage = Math.max(0, Math.min(stage, maxStage))
+  const cacheKey = cropType + ':' + clampedStage + ':' + (withered ? 'w' : 'n')
+  let material = cropSpriteMaterialCache.get(cacheKey)
+  if (!material) {
+    material = _markSharedAsset(new THREE.SpriteMaterial({
+      map: _makeCropSpriteTexture(cropType, clampedStage, withered),
+      transparent: true,
+      depthWrite: false,
+      alphaTest: 0.1
+    }))
+    cropSpriteMaterialCache.set(cacheKey, material)
+  }
+  return material
+}
+
 function _makeCropSprite (cropType, stage, withered = false) {
-  const spriteMat = new THREE.SpriteMaterial({
-    map: _makeCropSpriteTexture(cropType, stage, withered),
-    transparent: true,
-    depthWrite: false,
-    alphaTest: 0.1
-  })
-  const sprite = new THREE.Sprite(spriteMat)
+  const sprite = new THREE.Sprite(_getCropSpriteMaterial(cropType, stage, withered))
   const def = CROP_DEFINITIONS[cropType]
   const maxStage = def ? def.stages - 1 : 0
   const clampedStage = Math.max(0, Math.min(stage, maxStage))
@@ -547,8 +594,8 @@ export function createCropMesh (cropType, stage) {
 
   // Stem cylinder provides the 3D read and still sways in the wind animation.
   const stemColor = clampedStage <= 2 ? 0x228b22 : new THREE.Color(color).lerp(new THREE.Color(0x228b22), 0.3).getHex()
-  const stemGeo = new THREE.CylinderGeometry(cylR * 0.5, cylR * 0.7, Math.max(0.12, cylH), 7)
-  const stemMat = new THREE.MeshStandardMaterial({ color: stemColor, roughness: 0.85 })
+  const stemGeo = _getCropStemGeometry(cylR * 0.5, cylR * 0.7, Math.max(0.12, cylH), 7)
+  const stemMat = _getCropStemMaterial(stemColor, 0.85)
   const stem = new THREE.Mesh(stemGeo, stemMat)
   stem.position.y = Math.max(0.08, cylH / 2 + 0.02)
   stem.castShadow = true
@@ -563,9 +610,7 @@ export function createCropMesh (cropType, stage) {
 
   // Seed stage gets a tiny extra sprout so it doesn't read as a debug dot.
   if (clampedStage === 0) {
-    const sproutGeo = new THREE.CylinderGeometry(0.025, 0.05, 0.12, 6)
-    const sproutMat = new THREE.MeshStandardMaterial({ color: 0x2f7d32, roughness: 0.9 })
-    const sprout = new THREE.Mesh(sproutGeo, sproutMat)
+    const sprout = new THREE.Mesh(sproutGeometry, sproutMaterial)
     sprout.position.y = 0.08
     sprout.rotation.z = 0.25
     sprout.castShadow = true
@@ -626,9 +671,7 @@ export function createWitheredMesh (cropType) {
 
   const group = new THREE.Group()
 
-  const stemGeo = new THREE.CylinderGeometry(0.035, 0.055, 0.16, 5)
-  const stemMat = new THREE.MeshStandardMaterial({ color: 0x6a5842, roughness: 1.0 })
-  const stem = new THREE.Mesh(stemGeo, stemMat)
+  const stem = new THREE.Mesh(witheredStemGeometry, witheredStemMaterial)
   stem.position.y = 0.12
   stem.rotation.z = -0.1
   stem.castShadow = true
