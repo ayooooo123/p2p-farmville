@@ -2947,6 +2947,11 @@ function updateDecorations (time) {
         if (child.userData.windKind === 'mailboxFlag') {
           child.rotation.z = baseRotZ + swayZ * (0.18 * wp.str)
           child.rotation.x = baseRotX + swayX * (0.06 * wp.str)
+        } else if (child.userData.windKind === 'flowerStalk') {
+          const bend = child.userData.windBend || 1
+          const nod = Math.sin(time * decoWindFreq * 0.71 + phase * 2.3) * 0.018 * bend * gustEnvelope
+          child.rotation.z = baseRotZ + swayZ * (0.085 * wp.str * bend) + nod
+          child.rotation.x = baseRotX + swayX * (0.032 * wp.str * bend)
         } else {
           child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
           child.rotation.x = baseRotX + swayX * (0.04 * wp.str)

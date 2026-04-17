@@ -121,6 +121,15 @@ export function createDecoMesh (decoType) {
   return group
 }
 
+function _tagWindDecoration (object3d, windKind, windBend = 1) {
+  object3d.userData.isWindDecoration = true
+  object3d.userData.windKind = windKind
+  object3d.userData.windBend = windBend
+  object3d.userData.baseRotationX = object3d.rotation.x
+  object3d.userData.baseRotationZ = object3d.rotation.z
+  object3d.userData.windPhase = Math.random() * Math.PI * 2
+}
+
 function _buildFence (g, def) {
   const mat = new THREE.MeshStandardMaterial({ color: def.color })
   // Two posts
@@ -170,38 +179,64 @@ function _buildHayBale (g, def) {
 
 function _buildFlowerBox (g, def) {
   const boxMat = new THREE.MeshStandardMaterial({ color: def.color })
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 })
+  const flMat = new THREE.MeshStandardMaterial({ color: def.flowerColor })
   const boxGeo = new THREE.BoxGeometry(1.2, 0.4, 0.5)
   const box = new THREE.Mesh(boxGeo, boxMat)
   box.position.y = 0.2
   box.castShadow = true
   g.add(box)
-  // Flowers
-  const flMat = new THREE.MeshStandardMaterial({ color: def.flowerColor })
+
+  // Flowers — tiny stalk groups so the weather-driven wind system can sway them.
   for (let i = 0; i < 5; i++) {
+    const stalk = new THREE.Group()
+    const h = 0.18 + (i % 2) * 0.04 + (i === 2 ? 0.03 : 0)
+    const zOffset = i % 2 === 0 ? -0.03 : 0.03
+    stalk.position.set(-0.4 + i * 0.2, 0.4, zOffset)
+
+    const stemGeo = new THREE.CylinderGeometry(0.012, 0.014, h, 5)
+    const stem = new THREE.Mesh(stemGeo, stemMat)
+    stem.position.y = h / 2
+    stem.castShadow = true
+    stalk.add(stem)
+
     const flGeo = new THREE.SphereGeometry(0.08, 6, 4)
     const fl = new THREE.Mesh(flGeo, flMat)
-    fl.position.set(-0.4 + i * 0.2, 0.5, 0)
-    g.add(fl)
+    fl.position.y = h + 0.04
+    fl.castShadow = true
+    stalk.add(fl)
+
+    _tagWindDecoration(stalk, 'flowerStalk', 0.55 + h * 0.8)
+    g.add(stalk)
   }
 }
 
 function _buildFlower (g, def) {
-  const stemMat = new THREE.MeshStandardMaterial({ color: def.stemColor })
+  const stemMat = new THREE.MeshStandardMaterial({ color: def.stemColor, roughness: 0.9 })
   const petalMat = new THREE.MeshStandardMaterial({ color: def.color })
   const count = 3 + Math.floor(Math.random() * 3)
   for (let i = 0; i < count; i++) {
     const h = def.tall ? 1.0 + Math.random() * 0.4 : 0.4 + Math.random() * 0.3
-    const stemGeo = new THREE.CylinderGeometry(0.02, 0.025, h, 4)
-    const stem = new THREE.Mesh(stemGeo, stemMat)
     const ox = (Math.random() - 0.5) * 0.8
     const oz = (Math.random() - 0.5) * 0.8
-    stem.position.set(ox, h / 2, oz)
-    g.add(stem)
+
+    const stalk = new THREE.Group()
+    stalk.position.set(ox, 0, oz)
+
+    const stemGeo = new THREE.CylinderGeometry(0.02, 0.025, h, 4)
+    const stem = new THREE.Mesh(stemGeo, stemMat)
+    stem.position.y = h / 2
+    stem.castShadow = true
+    stalk.add(stem)
+
     const petalGeo = def.tall ? new THREE.SphereGeometry(0.15, 8, 6) : new THREE.SphereGeometry(0.08, 6, 4)
     const petal = new THREE.Mesh(petalGeo, petalMat)
-    petal.position.set(ox, h + 0.05, oz)
+    petal.position.y = h + 0.05
     petal.castShadow = true
-    g.add(petal)
+    stalk.add(petal)
+
+    _tagWindDecoration(stalk, 'flowerStalk', def.tall ? 1.35 : 0.9 + h * 0.3)
+    g.add(stalk)
   }
 }
 
