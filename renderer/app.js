@@ -161,67 +161,10 @@ if (typeof ResizeObserver !== 'undefined') {
 // Also recompute on window resize
 window.addEventListener('resize', _updateHudHeight)
 
-// ── Fireflies (night-time visual polish) ────────────────────────────────────
-const _ffGroup = new THREE.Group()
-const _ffData = []
-const FF_COUNT = 28
-
-function _initFireflies (scene) {
-  _ffGroup.visible = false
-  const geo = new THREE.SphereGeometry(0.1, 5, 5)
-  for (let i = 0; i < FF_COUNT; i++) {
-    const hue = 0.18 + Math.random() * 0.14       // yellow-green range
-    const col = new THREE.Color().setHSL(hue, 1, 0.6)
-    const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0 })
-    const mesh = new THREE.Mesh(geo.clone(), mat)
-    const bx = (Math.random() - 0.5) * 36
-    const bz = (Math.random() - 0.5) * 36
-    const by = 0.5 + Math.random() * 1.8
-    mesh.position.set(bx, by, bz)
-    _ffGroup.add(mesh)
-    _ffData.push({
-      mesh, bx, by, bz,
-      angle: Math.random() * Math.PI * 2,
-      angleSpeed: (Math.random() - 0.5) * 0.4,
-      blinkPhase: Math.random() * Math.PI * 2,
-      blinkRate: 1.0 + Math.random() * 1.6
-    })
-  }
-  scene.add(_ffGroup)
-}
-
-function _updateFireflies (dtMs) {
-  // Night strength: use real wall-clock hour (8pm–5am = night, dusk/dawn = half)
-  const hour = new Date().getHours()
-  let nightStrength = 0
-  if (hour >= 20 || hour < 5) nightStrength = 1
-  else if (hour >= 19) nightStrength = (hour - 19)          // 19:xx → 0–1
-  else if (hour >= 5 && hour < 7) nightStrength = 1 - (hour - 5) / 2 // 5–7 fade out
-
-  _ffGroup.visible = nightStrength > 0
-  if (nightStrength <= 0) return
-
-  const dt = dtMs / 1000
-  for (const ff of _ffData) {
-    ff.angle += ff.angleSpeed * dt
-    const radius = 2.5 + Math.sin(ff.blinkPhase * 0.3) * 1.2
-    ff.mesh.position.x = ff.bx + Math.cos(ff.angle) * radius
-    ff.mesh.position.z = ff.bz + Math.sin(ff.angle) * radius
-    ff.blinkPhase += ff.blinkRate * dt
-    ff.mesh.position.y = ff.by + Math.sin(ff.blinkPhase * 0.6) * 0.35
-    const blink = (Math.sin(ff.blinkPhase * ff.blinkRate) + 1) / 2
-    ff.mesh.material.opacity = blink * nightStrength * 0.85
-    // Slowly wander base pos
-    ff.bx = Math.max(-18, Math.min(18, ff.bx + (Math.random() - 0.5) * 0.05))
-    ff.bz = Math.max(-18, Math.min(18, ff.bz + (Math.random() - 0.5) * 0.05))
-  }
-}
-
 // ── Initialize Three.js scene ────────────────────────────────────────────────
 sceneData = initScene(canvas)
 terrainData = sceneData.terrainData
 initParticles(sceneData.scene)
-_initFireflies(sceneData.scene)
 initCameraControls(canvas)
 
 // ── Initialize Inventory ─────────────────────────────────────────────────────
@@ -3416,7 +3359,6 @@ function gameLoop (time) {
   updateDecorations(time)
   animateChimneySmoke(time)
   updateParticles(dtMs)
-  _updateFireflies(dtMs)
 
   // Energy regen
   regenEnergy(dtMs)
@@ -3498,7 +3440,8 @@ function startGame () {
 
   // ── Initialize day/night cycle ─────────────────────────────────────────────
   // Wire up the full day/night system: controls sunLight + ambientLight colour,
-  // sky background, stars, and firefly visibility based on a 10-minute game day.
+  // sky background, stars, and the only firefly swarm so visuals stay synced to
+  // the in-game clock instead of the host machine's real local time.
   initDayNight(sceneData.scene, sceneData.sunLight, sceneData.ambientLight, sceneData.hemiLight, {
     renderer: sceneData.renderer   // enables per-phase toneMappingExposure driving
   })
