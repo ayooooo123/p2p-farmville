@@ -127,6 +127,9 @@ export function createDecoMesh (decoType, variantSeed = 0) {
   group.userData.objectType = 'decoration'
   group.userData.decoType = decoType
   group.userData.variantSeed = _normalizeSeed(variantSeed)
+  group.userData.windmillRotors = []
+  group.userData.windDecorations = []
+  group.userData.waterMeshes = []
 
   switch (def.type) {
     case 'fence': _buildFence(group, def); break
@@ -149,6 +152,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
     default: _buildGeneric(group, def); break
   }
 
+  _cacheAnimatedDecorationParts(group)
   return group
 }
 
@@ -159,6 +163,22 @@ function _tagWindDecoration (object3d, windKind, windBend = 1, rng = Math.random
   object3d.userData.baseRotationX = object3d.rotation.x
   object3d.userData.baseRotationZ = object3d.rotation.z
   object3d.userData.windPhase = rng() * Math.PI * 2
+}
+
+function _cacheAnimatedDecorationParts (group) {
+  const windmillRotors = []
+  const windDecorations = []
+  const waterMeshes = []
+
+  group.traverse(child => {
+    if (child.userData.isWindmillRotor) windmillRotors.push(child)
+    if (child.userData.isWindDecoration) windDecorations.push(child)
+    if (child.userData.isWater && child.material) waterMeshes.push(child)
+  })
+
+  group.userData.windmillRotors = windmillRotors
+  group.userData.windDecorations = windDecorations
+  group.userData.waterMeshes = waterMeshes
 }
 
 function _buildFence (g, def) {

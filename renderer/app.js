@@ -2888,60 +2888,61 @@ function updateDecorations (time) {
       }
     }
 
-    deco.mesh.traverse(child => {
-      if (child.userData.isWindmillRotor) {
-        // Weather-reactive rotor speed — calm days turn lazily, storms spin faster.
-        const rotorSpeed = (0.00018 + 0.00022 * wp.str) * gustEnvelope
-        const nextAngle = (child.userData.rotorAngle ?? child.rotation.z) + rotorSpeed * dtMs
-        child.userData.rotorAngle = nextAngle % (Math.PI * 2)
-        child.rotation.z = child.userData.rotorAngle
+    const windmillRotors = deco.mesh.userData.windmillRotors || []
+    for (const rotor of windmillRotors) {
+      // Weather-reactive rotor speed — calm days turn lazily, storms spin faster.
+      const rotorSpeed = (0.00018 + 0.00022 * wp.str) * gustEnvelope
+      const nextAngle = (rotor.userData.rotorAngle ?? rotor.rotation.z) + rotorSpeed * dtMs
+      rotor.userData.rotorAngle = nextAngle % (Math.PI * 2)
+      rotor.rotation.z = rotor.userData.rotorAngle
+    }
+
+    const windDecorations = deco.mesh.userData.windDecorations || []
+    for (const child of windDecorations) {
+      const phase = child.userData.windPhase || 0
+      const swayBase = Math.sin(time * decoWindFreq + phase)
+      const swayOrth = Math.cos(time * decoWindFreq * 0.83 + phase * 1.7)
+      const swayZ = (swayBase * cosDrift + swayOrth * sinDrift) * gustEnvelope
+      const swayX = (swayBase * sinDrift - swayOrth * cosDrift) * gustEnvelope
+      const baseRotX = child.userData.baseRotationX || 0
+      const baseRotZ = child.userData.baseRotationZ || 0
+
+      if (child.userData.windKind === 'mailboxFlag') {
+        child.rotation.z = baseRotZ + swayZ * (0.18 * wp.str)
+        child.rotation.x = baseRotX + swayX * (0.06 * wp.str)
+      } else if (child.userData.windKind === 'flowerStalk') {
+        const bend = child.userData.windBend || 1
+        const nod = Math.sin(time * decoWindFreq * 0.71 + phase * 2.3) * 0.018 * bend * gustEnvelope
+        child.rotation.z = baseRotZ + swayZ * (0.085 * wp.str * bend) + nod
+        child.rotation.x = baseRotX + swayX * (0.032 * wp.str * bend)
+      } else {
+        child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
+        child.rotation.x = baseRotX + swayX * (0.04 * wp.str)
       }
+    }
 
-      if (child.userData.isWindDecoration) {
-        const phase = child.userData.windPhase || 0
-        const swayBase = Math.sin(time * decoWindFreq + phase)
-        const swayOrth = Math.cos(time * decoWindFreq * 0.83 + phase * 1.7)
-        const swayZ = (swayBase * cosDrift + swayOrth * sinDrift) * gustEnvelope
-        const swayX = (swayBase * sinDrift - swayOrth * cosDrift) * gustEnvelope
-        const baseRotX = child.userData.baseRotationX || 0
-        const baseRotZ = child.userData.baseRotationZ || 0
+    const waterMeshes = deco.mesh.userData.waterMeshes || []
+    for (const child of waterMeshes) {
+      const wt = child.userData.waterType
+      const waterAnim = _WATER_ANIM_PROFILES[wt] || _WATER_ANIM_PROFILES.fountain
+      const phase = child.userData.waterPhase || 0
 
-        if (child.userData.windKind === 'mailboxFlag') {
-          child.rotation.z = baseRotZ + swayZ * (0.18 * wp.str)
-          child.rotation.x = baseRotX + swayX * (0.06 * wp.str)
-        } else if (child.userData.windKind === 'flowerStalk') {
-          const bend = child.userData.windBend || 1
-          const nod = Math.sin(time * decoWindFreq * 0.71 + phase * 2.3) * 0.018 * bend * gustEnvelope
-          child.rotation.z = baseRotZ + swayZ * (0.085 * wp.str * bend) + nod
-          child.rotation.x = baseRotX + swayX * (0.032 * wp.str * bend)
-        } else {
-          child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
-          child.rotation.x = baseRotX + swayX * (0.04 * wp.str)
-        }
-      }
+      // 1. Slow scale pulse — water surface expands/contracts slightly
+      const s = 1.0 + Math.sin(t * waterAnim.pulseFreq * Math.PI * 2 + phase) * waterAnim.pulseMag
+      child.scale.set(s, 1, s)
 
-      if (child.userData.isWater && child.material) {
-        const wt = child.userData.waterType
-        const waterAnim = _WATER_ANIM_PROFILES[wt] || _WATER_ANIM_PROFILES.fountain
-        const phase = child.userData.waterPhase || 0
+      // 2. Opacity shimmer — subtle glint
+      child.material.opacity = waterAnim.baseOpacity + Math.sin(t * waterAnim.shimmerFreq * Math.PI * 2 + phase * 1.7 + 1.3) * waterAnim.shimmerMag
 
-        // 1. Slow scale pulse — water surface expands/contracts slightly
-        const s = 1.0 + Math.sin(t * waterAnim.pulseFreq * Math.PI * 2 + phase) * waterAnim.pulseMag
-        child.scale.set(s, 1, s)
-
-        // 2. Opacity shimmer — subtle glint
-        child.material.opacity = waterAnim.baseOpacity + Math.sin(t * waterAnim.shimmerFreq * Math.PI * 2 + phase * 1.7 + 1.3) * waterAnim.shimmerMag
-
-        // 3. Color temperature drift — cool to bright blue and back
-        //    hue stays steel-blue, lightness drifts slightly
-        const drift = (Math.sin(t * waterAnim.driftFreq * Math.PI * 2 + phase * 0.6) + 1) * 0.5  // 0..1
-        const colorBoost = wt === 'birdbath' ? 0.75 : 1.0
-        const r = 0x46 / 255 + drift * 0.04 * colorBoost
-        const g = 0x82 / 255 + drift * 0.06 * colorBoost
-        const b = 0xb4 / 255 + drift * 0.08 * colorBoost
-        child.material.color.setRGB(Math.min(1, r), Math.min(1, g), Math.min(1, b))
-      }
-    })
+      // 3. Color temperature drift — cool to bright blue and back
+      //    hue stays steel-blue, lightness drifts slightly
+      const drift = (Math.sin(t * waterAnim.driftFreq * Math.PI * 2 + phase * 0.6) + 1) * 0.5  // 0..1
+      const colorBoost = wt === 'birdbath' ? 0.75 : 1.0
+      const r = 0x46 / 255 + drift * 0.04 * colorBoost
+      const g = 0x82 / 255 + drift * 0.06 * colorBoost
+      const b = 0xb4 / 255 + drift * 0.08 * colorBoost
+      child.material.color.setRGB(Math.min(1, r), Math.min(1, g), Math.min(1, b))
+    }
   }
 }
 
