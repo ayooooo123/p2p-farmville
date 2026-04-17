@@ -323,6 +323,24 @@ function _buildLampPost (g, def) {
   lamp.position.y = 2.6
   lamp.userData.isLampGlow = true // tagged for day/night wiring in app.js
   g.add(lamp)
+
+  // Soft halo sprite — radial alpha texture gives an actual feathered glow instead
+  // of a hard-edged transparent sphere. Animated per-frame in app.js.
+  const haloMat = new THREE.SpriteMaterial({
+    map: _getLampHaloTexture(),
+    color: 0xffd890,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+  const halo = new THREE.Sprite(haloMat)
+  halo.position.y = 2.6
+  halo.scale.set(1.15, 1.15, 1)
+  halo.userData.isLampHalo = true
+  halo.userData.baseScale = 1.0
+  g.add(halo)
+
   // Arm
   const armGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4)
   const arm = new THREE.Mesh(armGeo, mat)
@@ -336,6 +354,7 @@ function _buildLampPost (g, def) {
   g.add(ptLight)
   // Store refs on group for fast access
   g.userData.lampGlowMesh = lamp
+  g.userData.lampHaloMesh = halo
   g.userData.lampPointLight = ptLight
 }
 
@@ -564,6 +583,30 @@ function _buildGeneric (g, def) {
   mesh.position.y = 0.25
   mesh.castShadow = true
   g.add(mesh)
+}
+
+let lampHaloTexture = null
+
+function _getLampHaloTexture () {
+  if (lampHaloTexture) return lampHaloTexture
+
+  const size = 96
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, size * 0.10, size / 2, size / 2, size * 0.5)
+  gradient.addColorStop(0.00, 'rgba(255,250,220,1.0)')
+  gradient.addColorStop(0.18, 'rgba(255,230,170,0.92)')
+  gradient.addColorStop(0.42, 'rgba(255,210,130,0.42)')
+  gradient.addColorStop(0.72, 'rgba(255,185,90,0.12)')
+  gradient.addColorStop(1.00, 'rgba(255,185,90,0.0)')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+
+  lampHaloTexture = new THREE.CanvasTexture(canvas)
+  lampHaloTexture.needsUpdate = true
+  return lampHaloTexture
 }
 
 /**

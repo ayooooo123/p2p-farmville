@@ -2885,6 +2885,8 @@ function updateDecorations (time) {
   const t = time * 0.001 // seconds
   const wp = _getWindParams()
   const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+  const nightFactor = _nightFactorFromTime(getTimeOfDay())
+  const lampWeatherBoost = weather === 'stormy' ? 1.14 : weather === 'rainy' ? 1.08 : 1.0
   const dtMs = _lastDecorationAnimMs > 0
     ? Math.max(0, Math.min(50, time - _lastDecorationAnimMs))
     : 16.67
@@ -2899,6 +2901,31 @@ function updateDecorations (time) {
 
   for (const deco of farmState.decorations) {
     if (!deco.mesh) continue
+
+    const lampGlow = deco.mesh.userData.lampGlowMesh
+    const lampHalo = deco.mesh.userData.lampHaloMesh
+    const lampLight = deco.mesh.userData.lampPointLight
+    if (lampGlow || lampHalo || lampLight) {
+      const phase = deco.x * 0.83 + deco.z * 1.37
+      const pulse = 0.95 + Math.sin(t * 0.9 + phase) * 0.06 + Math.sin(t * 1.7 + phase * 1.9) * 0.02
+      const lampStrength = nightFactor * lampWeatherBoost * Math.max(0.84, pulse)
+
+      if (lampGlow && lampGlow.material) {
+        lampGlow.material.emissiveIntensity = lampStrength * 1.8
+      }
+      if (lampHalo && lampHalo.material) {
+        const haloPulse = 0.97 + Math.sin(t * 1.05 + phase * 0.7) * 0.06
+        const haloStrength = lampStrength * haloPulse
+        lampHalo.material.opacity = Math.max(0, (nightFactor - 0.08) * 0.18 * haloPulse)
+        const haloScale = (lampHalo.userData.baseScale || 1.0) * (1.15 + haloStrength * 0.9)
+        lampHalo.scale.set(haloScale, haloScale, 1)
+      }
+      if (lampLight) {
+        lampLight.intensity = lampStrength * 1.2
+        lampLight.distance = 8 + lampStrength * 1.6
+      }
+    }
+
     deco.mesh.traverse(child => {
       if (child.userData.isWindmillRotor) {
         // Weather-reactive rotor speed — calm days turn lazily, storms spin faster.
@@ -3018,6 +3045,7 @@ function _nightFactorFromTime (t) {
 
 function applyWindowGlow () {
   const nightFactor = _nightFactorFromTime(getTimeOfDay())
+
   for (const building of farmState.buildings) {
     const panes = building.mesh && building.mesh.userData.windowPanes
     if (!Array.isArray(panes)) continue
@@ -3025,20 +3053,6 @@ function applyWindowGlow () {
       if (!pane.isMesh || !pane.userData.isWindowPane) continue
       if (Array.isArray(pane.material)) continue
       pane.material.emissiveIntensity = pane.userData.baseEmissiveIntensity * nightFactor
-    }
-  }
-
-  // Lamp posts: drive emissive sphere + PointLight intensity with night factor
-  for (const deco of farmState.decorations) {
-    const mesh = deco.mesh
-    if (!mesh) continue
-    const lampGlow = mesh.userData.lampGlowMesh
-    const lampLight = mesh.userData.lampPointLight
-    if (lampGlow && lampGlow.material) {
-      lampGlow.material.emissiveIntensity = nightFactor * 1.8
-    }
-    if (lampLight) {
-      lampLight.intensity = nightFactor * 1.2
     }
   }
 }
