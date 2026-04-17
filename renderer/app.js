@@ -3010,6 +3010,20 @@ function animateChimneySmoke (time) {
 
   for (const building of farmState.buildings) {
     if (!building.mesh) continue
+    const chimneyTops = building.mesh.userData.chimneyTopMeshes
+    if (Array.isArray(chimneyTops)) {
+      for (const child of chimneyTops) {
+        const last = _chimneyLastEmit.get(child.uuid) || 0
+        if (time - last < interval) continue
+        _chimneyLastEmit.set(child.uuid, time)
+        child.getWorldPosition(_chimneyWorldPos)
+        _chimneyWorldPos.y += 0.12  // start just above cap
+        createParticleEffect('smoke', _chimneyWorldPos)
+      }
+      continue
+    }
+
+    // Fallback for any legacy building meshes created before cached refs existed.
     building.mesh.traverse(child => {
       if (!child.userData.isChimneyTop) return
       const last = _chimneyLastEmit.get(child.uuid) || 0

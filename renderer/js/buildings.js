@@ -155,6 +155,7 @@ export function createBuildingMesh (buildingType) {
   group.userData.objectType = 'building'
   group.userData.buildingType = buildingType
   group.userData.windowPanes = []
+  group.userData.chimneyTopMeshes = []
 
   const w = def.width
   const d = def.depth
@@ -280,6 +281,7 @@ export function createBuildingMesh (buildingType) {
     const cap = new THREE.Mesh(capGeo, capMat)
     cap.position.set(w * 0.25, wallTop + chimH + roofH * 0.35 + 0.06, -d * 0.2)
     cap.userData.isChimneyTop = true
+    group.userData.chimneyTopMeshes.push(cap)
     group.add(cap)
   }
 
