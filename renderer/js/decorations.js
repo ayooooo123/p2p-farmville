@@ -84,50 +84,81 @@ export const DECO_DEFINITIONS = {
   }
 }
 
+function _hashString (input) {
+  let hash = 2166136261
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function _normalizeSeed (seed) {
+  return (seed >>> 0) || 0x6d2b79f5
+}
+
+function _seedFromPlacement (decoType, x, z) {
+  return _normalizeSeed(_hashString(`${decoType}:${Math.round(x * 100)}:${Math.round(z * 100)}`))
+}
+
+function _createRng (seed) {
+  let state = _normalizeSeed(seed)
+  return function random () {
+    state += 0x6d2b79f5
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 /**
  * Create procedural 3D decoration mesh
  * @param {string} decoType - key in DECO_DEFINITIONS
+ * @param {number} variantSeed - persisted seed so procedural details survive save/load
  * @returns {THREE.Group}
  */
-export function createDecoMesh (decoType) {
+export function createDecoMesh (decoType, variantSeed = 0) {
   const def = DECO_DEFINITIONS[decoType]
   if (!def) return new THREE.Group()
 
   const group = new THREE.Group()
+  const rng = _createRng(variantSeed)
   group.userData.objectType = 'decoration'
   group.userData.decoType = decoType
+  group.userData.variantSeed = _normalizeSeed(variantSeed)
 
   switch (def.type) {
     case 'fence': _buildFence(group, def); break
-    case 'path': _buildPath(group, def); break
+    case 'path': _buildPath(group, def, rng); break
     case 'bale': _buildHayBale(group, def); break
-    case 'flowerbox': _buildFlowerBox(group, def); break
-    case 'flower': _buildFlower(group, def); break
-    case 'fountain': _buildFountain(group, def); break
-    case 'scarecrow': _buildScarecrow(group, def); break
-    case 'mailbox': _buildMailbox(group, def); break
+    case 'flowerbox': _buildFlowerBox(group, def, rng); break
+    case 'flower': _buildFlower(group, def, rng); break
+    case 'fountain': _buildFountain(group, def, rng); break
+    case 'scarecrow': _buildScarecrow(group, def, rng); break
+    case 'mailbox': _buildMailbox(group, def, rng); break
     case 'lamp': _buildLampPost(group, def); break
     case 'bench': _buildBench(group, def); break
     case 'gnome': _buildGnome(group, def); break
     case 'windmill': _buildWindmill(group, def); break
     case 'doghouse': _buildDoghouse(group, def); break
-    case 'pond': _buildPond(group, def); break
+    case 'pond': _buildPond(group, def, rng); break
     case 'bridge': _buildBridge(group, def); break
-    case 'well': _buildWell(group, def); break
-    case 'birdbath': _buildBirdBath(group, def); break
+    case 'well': _buildWell(group, def, rng); break
+    case 'birdbath': _buildBirdBath(group, def, rng); break
     default: _buildGeneric(group, def); break
   }
 
   return group
 }
 
-function _tagWindDecoration (object3d, windKind, windBend = 1) {
+function _tagWindDecoration (object3d, windKind, windBend = 1, rng = Math.random) {
   object3d.userData.isWindDecoration = true
   object3d.userData.windKind = windKind
   object3d.userData.windBend = windBend
   object3d.userData.baseRotationX = object3d.rotation.x
   object3d.userData.baseRotationZ = object3d.rotation.z
-  object3d.userData.windPhase = Math.random() * Math.PI * 2
+  object3d.userData.windPhase = rng() * Math.PI * 2
 }
 
 function _buildFence (g, def) {
@@ -150,7 +181,7 @@ function _buildFence (g, def) {
   }
 }
 
-function _buildPath (g, def) {
+function _buildPath (g, def, rng) {
   const mat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.95 })
   const pathGeo = new THREE.BoxGeometry(1.8, 0.04, 1.8)
   const path = new THREE.Mesh(pathGeo, mat)
@@ -162,7 +193,7 @@ function _buildPath (g, def) {
   for (let i = 0; i < 4; i++) {
     const stoneGeo = new THREE.CylinderGeometry(0.15, 0.18, 0.03, 6)
     const stone = new THREE.Mesh(stoneGeo, stoneMat)
-    stone.position.set((Math.random() - 0.5) * 1.2, 0.05, (Math.random() - 0.5) * 1.2)
+    stone.position.set((rng() - 0.5) * 1.2, 0.05, (rng() - 0.5) * 1.2)
     g.add(stone)
   }
 }
@@ -177,7 +208,7 @@ function _buildHayBale (g, def) {
   g.add(bale)
 }
 
-function _buildFlowerBox (g, def) {
+function _buildFlowerBox (g, def, rng) {
   const boxMat = new THREE.MeshStandardMaterial({ color: def.color })
   const stemMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 })
   const flMat = new THREE.MeshStandardMaterial({ color: def.flowerColor })
@@ -206,19 +237,19 @@ function _buildFlowerBox (g, def) {
     fl.castShadow = true
     stalk.add(fl)
 
-    _tagWindDecoration(stalk, 'flowerStalk', 0.55 + h * 0.8)
+    _tagWindDecoration(stalk, 'flowerStalk', 0.55 + h * 0.8, rng)
     g.add(stalk)
   }
 }
 
-function _buildFlower (g, def) {
+function _buildFlower (g, def, rng) {
   const stemMat = new THREE.MeshStandardMaterial({ color: def.stemColor, roughness: 0.9 })
   const petalMat = new THREE.MeshStandardMaterial({ color: def.color })
-  const count = 3 + Math.floor(Math.random() * 3)
+  const count = 3 + Math.floor(rng() * 3)
   for (let i = 0; i < count; i++) {
-    const h = def.tall ? 1.0 + Math.random() * 0.4 : 0.4 + Math.random() * 0.3
-    const ox = (Math.random() - 0.5) * 0.8
-    const oz = (Math.random() - 0.5) * 0.8
+    const h = def.tall ? 1.0 + rng() * 0.4 : 0.4 + rng() * 0.3
+    const ox = (rng() - 0.5) * 0.8
+    const oz = (rng() - 0.5) * 0.8
 
     const stalk = new THREE.Group()
     stalk.position.set(ox, 0, oz)
@@ -235,12 +266,12 @@ function _buildFlower (g, def) {
     petal.castShadow = true
     stalk.add(petal)
 
-    _tagWindDecoration(stalk, 'flowerStalk', def.tall ? 1.35 : 0.9 + h * 0.3)
+    _tagWindDecoration(stalk, 'flowerStalk', def.tall ? 1.35 : 0.9 + h * 0.3, rng)
     g.add(stalk)
   }
 }
 
-function _buildFountain (g, def) {
+function _buildFountain (g, def, rng) {
   const mat = new THREE.MeshStandardMaterial({ color: def.color })
   // Base
   const baseGeo = new THREE.CylinderGeometry(1.2, 1.4, 0.3, 16)
@@ -254,7 +285,7 @@ function _buildFountain (g, def) {
   water.position.y = 0.35
   water.userData.isWater = true
   water.userData.waterType = 'fountain'
-  water.userData.waterPhase = Math.random() * Math.PI * 2
+  water.userData.waterPhase = rng() * Math.PI * 2
   g.add(water)
   // Center pillar
   const pillarGeo = new THREE.CylinderGeometry(0.15, 0.2, 1.2, 8)
@@ -269,7 +300,7 @@ function _buildFountain (g, def) {
   g.add(top)
 }
 
-function _buildScarecrow (g) {
+function _buildScarecrow (g, def, rng) {
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
   // Vertical pole
   const poleGeo = new THREE.CylinderGeometry(0.05, 0.06, 2.0, 5)
@@ -310,11 +341,11 @@ function _buildScarecrow (g) {
   cloth.userData.windKind = 'scarecrowCloth'
   cloth.userData.baseRotationX = cloth.rotation.x
   cloth.userData.baseRotationZ = cloth.rotation.z
-  cloth.userData.windPhase = Math.random() * Math.PI * 2
+  cloth.userData.windPhase = rng() * Math.PI * 2
   g.add(cloth)
 }
 
-function _buildMailbox (g, def) {
+function _buildMailbox (g, def, rng) {
   const mat = new THREE.MeshStandardMaterial({ color: def.color })
   const postMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
   // Post
@@ -339,7 +370,7 @@ function _buildMailbox (g, def) {
   flag.userData.windKind = 'mailboxFlag'
   flag.userData.baseRotationX = flag.rotation.x
   flag.userData.baseRotationZ = flag.rotation.z
-  flag.userData.windPhase = Math.random() * Math.PI * 2
+  flag.userData.windPhase = rng() * Math.PI * 2
   g.add(flag)
 }
 
@@ -505,7 +536,7 @@ function _buildDoghouse (g, def) {
   g.add(door)
 }
 
-function _buildPond (g) {
+function _buildPond (g, def, rng) {
   const waterMat = new THREE.MeshStandardMaterial({ color: 0x4682b4, transparent: true, opacity: 0.7 })
   const waterGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.08, 16)
   const water = new THREE.Mesh(waterGeo, waterMat)
@@ -513,13 +544,13 @@ function _buildPond (g) {
   water.receiveShadow = true
   water.userData.isWater = true
   water.userData.waterType = 'pond'
-  water.userData.waterPhase = Math.random() * Math.PI * 2
+  water.userData.waterPhase = rng() * Math.PI * 2
   g.add(water)
   // Edge rocks
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x696969 })
   for (let i = 0; i < 10; i++) {
     const angle = (Math.PI * 2 / 10) * i
-    const rockGeo = new THREE.SphereGeometry(0.15 + Math.random() * 0.1, 5, 4)
+    const rockGeo = new THREE.SphereGeometry(0.15 + rng() * 0.1, 5, 4)
     const rock = new THREE.Mesh(rockGeo, rockMat)
     rock.position.set(Math.cos(angle) * 1.5, 0.1, Math.sin(angle) * 1.5)
     rock.scale.y = 0.5
@@ -552,7 +583,7 @@ function _buildBridge (g, def) {
   }
 }
 
-function _buildWell (g, def) {
+function _buildWell (g, def, rng) {
   const mat = new THREE.MeshStandardMaterial({ color: def.color })
   // Base cylinder
   const baseGeo = new THREE.CylinderGeometry(0.5, 0.55, 0.7, 10)
@@ -567,7 +598,7 @@ function _buildWell (g, def) {
   water.position.y = 0.5
   water.userData.isWater = true
   water.userData.waterType = 'well'
-  water.userData.waterPhase = Math.random() * Math.PI * 2
+  water.userData.waterPhase = rng() * Math.PI * 2
   g.add(water)
   // Roof supports
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
@@ -586,7 +617,7 @@ function _buildWell (g, def) {
   g.add(roof)
 }
 
-function _buildBirdBath (g, def) {
+function _buildBirdBath (g, def, rng) {
   const mat = new THREE.MeshStandardMaterial({ color: def.color })
   // Pedestal
   const pedGeo = new THREE.CylinderGeometry(0.12, 0.2, 0.8, 8)
@@ -607,7 +638,7 @@ function _buildBirdBath (g, def) {
   water.receiveShadow = true
   water.userData.isWater = true
   water.userData.waterType = 'birdbath'
-  water.userData.waterPhase = Math.random() * Math.PI * 2
+  water.userData.waterPhase = rng() * Math.PI * 2
   g.add(water)
 }
 
@@ -647,11 +678,12 @@ function _getLampHaloTexture () {
 /**
  * Create decoration instance data
  */
-export function createDecoData (decoType, x, z) {
+export function createDecoData (decoType, x, z, variantSeed) {
   return {
     type: decoType,
     x,
     z,
+    variantSeed: _normalizeSeed(variantSeed ?? _seedFromPlacement(decoType, x, z)),
     placedAt: Date.now(),
     mesh: null
   }

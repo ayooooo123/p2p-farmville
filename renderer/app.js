@@ -984,6 +984,7 @@ function enterPlacementMode (category, key, def) {
   deselectTool()
 
   let ghostMesh
+  let ghostSeed = null
   switch (category) {
     case 'tree': ghostMesh = createTreeMesh(key, false, 1); break
     case 'animal': ghostMesh = createAnimalMesh(key); break
@@ -992,18 +993,12 @@ function enterPlacementMode (category, key, def) {
   }
 
   if (ghostMesh) {
-    ghostMesh.traverse(child => {
-      if (child.isMesh) {
-        child.material = child.material.clone()
-        child.material.transparent = true
-        child.material.opacity = 0.5
-      }
-    })
+    _stylePlacementGhost(ghostMesh)
     ghostMesh.position.set(0, 0, 0)
     sceneData.scene.add(ghostMesh)
   }
 
-  placementMode = { category, key, def, ghostMesh }
+  placementMode = { category, key, def, ghostMesh, ghostSeed }
 
   // Create placement highlight ring — glowing disc beneath ghost
   if (placementHighlightMesh) sceneData.scene.remove(placementHighlightMesh)
@@ -1025,6 +1020,16 @@ function enterPlacementMode (category, key, def) {
 
   canvas.style.cursor = 'crosshair'
   canvas.style.pointerEvents = 'auto'
+}
+
+function _stylePlacementGhost (ghostMesh) {
+  ghostMesh.traverse(child => {
+    if (child.isMesh) {
+      child.material = child.material.clone()
+      child.material.transparent = true
+      child.material.opacity = 0.5
+    }
+  })
 }
 
 function cancelPlacement () {
@@ -1062,6 +1067,20 @@ function updateGhostPosition () {
     // Snap to grid (2-unit grid)
     const snappedX = Math.round(intersection.x / 2) * 2
     const snappedZ = Math.round(intersection.z / 2) * 2
+
+    if (placementMode.category === 'decoration') {
+      const nextSeed = createDecoData(placementMode.key, snappedX, snappedZ).variantSeed
+      if (placementMode.ghostSeed !== nextSeed) {
+        const nextGhostMesh = createDecoMesh(placementMode.key, nextSeed)
+        _stylePlacementGhost(nextGhostMesh)
+        nextGhostMesh.position.set(snappedX, 0, snappedZ)
+        sceneData.scene.remove(placementMode.ghostMesh)
+        sceneData.scene.add(nextGhostMesh)
+        placementMode.ghostMesh = nextGhostMesh
+        placementMode.ghostSeed = nextSeed
+      }
+    }
+
     placementMode.ghostMesh.position.set(snappedX, 0, snappedZ)
     // Keep highlight ring aligned beneath ghost
     if (placementHighlightMesh) {
@@ -1133,8 +1152,8 @@ function confirmPlacement () {
       break
     }
     case 'decoration': {
-      const data = createDecoData(key, x, z)
-      const mesh = createDecoMesh(key)
+      const data = createDecoData(key, x, z, placementMode.ghostSeed)
+      const mesh = createDecoMesh(key, data.variantSeed)
       mesh.position.set(x, 0, z)
       sceneData.scene.add(mesh)
       data.mesh = mesh
@@ -3234,7 +3253,7 @@ function serializeFarmState () {
       width: b.width, height: b.height, depth: b.depth
     })),
     decorations: farmState.decorations.map(d => ({
-      type: d.type, x: d.x, z: d.z, color: d.color
+      type: d.type, x: d.x, z: d.z, color: d.color, variantSeed: d.variantSeed
     }))
   }
 }
@@ -3645,7 +3664,7 @@ function saveGame () {
           craftQueue: b.craftQueue
         })),
         decorations: farmState.decorations.map(d => ({
-          type: d.type, x: d.x, z: d.z, color: d.color
+          type: d.type, x: d.x, z: d.z, color: d.color, variantSeed: d.variantSeed
         }))
       },
       plotData: plotData,
@@ -3793,8 +3812,8 @@ function loadGame () {
     // ── Restore decorations ───────────────────────────────────────────────────
     if (saveData.farmState?.decorations) {
       for (const d of saveData.farmState.decorations) {
-        const data = createDecoData(d.type, d.x, d.z)
-        const mesh = createDecoMesh(d.type)
+        const data = createDecoData(d.type, d.x, d.z, d.variantSeed)
+        const mesh = createDecoMesh(d.type, data.variantSeed)
         mesh.position.set(d.x, 0, d.z)
         sceneData.scene.add(mesh)
         data.mesh = mesh
