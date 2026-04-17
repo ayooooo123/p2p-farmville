@@ -588,6 +588,8 @@ export function createCropMesh (cropType, stage) {
   const maxStage = def.stages - 1
   const isReady = clampedStage >= maxStage
   const group = new THREE.Group()
+  group.userData.stemMeshes = []
+  group.userData.glowRingMeshes = []
 
   const geomIdx = Math.min(clampedStage, 4)
   const [cylR, cylH, sphR] = STAGE_GEOM[geomIdx]
@@ -602,6 +604,7 @@ export function createCropMesh (cropType, stage) {
   stem.userData.isStem = true
   stem.userData.stemHeight = cylH
   group.add(stem)
+  group.userData.stemMeshes.push(stem)
 
   // Sprite-backed canopy/plant silhouette so crops read like planted assets instead of circles.
   const sprite = _makeCropSprite(cropType, clampedStage, false)
@@ -634,6 +637,7 @@ export function createCropMesh (cropType, stage) {
     ring.position.y = 0.04
     ring.userData.isGlowRing = true
     group.add(ring)
+    group.userData.glowRingMeshes.push(ring)
   }
 
   // Progress arc for growing (non-seed, non-mature) crops

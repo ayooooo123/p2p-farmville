@@ -2400,12 +2400,19 @@ function updateCrops (dtMs) {
           const elapsed = Date.now() - plot.crop.plantedAt
           const warnThreshold = def.growTime * 2.5     // 75% into 2x wither window
           if (elapsed >= warnThreshold) {
-            // Tint glow ring orange as a persistent visual warning
-            plot.cropMesh.traverse(child => {
-              if (child.userData.isGlowRing && child.material) {
-                child.material.color.setHex(0xff6600)
+            // Tint glow ring orange as a persistent visual warning.
+            const glowRings = plot.cropMesh.userData.glowRingMeshes
+            if (Array.isArray(glowRings) && glowRings.length > 0) {
+              for (const ring of glowRings) {
+                if (ring.material) ring.material.color.setHex(0xff6600)
               }
-            })
+            } else {
+              plot.cropMesh.traverse(child => {
+                if (child.userData.isGlowRing && child.material) {
+                  child.material.color.setHex(0xff6600)
+                }
+              })
+            }
             // Toast once per crop
             if (!plot.crop.witherWarned) {
               plot.crop.witherWarned = true
@@ -2452,12 +2459,19 @@ function animateReadyCrops (time) {
       // Gentle pulse: scale between 1.0 and 1.15 with a slow sine wave
       const pulse = 1.0 + 0.15 * Math.sin(time * 0.003 + plot.x * 1.7 + plot.z * 2.3)
       plot.cropMesh.scale.set(pulse, 1, pulse)
-      // Pulse glow ring opacity
-      plot.cropMesh.traverse(child => {
-        if (child.userData.isGlowRing && child.material) {
-          child.material.opacity = glowOpacity
+      // Pulse glow ring opacity without traversing the crop subtree every frame.
+      const glowRings = plot.cropMesh.userData.glowRingMeshes
+      if (Array.isArray(glowRings) && glowRings.length > 0) {
+        for (const ring of glowRings) {
+          if (ring.material) ring.material.opacity = glowOpacity
         }
-      })
+      } else {
+        plot.cropMesh.traverse(child => {
+          if (child.userData.isGlowRing && child.material) {
+            child.material.opacity = glowOpacity
+          }
+        })
+      }
     } else {
       // Reset scale for non-ready crops
       plot.cropMesh.scale.set(1, 1, 1)
@@ -2540,6 +2554,19 @@ function animateCropWind (time) {
     const swayBase = Math.sin(time * WIND_FREQ + phase)
     const swayOrth = Math.cos(time * WIND_FREQ * 0.71 + phase) * 0.45
 
+    const stems = plot.cropMesh.userData.stemMeshes
+    if (Array.isArray(stems) && stems.length > 0) {
+      for (const child of stems) {
+        const amp = child.userData.stemHeight * WIND_STR * gustEnvelope
+
+        // Apply wind direction drift: rotate the sway axes by the drift angle
+        child.rotation.z = (swayBase * cosDrift + swayOrth * sinDrift) * amp
+        child.rotation.x = (swayBase * sinDrift - swayOrth * cosDrift) * amp
+      }
+      continue
+    }
+
+    // Fallback for any legacy crop meshes created before cached refs existed.
     plot.cropMesh.traverse(child => {
       if (!child.userData.isStem) return
       const amp = child.userData.stemHeight * WIND_STR * gustEnvelope
