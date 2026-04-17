@@ -2642,6 +2642,27 @@ function animateFarmTreeWind (time) {
     const swayZ = (swayBase * treeCosDrift + swayOrth * treeSinDrift) * gustEnvelope
     const swayX = (swayBase * treeSinDrift - swayOrth * treeCosDrift) * gustEnvelope
 
+    const trunks = tree.mesh.userData.trunkMeshes
+    const canopies = tree.mesh.userData.canopyMeshes
+    if (Array.isArray(trunks) || Array.isArray(canopies)) {
+      if (Array.isArray(trunks)) {
+        for (const child of trunks) {
+          child.rotation.z = swayZ * TRUNK_STR
+          child.rotation.x = swayX * TRUNK_STR * 0.5
+        }
+      }
+      if (Array.isArray(canopies)) {
+        for (const child of canopies) {
+          const r = child.userData.canopyRadius || 1.0
+          const amp = CANOPY_STR + r * CANOPY_SCL
+          child.rotation.z = swayZ * amp
+          child.rotation.x = swayX * amp * 0.55
+        }
+      }
+      continue
+    }
+
+    // Fallback for any legacy meshes created before cached refs existed.
     tree.mesh.traverse(child => {
       if (child.userData.isFarmTrunk) {
         child.rotation.z = swayZ * TRUNK_STR

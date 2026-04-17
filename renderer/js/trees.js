@@ -80,6 +80,8 @@ export function createTreeMesh (treeType, mature, growthScale) {
   const group = new THREE.Group()
   group.userData.objectType = 'tree'
   group.userData.treeType = treeType
+  group.userData.trunkMeshes = []
+  group.userData.canopyMeshes = []
   // Per-tree random phase offset so placed trees sway independently in the wind
   group.userData.windPhase = Math.random() * Math.PI * 2
 
@@ -101,6 +103,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
   trunk.userData.isFarmTrunk = true
   trunk.userData.trunkHeight = trunkH
   group.add(trunk)
+  group.userData.trunkMeshes.push(trunk)
 
   if (def.isPine) {
     // Pine: layered cones (stacked, decreasing radius upward)
@@ -124,6 +127,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
       cone.userData.baseColor = def.canopyColor
       cone.userData.isPine = true
       group.add(cone)
+      group.userData.canopyMeshes.push(cone)
     }
   } else {
     // Broadleaf: sphere canopy sitting atop trunk
@@ -142,6 +146,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
     canopy.userData.baseColor = def.canopyColor
     canopy.userData.isPine = false
     group.add(canopy)
+    group.userData.canopyMeshes.push(canopy)
 
     // Fruit dots as small spheres embedded in the canopy (only on mature trees)
     if (mature && scale >= 0.9) {
@@ -268,13 +273,30 @@ export function setFarmTreeSeasonColors (placedTrees, season) {
 
   for (const tree of placedTrees) {
     if (!tree.mesh) continue
+    const canopies = tree.mesh.userData.canopyMeshes
+    if (Array.isArray(canopies) && canopies.length > 0) {
+      for (const child of canopies) {
+        const isPine = child.userData.isPine
+        const blend  = isPine ? seasonDef.pine : seasonDef.deciduous
+        _sc_base.set(child.userData.baseColor)
+        if (!blend) {
+          // summer (no shift) or spring/autumn pine: restore base color
+          child.material.color.copy(_sc_base)
+        } else {
+          _sc_target.set(blend.hex)
+          child.material.color.copy(_sc_base).lerp(_sc_target, blend.t)
+        }
+      }
+      continue
+    }
+
+    // Fallback for any legacy meshes created before cached refs existed.
     tree.mesh.traverse((child) => {
       if (!child.isMesh || !child.userData.isFarmCanopy) return
       const isPine = child.userData.isPine
       const blend  = isPine ? seasonDef.pine : seasonDef.deciduous
       _sc_base.set(child.userData.baseColor)
       if (!blend) {
-        // summer (no shift) or spring/autumn pine: restore base color
         child.material.color.copy(_sc_base)
       } else {
         _sc_target.set(blend.hex)
