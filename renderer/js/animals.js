@@ -78,6 +78,7 @@ export function createAnimalMesh (animalType) {
   const group = new THREE.Group()
   group.userData.objectType = 'animal'
   group.userData.animalType = animalType
+  group.userData.interactiveMeshes = []
 
   // ── 3D body: box geometry ─────────────────────────────────────────────────
   const bodyH = def.bodyH
@@ -277,6 +278,10 @@ export function createAnimalMesh (animalType) {
     neck.castShadow = true
     group.add(neck)
   }
+
+  group.traverse(child => {
+    if (child.isMesh) group.userData.interactiveMeshes.push(child)
+  })
 
   return group
 }

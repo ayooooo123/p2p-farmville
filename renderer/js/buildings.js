@@ -156,6 +156,7 @@ export function createBuildingMesh (buildingType) {
   group.userData.buildingType = buildingType
   group.userData.windowPanes = []
   group.userData.chimneyTopMeshes = []
+  group.userData.interactiveMeshes = []
 
   const w = def.width
   const d = def.depth
@@ -294,6 +295,10 @@ export function createBuildingMesh (buildingType) {
     roofMat.opacity = 0.55
     roofMat.depthWrite = false
   }
+
+  group.traverse(child => {
+    if (child.isMesh) group.userData.interactiveMeshes.push(child)
+  })
 
   return group
 }

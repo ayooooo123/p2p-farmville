@@ -82,6 +82,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
   group.userData.treeType = treeType
   group.userData.trunkMeshes = []
   group.userData.canopyMeshes = []
+  group.userData.interactiveMeshes = []
   // Per-tree random phase offset so placed trees sway independently in the wind
   group.userData.windPhase = Math.random() * Math.PI * 2
 
@@ -173,6 +174,10 @@ export function createTreeMesh (treeType, mature, growthScale) {
       }
     }
   }
+
+  group.traverse(child => {
+    if (child.isMesh) group.userData.interactiveMeshes.push(child)
+  })
 
   return group
 }

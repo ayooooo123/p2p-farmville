@@ -1121,6 +1121,27 @@ function confirmPlacement () {
 }
 
 // ── Object interaction ───────────────────────────────────────────────────────
+function appendPlacedObjectMeshes (placedObject, type, allMeshes, objectMap) {
+  if (!placedObject.mesh) return
+
+  const cachedMeshes = placedObject.mesh.userData.interactiveMeshes
+  if (Array.isArray(cachedMeshes) && cachedMeshes.length > 0) {
+    for (const child of cachedMeshes) {
+      if (!child?.isMesh) continue
+      allMeshes.push(child)
+      objectMap.set(child.id, { type, data: placedObject })
+    }
+    return
+  }
+
+  // Fallback for legacy meshes created before interactive refs were cached.
+  placedObject.mesh.traverse(child => {
+    if (!child.isMesh) return
+    allMeshes.push(child)
+    objectMap.set(child.id, { type, data: placedObject })
+  })
+}
+
 function handleObjectClick (px, py) {
   // Raycast against all placed object meshes
   const raycaster = new THREE.Raycaster()
@@ -1131,36 +1152,9 @@ function handleObjectClick (px, py) {
   const allMeshes = []
   const objectMap = new Map()
 
-  for (const tree of farmState.trees) {
-    if (tree.mesh) {
-      tree.mesh.traverse(child => {
-        if (child.isMesh) {
-          allMeshes.push(child)
-          objectMap.set(child.id, { type: 'tree', data: tree })
-        }
-      })
-    }
-  }
-  for (const animal of farmState.animals) {
-    if (animal.mesh) {
-      animal.mesh.traverse(child => {
-        if (child.isMesh) {
-          allMeshes.push(child)
-          objectMap.set(child.id, { type: 'animal', data: animal })
-        }
-      })
-    }
-  }
-  for (const building of farmState.buildings) {
-    if (building.mesh) {
-      building.mesh.traverse(child => {
-        if (child.isMesh) {
-          allMeshes.push(child)
-          objectMap.set(child.id, { type: 'building', data: building })
-        }
-      })
-    }
-  }
+  for (const tree of farmState.trees) appendPlacedObjectMeshes(tree, 'tree', allMeshes, objectMap)
+  for (const animal of farmState.animals) appendPlacedObjectMeshes(animal, 'animal', allMeshes, objectMap)
+  for (const building of farmState.buildings) appendPlacedObjectMeshes(building, 'building', allMeshes, objectMap)
 
   const intersects = raycaster.intersectObjects(allMeshes, false)
   if (intersects.length === 0) return false
@@ -1946,27 +1940,9 @@ function updateHoverTooltip () {
   const allMeshes = []
   const objectMap = new Map()
 
-  for (const tree of farmState.trees) {
-    if (tree.mesh) {
-      tree.mesh.traverse(child => {
-        if (child.isMesh) { allMeshes.push(child); objectMap.set(child.id, { type: 'tree', data: tree }) }
-      })
-    }
-  }
-  for (const animal of farmState.animals) {
-    if (animal.mesh) {
-      animal.mesh.traverse(child => {
-        if (child.isMesh) { allMeshes.push(child); objectMap.set(child.id, { type: 'animal', data: animal }) }
-      })
-    }
-  }
-  for (const building of farmState.buildings) {
-    if (building.mesh) {
-      building.mesh.traverse(child => {
-        if (child.isMesh) { allMeshes.push(child); objectMap.set(child.id, { type: 'building', data: building }) }
-      })
-    }
-  }
+  for (const tree of farmState.trees) appendPlacedObjectMeshes(tree, 'tree', allMeshes, objectMap)
+  for (const animal of farmState.animals) appendPlacedObjectMeshes(animal, 'animal', allMeshes, objectMap)
+  for (const building of farmState.buildings) appendPlacedObjectMeshes(building, 'building', allMeshes, objectMap)
 
   const intersects = raycaster.intersectObjects(allMeshes, false)
 
