@@ -2871,8 +2871,14 @@ function updateAnimalProductIndicators () {
 }
 
 // ── Decoration animations (weather-reactive wind + water) ───────────────────
-// _waterBaseOpacity: stable base opacity per waterType so we don't fight construction values
-const _WATER_BASE_OPACITY = { fountain: 0.70, pond: 0.70, well: 0.60 }
+// _waterAnimProfiles: per-decoration water tuning. Phase offsets keep multiple
+// ponds/wells from pulsing in perfect lockstep when several are placed.
+const _WATER_ANIM_PROFILES = {
+  fountain: { baseOpacity: 0.70, pulseFreq: 0.60, pulseMag: 0.018, shimmerFreq: 1.10, shimmerMag: 0.08, driftFreq: 0.25 },
+  pond:     { baseOpacity: 0.70, pulseFreq: 0.40, pulseMag: 0.012, shimmerFreq: 1.10, shimmerMag: 0.08, driftFreq: 0.25 },
+  well:     { baseOpacity: 0.60, pulseFreq: 0.60, pulseMag: 0.018, shimmerFreq: 0.80, shimmerMag: 0.08, driftFreq: 0.25 },
+  birdbath: { baseOpacity: 0.58, pulseFreq: 0.95, pulseMag: 0.010, shimmerFreq: 1.65, shimmerMag: 0.05, driftFreq: 0.34 }
+}
 let _lastDecorationAnimMs = 0
 
 function updateDecorations (time) {
@@ -2922,25 +2928,23 @@ function updateDecorations (time) {
 
       if (child.userData.isWater && child.material) {
         const wt = child.userData.waterType
-        const base = _WATER_BASE_OPACITY[wt] ?? 0.65
+        const waterAnim = _WATER_ANIM_PROFILES[wt] || _WATER_ANIM_PROFILES.fountain
+        const phase = child.userData.waterPhase || 0
 
         // 1. Slow scale pulse — water surface expands/contracts slightly
-        const pulseFreq = wt === 'pond' ? 0.4 : 0.6  // Hz-ish
-        const pulseMag  = wt === 'pond' ? 0.012 : 0.018
-        const s = 1.0 + Math.sin(t * pulseFreq * Math.PI * 2) * pulseMag
+        const s = 1.0 + Math.sin(t * waterAnim.pulseFreq * Math.PI * 2 + phase) * waterAnim.pulseMag
         child.scale.set(s, 1, s)
 
         // 2. Opacity shimmer — subtle glint
-        const shimmerFreq = wt === 'well' ? 0.8 : 1.1
-        const shimmerMag  = 0.08
-        child.material.opacity = base + Math.sin(t * shimmerFreq * Math.PI * 2 + 1.3) * shimmerMag
+        child.material.opacity = waterAnim.baseOpacity + Math.sin(t * waterAnim.shimmerFreq * Math.PI * 2 + phase * 1.7 + 1.3) * waterAnim.shimmerMag
 
         // 3. Color temperature drift — cool to bright blue and back
         //    hue stays steel-blue, lightness drifts slightly
-        const drift = (Math.sin(t * 0.25 * Math.PI * 2) + 1) * 0.5  // 0..1
-        const r = 0x46 / 255 + drift * 0.04
-        const g = 0x82 / 255 + drift * 0.06
-        const b = 0xb4 / 255 + drift * 0.08
+        const drift = (Math.sin(t * waterAnim.driftFreq * Math.PI * 2 + phase * 0.6) + 1) * 0.5  // 0..1
+        const colorBoost = wt === 'birdbath' ? 0.75 : 1.0
+        const r = 0x46 / 255 + drift * 0.04 * colorBoost
+        const g = 0x82 / 255 + drift * 0.06 * colorBoost
+        const b = 0xb4 / 255 + drift * 0.08 * colorBoost
         child.material.color.setRGB(Math.min(1, r), Math.min(1, g), Math.min(1, b))
       }
     })

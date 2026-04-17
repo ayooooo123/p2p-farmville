@@ -219,6 +219,7 @@ function _buildFountain (g, def) {
   water.position.y = 0.35
   water.userData.isWater = true
   water.userData.waterType = 'fountain'
+  water.userData.waterPhase = Math.random() * Math.PI * 2
   g.add(water)
   // Center pillar
   const pillarGeo = new THREE.CylinderGeometry(0.15, 0.2, 1.2, 8)
@@ -458,6 +459,7 @@ function _buildPond (g) {
   water.receiveShadow = true
   water.userData.isWater = true
   water.userData.waterType = 'pond'
+  water.userData.waterPhase = Math.random() * Math.PI * 2
   g.add(water)
   // Edge rocks
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x696969 })
@@ -511,6 +513,7 @@ function _buildWell (g, def) {
   water.position.y = 0.5
   water.userData.isWater = true
   water.userData.waterType = 'well'
+  water.userData.waterPhase = Math.random() * Math.PI * 2
   g.add(water)
   // Roof supports
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
@@ -547,6 +550,10 @@ function _buildBirdBath (g, def) {
   const waterGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.04, 12)
   const water = new THREE.Mesh(waterGeo, waterMat)
   water.position.y = 0.92
+  water.receiveShadow = true
+  water.userData.isWater = true
+  water.userData.waterType = 'birdbath'
+  water.userData.waterPhase = Math.random() * Math.PI * 2
   g.add(water)
 }
 
