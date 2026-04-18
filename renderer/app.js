@@ -148,6 +148,16 @@ let terrainData = null
 let lastTime = 0
 const mouse = { x: 0, y: 0 }
 const mousePx = { x: 0, y: 0 }
+const _pointerRaycaster = new THREE.Raycaster()
+const _pointerNDC = new THREE.Vector2()
+const _pointerGroundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+const _pointerGroundIntersection = new THREE.Vector3()
+
+function _setPointerRayFromMouse () {
+  _pointerNDC.set(mouse.x, mouse.y)
+  _pointerRaycaster.setFromCamera(_pointerNDC, sceneData.camera)
+  return _pointerRaycaster
+}
 
 // ── HUD height tracking — keeps canvas below toolbar so farm isn't occluded ──
 function _updateHudHeight () {
@@ -1001,14 +1011,9 @@ function cancelPlacement () {
 function updateGhostPosition () {
   if (!placementMode || !placementMode.ghostMesh) return
 
-  // Raycast to ground plane (y=0)
-  const raycaster = new THREE.Raycaster()
-  const ndc = new THREE.Vector2(mouse.x, mouse.y)
-  raycaster.setFromCamera(ndc, sceneData.camera)
-
-  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
-  const intersection = new THREE.Vector3()
-  raycaster.ray.intersectPlane(groundPlane, intersection)
+  // Raycast to ground plane (y=0) without allocating new pointer helpers each frame.
+  const raycaster = _setPointerRayFromMouse()
+  const intersection = raycaster.ray.intersectPlane(_pointerGroundPlane, _pointerGroundIntersection)
 
   if (intersection) {
     // Snap to grid (2-unit grid)
@@ -1186,10 +1191,8 @@ function getPlacedObjectRaycastData () {
 }
 
 function handleObjectClick (px, py) {
-  // Raycast against all placed object meshes
-  const raycaster = new THREE.Raycaster()
-  const ndc = new THREE.Vector2(mouse.x, mouse.y)
-  raycaster.setFromCamera(ndc, sceneData.camera)
+  // Raycast against all placed object meshes.
+  const raycaster = _setPointerRayFromMouse()
 
   const { allMeshes, objectMap } = getPlacedObjectRaycastData()
   const intersects = raycaster.intersectObjects(allMeshes, false)
@@ -1969,9 +1972,7 @@ window.addEventListener('mouseup', (e) => {
 })
 
 function updateHoverTooltip () {
-  const raycaster = new THREE.Raycaster()
-  const ndc = new THREE.Vector2(mouse.x, mouse.y)
-  raycaster.setFromCamera(ndc, sceneData.camera)
+  const raycaster = _setPointerRayFromMouse()
 
   const { allMeshes, objectMap } = getPlacedObjectRaycastData()
   const intersects = raycaster.intersectObjects(allMeshes, false)
@@ -1979,7 +1980,7 @@ function updateHoverTooltip () {
   // If no placed objects hit, check if we're hovering a planted crop plot
   if (intersects.length === 0) {
     if (terrainData) {
-      const plot = terrainData.getPlotFromRaycast(new THREE.Vector2(mouse.x, mouse.y), sceneData.camera)
+      const plot = terrainData.getPlotFromRaycast(_pointerNDC, sceneData.camera)
       if (plot && plot.state === terrainData.PLOT_STATES.PLANTED && plot.crop && !plot.crop.withered) {
         _showCropTooltip(plot, mousePx.x, mousePx.y)
         return
