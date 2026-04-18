@@ -50,6 +50,9 @@ const _rainTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0
 let cloudGroup = null
 const MAX_CLOUDS = 8
 let clouds = []
+let cloudPuffMaterial = null
+let lastCloudVisualOpacity = -1
+let lastCloudVisualColor = null
 
 // Lightning
 let lastLightningTime = 0
@@ -273,6 +276,19 @@ function _updatePuddles (dtMs) {
 function _createCloudSystem () {
   cloudGroup = new THREE.Group()
   cloudGroup.visible = false
+  clouds = []
+  lastCloudVisualOpacity = -1
+  lastCloudVisualColor = null
+
+  if (!cloudPuffMaterial) {
+    cloudPuffMaterial = new THREE.MeshStandardMaterial({
+      color: 0xcccccc,
+      transparent: true,
+      opacity: 0.7,
+      roughness: 1,
+      metalness: 0
+    })
+  }
 
   for (let i = 0; i < MAX_CLOUDS; i++) {
     const cloud = _makeCloud()
@@ -291,20 +307,14 @@ function _createCloudSystem () {
 
 function _makeCloud () {
   const group = new THREE.Group()
-  const cloudMat = new THREE.MeshStandardMaterial({
-    color: 0xcccccc,
-    transparent: true,
-    opacity: 0.7,
-    roughness: 1,
-    metalness: 0
-  })
+  group.userData.usesSharedPuffMaterial = true
 
   // Cluster of spheres to form a cloud
   const puffCount = 4 + Math.floor(Math.random() * 4)
   for (let j = 0; j < puffCount; j++) {
     const r = 2 + Math.random() * 3
     const puffGeo = new THREE.SphereGeometry(r, 6, 6)
-    const puff = new THREE.Mesh(puffGeo, cloudMat.clone())
+    const puff = new THREE.Mesh(puffGeo, cloudPuffMaterial)
     puff.position.set(
       (Math.random() - 0.5) * 6,
       (Math.random() - 0.5) * 1.5,
@@ -340,6 +350,13 @@ function _updateClouds (dtMs) {
     cloudColor = 0xaaaaaa
   }
 
+  if (cloudPuffMaterial && (cloudOpacity !== lastCloudVisualOpacity || cloudColor !== lastCloudVisualColor)) {
+    cloudPuffMaterial.opacity = cloudOpacity
+    cloudPuffMaterial.color.setHex(cloudColor)
+    lastCloudVisualOpacity = cloudOpacity
+    lastCloudVisualColor = cloudColor
+  }
+
   for (const cloud of clouds) {
     cloud.position.x += cloud.userData.speed * dt
 
@@ -349,12 +366,13 @@ function _updateClouds (dtMs) {
       cloud.position.z = (Math.random() - 0.5) * 100
     }
 
-    // Update cloud color/opacity
+    // Fallback for any cloud variants that do not use the shared puff material/cache.
+    if (cloud.userData.usesSharedPuffMaterial) continue
+
     cloud.traverse(child => {
-      if (child.isMesh) {
-        child.material.opacity = cloudOpacity
-        child.material.color.setHex(cloudColor)
-      }
+      if (!child.isMesh) return
+      child.material.opacity = cloudOpacity
+      child.material.color.setHex(cloudColor)
     })
   }
 }
