@@ -1121,6 +1121,12 @@ function confirmPlacement () {
 }
 
 // ── Object interaction ───────────────────────────────────────────────────────
+const _placedObjectRaycastCache = {
+  signature: '',
+  allMeshes: [],
+  objectMap: new Map()
+}
+
 function appendPlacedObjectMeshes (placedObject, type, allMeshes, objectMap) {
   if (!placedObject.mesh) return
 
@@ -1142,20 +1148,46 @@ function appendPlacedObjectMeshes (placedObject, type, allMeshes, objectMap) {
   })
 }
 
+function _getPlacedObjectMeshSignature (placedObjects) {
+  return placedObjects.map((placedObject) => {
+    const mesh = placedObject.mesh
+    if (!mesh) return 'none'
+    const interactiveMeshes = mesh.userData.interactiveMeshes
+    const interactiveCount = Array.isArray(interactiveMeshes) ? interactiveMeshes.length : -1
+    return mesh.uuid + ':' + interactiveCount
+  }).join(',')
+}
+
+function getPlacedObjectRaycastData () {
+  const signature = [
+    _getPlacedObjectMeshSignature(farmState.trees),
+    _getPlacedObjectMeshSignature(farmState.animals),
+    _getPlacedObjectMeshSignature(farmState.buildings)
+  ].join('|')
+
+  if (signature !== _placedObjectRaycastCache.signature) {
+    const allMeshes = []
+    const objectMap = new Map()
+
+    for (const tree of farmState.trees) appendPlacedObjectMeshes(tree, 'tree', allMeshes, objectMap)
+    for (const animal of farmState.animals) appendPlacedObjectMeshes(animal, 'animal', allMeshes, objectMap)
+    for (const building of farmState.buildings) appendPlacedObjectMeshes(building, 'building', allMeshes, objectMap)
+
+    _placedObjectRaycastCache.signature = signature
+    _placedObjectRaycastCache.allMeshes = allMeshes
+    _placedObjectRaycastCache.objectMap = objectMap
+  }
+
+  return _placedObjectRaycastCache
+}
+
 function handleObjectClick (px, py) {
   // Raycast against all placed object meshes
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2(mouse.x, mouse.y)
   raycaster.setFromCamera(ndc, sceneData.camera)
 
-  // Collect all meshes from placed objects
-  const allMeshes = []
-  const objectMap = new Map()
-
-  for (const tree of farmState.trees) appendPlacedObjectMeshes(tree, 'tree', allMeshes, objectMap)
-  for (const animal of farmState.animals) appendPlacedObjectMeshes(animal, 'animal', allMeshes, objectMap)
-  for (const building of farmState.buildings) appendPlacedObjectMeshes(building, 'building', allMeshes, objectMap)
-
+  const { allMeshes, objectMap } = getPlacedObjectRaycastData()
   const intersects = raycaster.intersectObjects(allMeshes, false)
   if (intersects.length === 0) return false
 
@@ -1937,13 +1969,7 @@ function updateHoverTooltip () {
   const ndc = new THREE.Vector2(mouse.x, mouse.y)
   raycaster.setFromCamera(ndc, sceneData.camera)
 
-  const allMeshes = []
-  const objectMap = new Map()
-
-  for (const tree of farmState.trees) appendPlacedObjectMeshes(tree, 'tree', allMeshes, objectMap)
-  for (const animal of farmState.animals) appendPlacedObjectMeshes(animal, 'animal', allMeshes, objectMap)
-  for (const building of farmState.buildings) appendPlacedObjectMeshes(building, 'building', allMeshes, objectMap)
-
+  const { allMeshes, objectMap } = getPlacedObjectRaycastData()
   const intersects = raycaster.intersectObjects(allMeshes, false)
 
   // If no placed objects hit, check if we're hovering a planted crop plot
