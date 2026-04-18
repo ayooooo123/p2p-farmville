@@ -21,6 +21,7 @@ import { openAlmanac, closeAlmanac, isAlmanacOpen } from './js/almanac.js'
 import { SoundSystem } from './js/sounds.js'
 import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
 import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon, getTimeOfDay } from './js/daynight.js'
+import { createOverlayEpochTracker, markOverlaySeen, sweepStaleOverlays } from './js/overlay-epochs.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -116,6 +117,7 @@ const seasonDisplay = document.getElementById('season-display')
 const energyBarFill = document.getElementById('energy-bar-fill')
 const xpBarFill = document.getElementById('xp-bar-fill')
 const toolbar = document.getElementById('toolbar')
+const gameContainer = document.getElementById('game-container')
 const seedStrip = document.getElementById('seed-strip')
 const seedHotbar = document.getElementById('seed-hotbar')
 const levelUpNotif = document.getElementById('level-up-notification')
@@ -676,6 +678,8 @@ function worldToScreenCoords (worldX, worldY, worldZ, out = _worldToScreenResult
 }
 
 function showFloatingCoin (worldX, worldZ, text) {
+  if (!gameContainer) return
+
   const canvasRect = canvas.getBoundingClientRect()
   const screenPos = worldToScreenCoords(worldX, 0.5, worldZ, _worldToScreenResult, canvasRect)
 
@@ -684,7 +688,7 @@ function showFloatingCoin (worldX, worldZ, text) {
   el.textContent = text
   el.style.left = (screenPos.x - canvasRect.left) + 'px'
   el.style.top = (screenPos.y - canvasRect.top) + 'px'
-  document.getElementById('game-container').appendChild(el)
+  gameContainer.appendChild(el)
 
   // Remove after animation completes
   setTimeout(() => { el.remove() }, 1200)
@@ -2737,7 +2741,8 @@ function animateFarmTreeWind (time) {
 // ── Crop timer labels (world-to-screen DOM overlay) ──────────────────────────
 // Map from 'row,col' -> div element
 const _cropTimerEls = new Map()
-let _cropTimerThrottle = 0  // update every 500ms, not every frame
+const _cropTimerEpoch = createOverlayEpochTracker()
+let _lastCropTimerTextAt = 0
 
 function _fmtTimeRemaining (msLeft) {
   if (msLeft <= 0) return 'Ready!'
@@ -2747,18 +2752,14 @@ function _fmtTimeRemaining (msLeft) {
 }
 
 function updateCropTimers (time) {
-  if (!terrainData || !sceneData || !gameState.running) return
+  if (!terrainData || !sceneData || !gameState.running || !gameContainer) return
 
-  // Throttle: update label positions every frame but text only every 500ms
-  _cropTimerThrottle += 16  // approx per-frame ms
-  const updateText = _cropTimerThrottle >= 500
-  if (updateText) _cropTimerThrottle = 0
-
-  const container = document.getElementById('game-container')
-  if (!container) return
+  // Throttle text updates to twice per second without relying on frame rate.
+  const updateText = (time - _lastCropTimerTextAt) >= 500
+  if (updateText) _lastCropTimerTextAt = time
+  const textNow = updateText ? Date.now() : 0
   const canvasRect = canvas.getBoundingClientRect()
-
-  const seen = new Set()
+  const epoch = _cropTimerEpoch.next()
 
   for (const plot of terrainData.getAllPlots()) {
     if (!plot.crop || plot.state !== terrainData.PLOT_STATES.PLANTED || plot.crop.withered) continue
@@ -2768,16 +2769,16 @@ function updateCropTimers (time) {
 
     const maxStage = def.stages - 1
     const key = plot.row + ',' + plot.col
-    seen.add(key)
 
     // Get or create label element
     let el = _cropTimerEls.get(key)
     if (!el) {
       el = document.createElement('div')
       el.className = 'crop-timer'
-      container.appendChild(el)
+      gameContainer.appendChild(el)
       _cropTimerEls.set(key, el)
     }
+    markOverlaySeen(_cropTimerEls, key, epoch)
 
     // World-to-screen position (above the crop)
     const sc = worldToScreenCoords(plot.x, 0.5, plot.z, _worldToScreenResult, canvasRect)
@@ -2789,7 +2790,7 @@ function updateCropTimers (time) {
       if (isMature) {
         // Show wither countdown: witherTime = growTime * 3 total from plantedAt
         const witherTime = def.growTime * 3
-        const elapsed = Date.now() - plot.crop.plantedAt
+        const elapsed = textNow - plot.crop.plantedAt
         const witherMsLeft = witherTime - elapsed
         const witherPct = witherMsLeft / (def.growTime * 2)  // fraction of wither window left
         if (witherMsLeft <= 0) {
@@ -2820,29 +2821,24 @@ function updateCropTimers (time) {
     }
   }
 
-  // Remove labels for plots that no longer have growing crops
-  for (const [key, el] of _cropTimerEls) {
-    if (!seen.has(key)) {
-      el.remove()
-      _cropTimerEls.delete(key)
-    }
-  }
+  sweepStaleOverlays(_cropTimerEls, epoch, (_key, el) => {
+    el.remove()
+  })
 }
 
 // ── Animal product-ready indicators (DOM overlay) ────────────────────────────
 // Map from animal index -> div element
 const _animalProductEls = new Map()
 const _animalHungerEls = new Map()
+const _animalProductEpoch = createOverlayEpochTracker()
+const _animalHungerEpoch = createOverlayEpochTracker()
 
 function updateAnimalProductIndicators () {
-  if (!sceneData || !gameState.running) return
+  if (!sceneData || !gameState.running || !gameContainer) return
 
-  const container = document.getElementById('game-container')
-  if (!container) return
   const canvasRect = canvas.getBoundingClientRect()
-
-  const seenProduct = new Set()
-  const seenHunger = new Set()
+  const productEpoch = _animalProductEpoch.next()
+  const hungerEpoch = _animalHungerEpoch.next()
 
   for (let i = 0; i < farmState.animals.length; i++) {
     const animal = farmState.animals[i]
@@ -2850,17 +2846,16 @@ function updateAnimalProductIndicators () {
 
     // ── Product-ready star ─────────────────────────────────────────────
     if (animal.productReady) {
-      seenProduct.add(i)
-
       let el = _animalProductEls.get(i)
       if (!el) {
         el = document.createElement('div')
         el.className = 'animal-product-ready'
         el.textContent = '★'
         el.title = 'Product ready — click to collect!'
-        container.appendChild(el)
+        gameContainer.appendChild(el)
         _animalProductEls.set(i, el)
       }
+      markOverlaySeen(_animalProductEls, i, productEpoch)
 
       const sc = worldToScreenCoords(animal.x, 1.1, animal.z, _worldToScreenResult, canvasRect)
       el.style.left = sc.x + 'px'
@@ -2872,17 +2867,16 @@ function updateAnimalProductIndicators () {
     // Show when animal has never been fed, or after product was collected
     const isHungry = !animal.fed && !animal.productReady
     if (isHungry) {
-      seenHunger.add(i)
-
       let hel = _animalHungerEls.get(i)
       if (!hel) {
         hel = document.createElement('div')
         hel.className = 'animal-hungry'
         hel.textContent = '!'
         hel.title = 'Hungry! Click to feed'
-        container.appendChild(hel)
+        gameContainer.appendChild(hel)
         _animalHungerEls.set(i, hel)
       }
+      markOverlaySeen(_animalHungerEls, i, hungerEpoch)
 
       // Position slightly offset from product star so they don't overlap
       const sc = worldToScreenCoords(animal.x, 1.1, animal.z, _worldToScreenResult, canvasRect)
@@ -2892,21 +2886,13 @@ function updateAnimalProductIndicators () {
     }
   }
 
-  // Remove stale product indicators
-  for (const [i, el] of _animalProductEls) {
-    if (!seenProduct.has(i)) {
-      el.remove()
-      _animalProductEls.delete(i)
-    }
-  }
+  sweepStaleOverlays(_animalProductEls, productEpoch, (_key, el) => {
+    el.remove()
+  })
 
-  // Remove stale hunger indicators
-  for (const [i, el] of _animalHungerEls) {
-    if (!seenHunger.has(i)) {
-      el.remove()
-      _animalHungerEls.delete(i)
-    }
-  }
+  sweepStaleOverlays(_animalHungerEls, hungerEpoch, (_key, el) => {
+    el.remove()
+  })
 }
 
 // ── Decoration animations (weather-reactive wind + water) ───────────────────
