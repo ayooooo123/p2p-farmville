@@ -177,6 +177,8 @@ function _addBorderTrees (scene) {
     const px = x + (Math.random() - 0.5) * 2
     const pz = z + (Math.random() - 0.5) * 2
     treeGroup.position.set(px, 0, pz)
+    treeGroup.userData.trunkMeshes = []
+    treeGroup.userData.canopyMeshes = []
 
     // Trunk
     const trunkGeo = new THREE.CylinderGeometry(trunkR, trunkR * 1.2, trunkH, 7)
@@ -188,6 +190,7 @@ function _addBorderTrees (scene) {
     trunk.userData.isBorderTrunk = true
     trunk.userData.trunkHeight = trunkH
     treeGroup.add(trunk)
+    treeGroup.userData.trunkMeshes.push(trunk)
 
     // Canopy sphere
     const canopyColor = 0x2d7a1e + Math.floor(Math.random() * 0x101010)
@@ -201,6 +204,7 @@ function _addBorderTrees (scene) {
     canopy.userData.canopyRadius = canopyR
     canopy.userData.baseColor = canopyColor
     treeGroup.add(canopy)
+    treeGroup.userData.canopyMeshes.push(canopy)
 
     // Per-tree phase offset for independent wind sway (based on world position)
     treeGroup.userData.windPhase = px * 1.31 + pz * 0.97 + Math.random() * 0.5
@@ -344,6 +348,22 @@ const BORDER_CANOPY_SEASON = {
 function setBorderTreeSeasonColors (season) {
   const blend = BORDER_CANOPY_SEASON[season]
   for (const treeGroup of borderTreeGroups) {
+    const canopies = treeGroup.userData.canopyMeshes
+    if (Array.isArray(canopies) && canopies.length > 0) {
+      for (const child of canopies) {
+        if (!child.material) continue
+        _bt_base.set(child.userData.baseColor)
+        if (!blend) {
+          child.material.color.copy(_bt_base)
+        } else {
+          _bt_target.set(blend.hex)
+          child.material.color.copy(_bt_base).lerp(_bt_target, blend.t)
+        }
+      }
+      continue
+    }
+
+    // Fallback for any legacy border trees created before canopy caches existed.
     treeGroup.traverse((child) => {
       if (!child.isMesh || !child.userData.isBorderCanopy) return
       _bt_base.set(child.userData.baseColor)

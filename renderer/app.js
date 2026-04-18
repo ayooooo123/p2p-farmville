@@ -2593,7 +2593,30 @@ function animateBorderTreeWind (time) {
     const swayZ = (swayBase * treeCosDrift + swayOrth * treeSinDrift) * gustEnvelope
     const swayX = (swayBase * treeSinDrift - swayOrth * treeCosDrift) * gustEnvelope
 
-    for (const child of treeGroup.children) {
+    const trunks = treeGroup.userData.trunkMeshes
+    const canopies = treeGroup.userData.canopyMeshes
+    const hasCachedTrunks = Array.isArray(trunks) && trunks.length > 0
+    const hasCachedCanopies = Array.isArray(canopies) && canopies.length > 0
+    if (hasCachedTrunks || hasCachedCanopies) {
+      if (hasCachedTrunks) {
+        for (const child of trunks) {
+          child.rotation.z = swayZ * TRUNK_STR
+          child.rotation.x = swayX * TRUNK_STR * 0.5
+        }
+      }
+      if (hasCachedCanopies) {
+        for (const child of canopies) {
+          const r = child.userData.canopyRadius || 1.2
+          const amp = CANOPY_STR + r * CANOPY_SCL
+          child.rotation.z = swayZ * amp
+          child.rotation.x = swayX * amp * 0.55
+        }
+      }
+      continue
+    }
+
+    // Fallback for any legacy border trees created before cached refs existed.
+    treeGroup.traverse(child => {
       if (child.userData.isBorderTrunk) {
         child.rotation.z = swayZ * TRUNK_STR
         child.rotation.x = swayX * TRUNK_STR * 0.5
@@ -2603,7 +2626,7 @@ function animateBorderTreeWind (time) {
         child.rotation.z = swayZ * amp
         child.rotation.x = swayX * amp * 0.55
       }
-    }
+    })
   }
 }
 
