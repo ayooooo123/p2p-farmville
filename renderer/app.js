@@ -3078,6 +3078,7 @@ function updateAnimals (dtMs) {
 // nightFactor: 0 = full day (noon), 1 = full night. Uses a cosine curve so
 // windows ramp up smoothly at dusk and ramp down at dawn.
 let _lastWindowGlowMs = 0
+let _windowGlowUpdateStamp = 0
 
 function _nightFactorFromTime (t) {
   // t is 0..1 fraction of a full day cycle where 0.33 = noon (sun angle π/2)
@@ -3090,16 +3091,17 @@ function _nightFactorFromTime (t) {
 
 function applyWindowGlow () {
   const nightFactor = _nightFactorFromTime(getTimeOfDay())
-  const updatedMaterials = new Set()
+  const glowStamp = ++_windowGlowUpdateStamp
 
   for (const building of farmState.buildings) {
     const glowMaterials = building.mesh && building.mesh.userData.windowGlowMaterials
     if (Array.isArray(glowMaterials) && glowMaterials.length > 0) {
       for (const material of glowMaterials) {
-        if (!material || Array.isArray(material) || updatedMaterials.has(material)) continue
+        if (!material || Array.isArray(material)) continue
+        if (material.userData.windowGlowUpdateStamp === glowStamp) continue
         const baseIntensity = material.userData.baseEmissiveIntensity || 0
         material.emissiveIntensity = baseIntensity * nightFactor
-        updatedMaterials.add(material)
+        material.userData.windowGlowUpdateStamp = glowStamp
       }
       continue
     }
