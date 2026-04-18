@@ -43,8 +43,12 @@ const _iMat = new THREE.Matrix4()
 const _iPos = new THREE.Vector3()
 const _iQuat = new THREE.Quaternion()
 const _iScl = new THREE.Vector3(1, 1, 1)
-// Rain is tilted ~15° toward +X to look like angled streaks from top-down view
-const _rainTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.26)
+const _xAxis = new THREE.Vector3(1, 0, 0)
+const _zAxis = new THREE.Vector3(0, 0, 1)
+// Reuse immutable weather quaternions instead of allocating them in hot loops.
+const _rainTilt = new THREE.Quaternion().setFromAxisAngle(_zAxis, -0.26)
+const _stormRainTilt = new THREE.Quaternion().setFromAxisAngle(_zAxis, -0.45)
+const _snowFlatRot = new THREE.Quaternion().setFromAxisAngle(_xAxis, -Math.PI / 2)
 
 // Cloud system
 let cloudGroup = null
@@ -151,11 +155,10 @@ function _createRainSystem () {
   snowMesh.visible = false
   snowMesh.frustumCulled = false
 
-  const flatRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
   for (let i = 0; i < MAX_SNOW_FLAKES; i++) {
     _initSnowInstance(i)
     _iPos.set(snowX[i], snowY[i], snowZ[i])
-    _iMat.compose(_iPos, flatRot, _iScl)
+    _iMat.compose(_iPos, _snowFlatRot, _iScl)
     snowMesh.setMatrixAt(i, _iMat)
   }
   snowMesh.instanceMatrix.needsUpdate = true
@@ -175,7 +178,7 @@ function _updateRain (dtMs) {
 
   // Storm tilt is steeper; normal rain uses _rainTilt
   const tilt = currentWeather === 'stormy'
-    ? new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.45)
+    ? _stormRainTilt
     : _rainTilt
 
   for (let i = 0; i < MAX_RAIN_DROPS; i++) {
@@ -408,9 +411,6 @@ function _updateSnow (dtMs) {
   if (!isSnowing) return
 
   const dt = dtMs / 1000
-  const now = Date.now() * 0.001
-  // Gentle flat rotation so flakes face upward (top-down visible)
-  const flatRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
 
   for (let i = 0; i < MAX_SNOW_FLAKES; i++) {
     // Slow fall + gentle circular drift
@@ -424,7 +424,7 @@ function _updateSnow (dtMs) {
     }
 
     _iPos.set(snowX[i], snowY[i], snowZ[i])
-    _iMat.compose(_iPos, flatRot, _iScl)
+    _iMat.compose(_iPos, _snowFlatRot, _iScl)
     snowMesh.setMatrixAt(i, _iMat)
   }
   snowMesh.instanceMatrix.needsUpdate = true
