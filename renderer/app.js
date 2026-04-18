@@ -3074,8 +3074,20 @@ function _nightFactorFromTime (t) {
 
 function applyWindowGlow () {
   const nightFactor = _nightFactorFromTime(getTimeOfDay())
+  const updatedMaterials = new Set()
 
   for (const building of farmState.buildings) {
+    const glowMaterials = building.mesh && building.mesh.userData.windowGlowMaterials
+    if (Array.isArray(glowMaterials) && glowMaterials.length > 0) {
+      for (const material of glowMaterials) {
+        if (!material || Array.isArray(material) || updatedMaterials.has(material)) continue
+        const baseIntensity = material.userData.baseEmissiveIntensity || 0
+        material.emissiveIntensity = baseIntensity * nightFactor
+        updatedMaterials.add(material)
+      }
+      continue
+    }
+
     const panes = building.mesh && building.mesh.userData.windowPanes
     if (!Array.isArray(panes)) continue
     for (const pane of panes) {

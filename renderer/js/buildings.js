@@ -96,12 +96,34 @@ const WINDOW_GLOW = {
 // Buildings that get a chimney (smoke-producing)
 const HAS_CHIMNEY = new Set(['barn', 'bakery', 'winery', 'kitchen'])
 
+// Shared window glow materials are keyed by building type so every barn/bakery/etc.
+// reuses the same emissive glass material instance instead of cloning one per pane.
+const WINDOW_GLOW_MATERIAL_CACHE = new Map()
+
+function _getSharedWindowGlowMaterial (buildingType, glowDef) {
+  let material = WINDOW_GLOW_MATERIAL_CACHE.get(buildingType)
+  if (material) return material
+
+  material = new THREE.MeshStandardMaterial({
+    color: glowDef.pane,
+    emissive: new THREE.Color(glowDef.emissive),
+    emissiveIntensity: glowDef.emissiveIntensity,
+    roughness: 0.1,
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0.88
+  })
+  material.userData.baseEmissiveIntensity = glowDef.emissiveIntensity
+  WINDOW_GLOW_MATERIAL_CACHE.set(buildingType, material)
+  return material
+}
+
 /**
  * Helper: create a window pane box that protrudes slightly from a wall face.
  * winW/winH = window size, zOffset = how far from wall center along Z (or X).
  * axis = 'z' for front/back walls, 'x' for side walls.
  */
-function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, glowDef, panesArray) {
+function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, paneMaterial, panesArray) {
   const thk = 0.13  // protrusion thickness
   // Frame (slightly larger, dark wood)
   const frameW = winW + 0.12
@@ -116,18 +138,9 @@ function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, glowDef, panesA
   const paneGeo = axis === 'z'
     ? new THREE.BoxGeometry(winW, winH, thk)
     : new THREE.BoxGeometry(thk, winH, winW)
-  const paneMat = new THREE.MeshStandardMaterial({
-    color: glowDef.pane,
-    emissive: new THREE.Color(glowDef.emissive),
-    emissiveIntensity: glowDef.emissiveIntensity,
-    roughness: 0.1,
-    metalness: 0.0,
-    transparent: true,
-    opacity: 0.88
-  })
-  const pane = new THREE.Mesh(paneGeo, paneMat)
+  const pane = new THREE.Mesh(paneGeo, paneMaterial)
   pane.userData.isWindowPane = true
-  pane.userData.baseEmissiveIntensity = glowDef.emissiveIntensity
+  pane.userData.baseEmissiveIntensity = paneMaterial.userData.baseEmissiveIntensity
   if (Array.isArray(panesArray)) panesArray.push(pane)
 
   const winGroup = new THREE.Group()
@@ -155,6 +168,7 @@ export function createBuildingMesh (buildingType) {
   group.userData.objectType = 'building'
   group.userData.buildingType = buildingType
   group.userData.windowPanes = []
+  group.userData.windowGlowMaterials = []
   group.userData.chimneyTopMeshes = []
   group.userData.interactiveMeshes = []
 
@@ -239,28 +253,31 @@ export function createBuildingMesh (buildingType) {
   const winY = 0.18 + wallH * 0.62   // upper half of wall
 
   if (buildingType !== 'greenhouse') {
+    const sharedWindowGlowMaterial = _getSharedWindowGlowMaterial(buildingType, glowDef)
+    group.userData.windowGlowMaterials.push(sharedWindowGlowMaterial)
+
     // Front face windows (flanking the door, +Z side)
     const frontZ = d / 2 + 0.07
     const wp = group.userData.windowPanes
     if (w >= 4) {
       // Two front windows symmetrically placed
       const offset = w * 0.28
-      group.add(_makeWindow(winW, winH, winY, -offset, frontZ, 'z', glowDef, wp))
-      group.add(_makeWindow(winW, winH, winY,  offset, frontZ, 'z', glowDef, wp))
+      group.add(_makeWindow(winW, winH, winY, -offset, frontZ, 'z', sharedWindowGlowMaterial, wp))
+      group.add(_makeWindow(winW, winH, winY,  offset, frontZ, 'z', sharedWindowGlowMaterial, wp))
     } else {
       // Narrow building: one small front window
-      group.add(_makeWindow(winW * 0.85, winH * 0.85, winY, 0, frontZ, 'z', glowDef, wp))
+      group.add(_makeWindow(winW * 0.85, winH * 0.85, winY, 0, frontZ, 'z', sharedWindowGlowMaterial, wp))
     }
 
     // Back face windows (-Z side)
     const backZ = -(d / 2 + 0.07)
-    group.add(_makeWindow(winW, winH, winY, 0, backZ, 'z', glowDef, wp))
+    group.add(_makeWindow(winW, winH, winY, 0, backZ, 'z', sharedWindowGlowMaterial, wp))
 
     // Side windows (+X / -X faces)
     const sideWinW = Math.min(d * 0.2, 0.75)
     if (d >= 4) {
-      group.add(_makeWindow(sideWinW, winH, winY, 0, w / 2 + 0.07, 'x', glowDef, wp))
-      group.add(_makeWindow(sideWinW, winH, winY, 0, -(w / 2 + 0.07), 'x', glowDef, wp))
+      group.add(_makeWindow(sideWinW, winH, winY, 0, w / 2 + 0.07, 'x', sharedWindowGlowMaterial, wp))
+      group.add(_makeWindow(sideWinW, winH, winY, 0, -(w / 2 + 0.07), 'x', sharedWindowGlowMaterial, wp))
     }
   }
 
