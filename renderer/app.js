@@ -648,22 +648,32 @@ function showFeedback (text, color) {
 }
 
 // ── Floating coin text (world-to-screen) ────────────────────────────────────
+const _worldToScreenVec = new THREE.Vector3()
+const _worldToScreenResult = { x: 0, y: 0 }
+
+function worldToScreenCoords (worldX, worldY, worldZ, out = _worldToScreenResult, rect = null) {
+  if (!sceneData || !sceneData.camera) {
+    out.x = 0
+    out.y = 0
+    return out
+  }
+
+  _worldToScreenVec.set(worldX, worldY, worldZ).project(sceneData.camera)
+  const bounds = rect || canvas.getBoundingClientRect()
+  out.x = (_worldToScreenVec.x * 0.5 + 0.5) * bounds.width + bounds.left
+  out.y = (-_worldToScreenVec.y * 0.5 + 0.5) * bounds.height + bounds.top
+  return out
+}
+
 function showFloatingCoin (worldX, worldZ, text) {
-  if (!sceneData || !sceneData.camera) return
-
-  // Project world position to screen
-  const pos = new THREE.Vector3(worldX, 0.5, worldZ)
-  pos.project(sceneData.camera)
-
-  const canvas = document.getElementById('game-canvas')
-  const screenX = (pos.x * 0.5 + 0.5) * canvas.clientWidth
-  const screenY = (-pos.y * 0.5 + 0.5) * canvas.clientHeight
+  const canvasRect = canvas.getBoundingClientRect()
+  const screenPos = worldToScreenCoords(worldX, 0.5, worldZ, _worldToScreenResult, canvasRect)
 
   const el = document.createElement('div')
   el.className = 'floating-coin'
   el.textContent = text
-  el.style.left = screenX + 'px'
-  el.style.top = screenY + 'px'
+  el.style.left = (screenPos.x - canvasRect.left) + 'px'
+  el.style.top = (screenPos.y - canvasRect.top) + 'px'
   document.getElementById('game-container').appendChild(el)
 
   // Remove after animation completes
@@ -671,14 +681,8 @@ function showFloatingCoin (worldX, worldZ, text) {
 }
 
 // ── Float-up DOM text (coins / XP) ───────────────────────────────────────────
-function worldToScreen (worldPos) {
-  if (!sceneData || !sceneData.camera) return { x: 0, y: 0 }
-  const vec = worldPos.clone().project(sceneData.camera)
-  const rect = canvas.getBoundingClientRect()
-  return {
-    x: (vec.x * 0.5 + 0.5) * rect.width + rect.left,
-    y: (-vec.y * 0.5 + 0.5) * rect.height + rect.top
-  }
+function worldToScreen (worldPos, out = _worldToScreenResult, rect = null) {
+  return worldToScreenCoords(worldPos.x, worldPos.y, worldPos.z, out, rect)
 }
 
 function spawnFloatUp (text, cssClass, screenX, screenY) {
@@ -1659,7 +1663,7 @@ function handleHarvest (plot) {
   SoundSystem.play('harvest')
   createParticleEffect('harvest', { x: plot.x, y: 0.1, z: plot.z })
   createParticleEffect('coin', { x: plot.x, y: 0.3, z: plot.z })
-  const sc = worldToScreen(new THREE.Vector3(plot.x, 0.08, plot.z))
+  const sc = worldToScreenCoords(plot.x, 0.08, plot.z)
   spawnFloatUp('+' + cropDef.sellPrice + ' 🪙', 'coins', sc.x, sc.y)
   spawnFloatUp('+' + (cropDef.xp + masteryBonus) + ' XP', 'xp', sc.x, sc.y + 25)
 
@@ -2751,6 +2755,7 @@ function updateCropTimers (time) {
 
   const container = document.getElementById('game-container')
   if (!container) return
+  const canvasRect = canvas.getBoundingClientRect()
 
   const seen = new Set()
 
@@ -2774,8 +2779,7 @@ function updateCropTimers (time) {
     }
 
     // World-to-screen position (above the crop)
-    const worldPos = new THREE.Vector3(plot.x, 0.5, plot.z)
-    const sc = worldToScreen(worldPos)
+    const sc = worldToScreenCoords(plot.x, 0.5, plot.z, _worldToScreenResult, canvasRect)
     el.style.left = sc.x + 'px'
     el.style.top = (sc.y - 14) + 'px'
 
@@ -2834,6 +2838,7 @@ function updateAnimalProductIndicators () {
 
   const container = document.getElementById('game-container')
   if (!container) return
+  const canvasRect = canvas.getBoundingClientRect()
 
   const seenProduct = new Set()
   const seenHunger = new Set()
@@ -2856,8 +2861,7 @@ function updateAnimalProductIndicators () {
         _animalProductEls.set(i, el)
       }
 
-      const worldPos = new THREE.Vector3(animal.x, 1.1, animal.z)
-      const sc = worldToScreen(worldPos)
+      const sc = worldToScreenCoords(animal.x, 1.1, animal.z, _worldToScreenResult, canvasRect)
       el.style.left = sc.x + 'px'
       el.style.top = sc.y + 'px'
       el.style.display = 'block'
@@ -2880,8 +2884,7 @@ function updateAnimalProductIndicators () {
       }
 
       // Position slightly offset from product star so they don't overlap
-      const worldPos = new THREE.Vector3(animal.x, 1.1, animal.z)
-      const sc = worldToScreen(worldPos)
+      const sc = worldToScreenCoords(animal.x, 1.1, animal.z, _worldToScreenResult, canvasRect)
       hel.style.left = (sc.x + 10) + 'px'
       hel.style.top = sc.y + 'px'
       hel.style.display = 'block'
