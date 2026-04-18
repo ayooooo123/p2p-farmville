@@ -118,12 +118,17 @@ function _getSharedWindowGlowMaterial (buildingType, glowDef) {
   return material
 }
 
+function _trackInteractiveMesh (group, mesh) {
+  if (mesh?.isMesh) group.userData.interactiveMeshes.push(mesh)
+  return mesh
+}
+
 /**
  * Helper: create a window pane box that protrudes slightly from a wall face.
  * winW/winH = window size, zOffset = how far from wall center along Z (or X).
  * axis = 'z' for front/back walls, 'x' for side walls.
  */
-function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, paneMaterial, panesArray) {
+function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, paneMaterial, panesArray, rootGroup) {
   const thk = 0.13  // protrusion thickness
   // Frame (slightly larger, dark wood)
   const frameW = winW + 0.12
@@ -133,12 +138,14 @@ function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, paneMaterial, p
     : new THREE.BoxGeometry(thk * 0.6, frameH, frameW)
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x3e2206, roughness: 0.85 })
   const frame = new THREE.Mesh(frameGeo, frameMat)
+  _trackInteractiveMesh(rootGroup, frame)
 
   // Pane (emissive lit glass)
   const paneGeo = axis === 'z'
     ? new THREE.BoxGeometry(winW, winH, thk)
     : new THREE.BoxGeometry(thk, winH, winW)
   const pane = new THREE.Mesh(paneGeo, paneMaterial)
+  _trackInteractiveMesh(rootGroup, pane)
   pane.userData.isWindowPane = true
   pane.userData.baseEmissiveIntensity = paneMaterial.userData.baseEmissiveIntensity
   if (Array.isArray(panesArray)) panesArray.push(pane)
@@ -181,6 +188,7 @@ export function createBuildingMesh (buildingType) {
   const slabGeo = new THREE.BoxGeometry(w + 0.3, 0.18, d + 0.3)
   const slabMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.95, metalness: 0.05 })
   const slab = new THREE.Mesh(slabGeo, slabMat)
+  _trackInteractiveMesh(group, slab)
   slab.position.y = 0.09
   slab.receiveShadow = true
   group.add(slab)
@@ -193,6 +201,7 @@ export function createBuildingMesh (buildingType) {
     metalness: 0.05
   })
   const walls = new THREE.Mesh(wallGeo, wallMat)
+  _trackInteractiveMesh(group, walls)
   walls.position.y = wallH / 2 + 0.18   // sit on slab
   walls.castShadow = true
   walls.receiveShadow = true
@@ -211,6 +220,7 @@ export function createBuildingMesh (buildingType) {
     metalness: 0.0
   })
   const roof = new THREE.Mesh(roofGeo, roofMat)
+  _trackInteractiveMesh(group, roof)
   roof.position.y = wallTop + roofH / 2
   roof.rotation.y = Math.PI / 4
   roof.scale.set(w / Math.SQRT2, 1, d / Math.SQRT2)
@@ -222,6 +232,7 @@ export function createBuildingMesh (buildingType) {
   const eaveGeo = new THREE.BoxGeometry(w + 0.4, 0.1, d + 0.4)
   const eaveMat = new THREE.MeshStandardMaterial({ color: def.roofColor, roughness: 0.8 })
   const eave = new THREE.Mesh(eaveGeo, eaveMat)
+  _trackInteractiveMesh(group, eave)
   eave.position.y = wallTop + 0.05
   eave.castShadow = true
   eave.receiveShadow = true
@@ -233,6 +244,7 @@ export function createBuildingMesh (buildingType) {
   const doorGeo = new THREE.BoxGeometry(doorW, doorH, 0.12)
   const doorMat = new THREE.MeshStandardMaterial({ color: def.doorColor, roughness: 0.7 })
   const door = new THREE.Mesh(doorGeo, doorMat)
+  _trackInteractiveMesh(group, door)
   door.position.set(0, 0.18 + doorH / 2, d / 2 + 0.06)
   door.castShadow = true
   group.add(door)
@@ -243,6 +255,7 @@ export function createBuildingMesh (buildingType) {
   const doorFrameGeo = new THREE.BoxGeometry(dfW, dfH, 0.08)
   const doorFrameMat = new THREE.MeshStandardMaterial({ color: 0x3e2206, roughness: 0.8 })
   const doorFrame = new THREE.Mesh(doorFrameGeo, doorFrameMat)
+  _trackInteractiveMesh(group, doorFrame)
   doorFrame.position.set(0, 0.18 + doorH / 2, d / 2 + 0.02)
   group.add(doorFrame)
 
@@ -262,22 +275,22 @@ export function createBuildingMesh (buildingType) {
     if (w >= 4) {
       // Two front windows symmetrically placed
       const offset = w * 0.28
-      group.add(_makeWindow(winW, winH, winY, -offset, frontZ, 'z', sharedWindowGlowMaterial, wp))
-      group.add(_makeWindow(winW, winH, winY,  offset, frontZ, 'z', sharedWindowGlowMaterial, wp))
+      group.add(_makeWindow(winW, winH, winY, -offset, frontZ, 'z', sharedWindowGlowMaterial, wp, group))
+      group.add(_makeWindow(winW, winH, winY,  offset, frontZ, 'z', sharedWindowGlowMaterial, wp, group))
     } else {
       // Narrow building: one small front window
-      group.add(_makeWindow(winW * 0.85, winH * 0.85, winY, 0, frontZ, 'z', sharedWindowGlowMaterial, wp))
+      group.add(_makeWindow(winW * 0.85, winH * 0.85, winY, 0, frontZ, 'z', sharedWindowGlowMaterial, wp, group))
     }
 
     // Back face windows (-Z side)
     const backZ = -(d / 2 + 0.07)
-    group.add(_makeWindow(winW, winH, winY, 0, backZ, 'z', sharedWindowGlowMaterial, wp))
+    group.add(_makeWindow(winW, winH, winY, 0, backZ, 'z', sharedWindowGlowMaterial, wp, group))
 
     // Side windows (+X / -X faces)
     const sideWinW = Math.min(d * 0.2, 0.75)
     if (d >= 4) {
-      group.add(_makeWindow(sideWinW, winH, winY, 0, w / 2 + 0.07, 'x', sharedWindowGlowMaterial, wp))
-      group.add(_makeWindow(sideWinW, winH, winY, 0, -(w / 2 + 0.07), 'x', sharedWindowGlowMaterial, wp))
+      group.add(_makeWindow(sideWinW, winH, winY, 0, w / 2 + 0.07, 'x', sharedWindowGlowMaterial, wp, group))
+      group.add(_makeWindow(sideWinW, winH, winY, 0, -(w / 2 + 0.07), 'x', sharedWindowGlowMaterial, wp, group))
     }
   }
 
@@ -288,6 +301,7 @@ export function createBuildingMesh (buildingType) {
     const chimGeo = new THREE.BoxGeometry(chimW, chimH, chimW)
     const chimMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.95 })
     const chim = new THREE.Mesh(chimGeo, chimMat)
+    _trackInteractiveMesh(group, chim)
     // Place chimney off-center on the roof
     chim.position.set(w * 0.25, wallTop + chimH / 2 + roofH * 0.35, -d * 0.2)
     chim.castShadow = true
@@ -297,6 +311,7 @@ export function createBuildingMesh (buildingType) {
     const capGeo = new THREE.CylinderGeometry(chimW * 0.7, chimW * 0.55, 0.12, 6)
     const capMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 })
     const cap = new THREE.Mesh(capGeo, capMat)
+    _trackInteractiveMesh(group, cap)
     cap.position.set(w * 0.25, wallTop + chimH + roofH * 0.35 + 0.06, -d * 0.2)
     cap.userData.isChimneyTop = true
     group.userData.chimneyTopMeshes.push(cap)
@@ -312,10 +327,6 @@ export function createBuildingMesh (buildingType) {
     roofMat.opacity = 0.55
     roofMat.depthWrite = false
   }
-
-  group.traverse(child => {
-    if (child.isMesh) group.userData.interactiveMeshes.push(child)
-  })
 
   return group
 }

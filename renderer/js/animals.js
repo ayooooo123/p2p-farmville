@@ -65,6 +65,11 @@ export const ANIMAL_DEFINITIONS = {
   }
 }
 
+function _trackInteractiveMesh (group, mesh) {
+  if (mesh?.isMesh) group.userData.interactiveMeshes.push(mesh)
+  return mesh
+}
+
 /**
  * Create a 3D animal mesh with leg pivot groups for animation.
  * group.userData.legPivots = [p0, p1, ...] — rotate .rotation.x to swing.
@@ -85,6 +90,7 @@ export function createAnimalMesh (animalType) {
   const bodyGeo = new THREE.BoxGeometry(def.bodyW, bodyH, def.bodyD)
   const bodyMat = new THREE.MeshStandardMaterial({ color: def.bodyColor, roughness: 0.85, metalness: 0.0 })
   const body = new THREE.Mesh(bodyGeo, bodyMat)
+  _trackInteractiveMesh(group, body)
   body.position.y = bodyH / 2
   body.castShadow = true
   body.receiveShadow = true
@@ -96,6 +102,7 @@ export function createAnimalMesh (animalType) {
     const woolGeo = new THREE.SphereGeometry(woolR, 10, 8)
     const woolMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.98, metalness: 0.0 })
     const wool = new THREE.Mesh(woolGeo, woolMat)
+    _trackInteractiveMesh(group, wool)
     wool.position.y = bodyH * 0.75
     wool.scale.set(1, 0.65, 1)
     wool.castShadow = true
@@ -106,6 +113,7 @@ export function createAnimalMesh (animalType) {
   const headGeo = new THREE.SphereGeometry(def.headSize, 10, 8)
   const headMat = new THREE.MeshStandardMaterial({ color: def.headColor, roughness: 0.8, metalness: 0.0 })
   const head = new THREE.Mesh(headGeo, headMat)
+  _trackInteractiveMesh(group, head)
   head.position.set(0, bodyH * 0.85, -(def.bodyD / 2 + def.headSize * 0.55))
   head.castShadow = true
   group.add(head)
@@ -131,6 +139,7 @@ export function createAnimalMesh (animalType) {
     const pivot = new THREE.Group()
     pivot.position.set(lx, pivotY, lz)
     const leg = new THREE.Mesh(legGeo, legMat)
+    _trackInteractiveMesh(group, leg)
     // Leg mesh center at -legH/2 so top of leg is at pivot
     leg.position.y = -legH / 2
     leg.castShadow = true
@@ -147,6 +156,7 @@ export function createAnimalMesh (animalType) {
     for (let i = 0; i < 3; i++) {
       const spotGeo = new THREE.SphereGeometry(0.07, 6, 5)
       const spot = new THREE.Mesh(spotGeo, spotMat)
+      _trackInteractiveMesh(group, spot)
       spot.position.set(
         (Math.random() - 0.5) * def.bodyW * 0.5,
         bodyH + 0.04,
@@ -164,6 +174,7 @@ export function createAnimalMesh (animalType) {
     const beakGeo = new THREE.ConeGeometry(0.045, 0.14, 5)
     const beakMat = new THREE.MeshStandardMaterial({ color: animalType === 'duck' ? 0xff8c00 : 0xffaa00, roughness: 0.7 })
     const beak = new THREE.Mesh(beakGeo, beakMat)
+    _trackInteractiveMesh(group, beak)
     beak.rotation.x = Math.PI / 2
     beak.position.set(0, bodyH * 0.85, headFwdZ - def.headSize * 0.9)
     beak.castShadow = true
@@ -175,6 +186,7 @@ export function createAnimalMesh (animalType) {
       for (let i = 0; i < 2; i++) {
         const combGeo = new THREE.SphereGeometry(0.04 - i * 0.01, 6, 5)
         const comb = new THREE.Mesh(combGeo, combMat)
+        _trackInteractiveMesh(group, comb)
         comb.position.set(i * 0.04 - 0.02, bodyH * 0.85 + def.headSize + 0.04, headFwdZ)
         group.add(comb)
       }
@@ -186,6 +198,7 @@ export function createAnimalMesh (animalType) {
     const snoutGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8)
     const snoutMat = new THREE.MeshStandardMaterial({ color: 0xff8fa0, roughness: 0.9 })
     const snout = new THREE.Mesh(snoutGeo, snoutMat)
+    _trackInteractiveMesh(group, snout)
     snout.rotation.x = Math.PI / 2
     snout.position.set(0, bodyH * 0.78, headFwdZ - def.headSize * 0.85)
     snout.castShadow = true
@@ -195,6 +208,7 @@ export function createAnimalMesh (animalType) {
     for (const nx of [-0.03, 0.03]) {
       const nGeo = new THREE.SphereGeometry(0.02, 5, 4)
       const n = new THREE.Mesh(nGeo, nostrilMat)
+      _trackInteractiveMesh(group, n)
       n.position.set(nx, bodyH * 0.78, headFwdZ - def.headSize * 0.85 - 0.03)
       group.add(n)
     }
@@ -207,11 +221,13 @@ export function createAnimalMesh (animalType) {
     for (const ex of [-0.07, 0.07]) {
       const earGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.38, 5)
       const ear = new THREE.Mesh(earGeo, earMat)
+      _trackInteractiveMesh(group, ear)
       ear.position.set(ex, bodyH * 0.85 + def.headSize + 0.19, headFwdZ)
       ear.castShadow = true
       group.add(ear)
       const innerGeo = new THREE.CylinderGeometry(0.012, 0.016, 0.28, 5)
       const inner = new THREE.Mesh(innerGeo, innerEarMat)
+      _trackInteractiveMesh(group, inner)
       inner.position.set(ex, bodyH * 0.85 + def.headSize + 0.19, headFwdZ - 0.018)
       group.add(inner)
     }
@@ -223,6 +239,7 @@ export function createAnimalMesh (animalType) {
     const maneMat = new THREE.MeshStandardMaterial({ color: maneColor, roughness: 0.95 })
     const maneGeo = new THREE.SphereGeometry(def.headSize * 0.55, 8, 6)
     const mane = new THREE.Mesh(maneGeo, maneMat)
+    _trackInteractiveMesh(group, mane)
     mane.scale.set(0.5, 0.6, 2.2)
     mane.position.set(0, bodyH * 0.95, headFwdZ * 0.45)
     mane.castShadow = true
@@ -230,6 +247,7 @@ export function createAnimalMesh (animalType) {
     // Tail: small tuft at rear
     const tailGeo = new THREE.SphereGeometry(def.headSize * 0.35, 6, 5)
     const tail = new THREE.Mesh(tailGeo, maneMat)
+    _trackInteractiveMesh(group, tail)
     tail.scale.set(0.5, 0.9, 1.4)
     tail.position.set(0, bodyH * 0.7, def.bodyD / 2 + 0.12)
     group.add(tail)
@@ -242,6 +260,7 @@ export function createAnimalMesh (animalType) {
     for (const hx of [-def.headSize * 0.5, def.headSize * 0.5]) {
       const hornGeo = new THREE.ConeGeometry(0.025, 0.12, 5)
       const horn = new THREE.Mesh(hornGeo, hornMat)
+      _trackInteractiveMesh(group, horn)
       horn.position.set(hx, bodyH * 0.85 + def.headSize + 0.05, headFwdZ)
       horn.rotation.z = hx < 0 ? 0.3 : -0.3
       horn.castShadow = true
@@ -254,6 +273,7 @@ export function createAnimalMesh (animalType) {
     const snoutMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 })
     const snoutGeo = new THREE.SphereGeometry(0.06, 6, 5)
     const snout = new THREE.Mesh(snoutGeo, snoutMat)
+    _trackInteractiveMesh(group, snout)
     snout.scale.set(1, 0.7, 0.8)
     snout.position.set(0, bodyH * 0.78, headFwdZ - def.headSize * 0.5)
     group.add(snout)
@@ -265,6 +285,7 @@ export function createAnimalMesh (animalType) {
     for (const ex of [-0.1, 0.1]) {
       const earGeo = new THREE.CylinderGeometry(0.02, 0.035, 0.2, 5)
       const ear = new THREE.Mesh(earGeo, earMat)
+      _trackInteractiveMesh(group, ear)
       ear.position.set(ex, bodyH * 0.85 + def.headSize + 0.1, headFwdZ)
       ear.rotation.z = ex < 0 ? 0.2 : -0.2
       group.add(ear)
@@ -273,15 +294,12 @@ export function createAnimalMesh (animalType) {
     const neckMat = new THREE.MeshStandardMaterial({ color: def.bodyColor, roughness: 0.98 })
     const neckGeo = new THREE.SphereGeometry(def.headSize * 0.7, 8, 6)
     const neck = new THREE.Mesh(neckGeo, neckMat)
+    _trackInteractiveMesh(group, neck)
     neck.scale.set(0.6, 2.0, 0.6)
     neck.position.set(0, bodyH * 0.85, headFwdZ * 0.55)
     neck.castShadow = true
     group.add(neck)
   }
-
-  group.traverse(child => {
-    if (child.isMesh) group.userData.interactiveMeshes.push(child)
-  })
 
   return group
 }

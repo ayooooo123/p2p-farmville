@@ -64,6 +64,11 @@ export const TREE_DEFINITIONS = {
   }
 }
 
+function _trackInteractiveMesh (group, mesh) {
+  if (mesh?.isMesh) group.userData.interactiveMeshes.push(mesh)
+  return mesh
+}
+
 /**
  * Create a 3D tree mesh: cylinder trunk + sphere/cone canopy.
  * Viewed top-down the canopy dominates; 3D geometry casts proper shadows.
@@ -98,6 +103,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
     metalness: 0
   })
   const trunk = new THREE.Mesh(trunkGeo, trunkMat)
+  _trackInteractiveMesh(group, trunk)
   trunk.position.y = trunkH / 2
   trunk.castShadow = true
   trunk.receiveShadow = true
@@ -120,6 +126,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
         metalness: 0
       })
       const cone = new THREE.Mesh(coneGeo, coneMat)
+      _trackInteractiveMesh(group, cone)
       cone.position.y = trunkH + (i * coneH * 0.55)
       cone.castShadow = true
       cone.receiveShadow = true
@@ -139,6 +146,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
       metalness: 0
     })
     const canopy = new THREE.Mesh(sphereGeo, sphereMat)
+    _trackInteractiveMesh(group, canopy)
     canopy.position.y = trunkH + canopyR * 0.65
     canopy.castShadow = true
     canopy.receiveShadow = true
@@ -164,6 +172,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
           metalness: 0
         })
         const fruit = new THREE.Mesh(fruitGeo, fruitMat)
+        _trackInteractiveMesh(group, fruit)
         fruit.position.set(
           Math.cos(angle) * Math.cos(elevAngle) * r,
           canopy.position.y + Math.sin(elevAngle) * r * 0.5,
@@ -174,10 +183,6 @@ export function createTreeMesh (treeType, mature, growthScale) {
       }
     }
   }
-
-  group.traverse(child => {
-    if (child.isMesh) group.userData.interactiveMeshes.push(child)
-  })
 
   return group
 }
