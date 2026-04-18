@@ -152,33 +152,29 @@ export function createDecoMesh (decoType, variantSeed = 0) {
     default: _buildGeneric(group, def); break
   }
 
-  _cacheAnimatedDecorationParts(group)
   return group
 }
 
-function _tagWindDecoration (object3d, windKind, windBend = 1, rng = Math.random) {
+function _trackWindDecoration (group, object3d, windKind, windBend = 1, rng = Math.random) {
   object3d.userData.isWindDecoration = true
   object3d.userData.windKind = windKind
   object3d.userData.windBend = windBend
   object3d.userData.baseRotationX = object3d.rotation.x
   object3d.userData.baseRotationZ = object3d.rotation.z
   object3d.userData.windPhase = rng() * Math.PI * 2
+  group.userData.windDecorations.push(object3d)
 }
 
-function _cacheAnimatedDecorationParts (group) {
-  const windmillRotors = []
-  const windDecorations = []
-  const waterMeshes = []
+function _trackWaterMesh (group, mesh, waterType, rng = Math.random) {
+  mesh.userData.isWater = true
+  mesh.userData.waterType = waterType
+  mesh.userData.waterPhase = rng() * Math.PI * 2
+  if (mesh.material) group.userData.waterMeshes.push(mesh)
+}
 
-  group.traverse(child => {
-    if (child.userData.isWindmillRotor) windmillRotors.push(child)
-    if (child.userData.isWindDecoration) windDecorations.push(child)
-    if (child.userData.isWater && child.material) waterMeshes.push(child)
-  })
-
-  group.userData.windmillRotors = windmillRotors
-  group.userData.windDecorations = windDecorations
-  group.userData.waterMeshes = waterMeshes
+function _trackWindmillRotor (group, rotor) {
+  rotor.userData.isWindmillRotor = true
+  group.userData.windmillRotors.push(rotor)
 }
 
 function _buildFence (g, def) {
@@ -257,7 +253,7 @@ function _buildFlowerBox (g, def, rng) {
     fl.castShadow = true
     stalk.add(fl)
 
-    _tagWindDecoration(stalk, 'flowerStalk', 0.55 + h * 0.8, rng)
+    _trackWindDecoration(g, stalk, 'flowerStalk', 0.55 + h * 0.8, rng)
     g.add(stalk)
   }
 }
@@ -286,7 +282,7 @@ function _buildFlower (g, def, rng) {
     petal.castShadow = true
     stalk.add(petal)
 
-    _tagWindDecoration(stalk, 'flowerStalk', def.tall ? 1.35 : 0.9 + h * 0.3, rng)
+    _trackWindDecoration(g, stalk, 'flowerStalk', def.tall ? 1.35 : 0.9 + h * 0.3, rng)
     g.add(stalk)
   }
 }
@@ -303,9 +299,7 @@ function _buildFountain (g, def, rng) {
   const waterGeo = new THREE.CylinderGeometry(1.0, 1.0, 0.1, 16)
   const water = new THREE.Mesh(waterGeo, waterMat)
   water.position.y = 0.35
-  water.userData.isWater = true
-  water.userData.waterType = 'fountain'
-  water.userData.waterPhase = rng() * Math.PI * 2
+  _trackWaterMesh(g, water, 'fountain', rng)
   g.add(water)
   // Center pillar
   const pillarGeo = new THREE.CylinderGeometry(0.15, 0.2, 1.2, 8)
@@ -515,7 +509,7 @@ function _buildWindmill (g) {
   // Rotor group — hub + blades, rotated by game loop via userData.isWindmillRotor
   const rotor = new THREE.Group()
   rotor.position.set(0, 3.0, -0.55)
-  rotor.userData.isWindmillRotor = true
+  _trackWindmillRotor(g, rotor)
   g.add(rotor)
   const hubGeo = new THREE.SphereGeometry(0.15, 6, 4)
   rotor.add(new THREE.Mesh(hubGeo, mat))
@@ -562,9 +556,7 @@ function _buildPond (g, def, rng) {
   const water = new THREE.Mesh(waterGeo, waterMat)
   water.position.y = 0.04
   water.receiveShadow = true
-  water.userData.isWater = true
-  water.userData.waterType = 'pond'
-  water.userData.waterPhase = rng() * Math.PI * 2
+  _trackWaterMesh(g, water, 'pond', rng)
   g.add(water)
   // Edge rocks
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x696969 })
@@ -616,9 +608,7 @@ function _buildWell (g, def, rng) {
   const waterGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.05, 10)
   const water = new THREE.Mesh(waterGeo, waterMat)
   water.position.y = 0.5
-  water.userData.isWater = true
-  water.userData.waterType = 'well'
-  water.userData.waterPhase = rng() * Math.PI * 2
+  _trackWaterMesh(g, water, 'well', rng)
   g.add(water)
   // Roof supports
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
@@ -656,9 +646,7 @@ function _buildBirdBath (g, def, rng) {
   const water = new THREE.Mesh(waterGeo, waterMat)
   water.position.y = 0.92
   water.receiveShadow = true
-  water.userData.isWater = true
-  water.userData.waterType = 'birdbath'
-  water.userData.waterPhase = rng() * Math.PI * 2
+  _trackWaterMesh(g, water, 'birdbath', rng)
   g.add(water)
 }
 
