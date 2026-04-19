@@ -54,6 +54,7 @@ const _snowFlatRot = new THREE.Quaternion().setFromAxisAngle(_xAxis, -Math.PI / 
 let cloudGroup = null
 const MAX_CLOUDS = 8
 let clouds = []
+let cloudPuffGeometry = null
 let cloudPuffMaterial = null
 let lastCloudVisualOpacity = -1
 let lastCloudVisualColor = null
@@ -283,6 +284,10 @@ function _createCloudSystem () {
   lastCloudVisualOpacity = -1
   lastCloudVisualColor = null
 
+  if (!cloudPuffGeometry) {
+    cloudPuffGeometry = new THREE.SphereGeometry(1, 6, 6)
+  }
+
   if (!cloudPuffMaterial) {
     cloudPuffMaterial = new THREE.MeshStandardMaterial({
       color: 0xcccccc,
@@ -316,8 +321,8 @@ function _makeCloud () {
   const puffCount = 4 + Math.floor(Math.random() * 4)
   for (let j = 0; j < puffCount; j++) {
     const r = 2 + Math.random() * 3
-    const puffGeo = new THREE.SphereGeometry(r, 6, 6)
-    const puff = new THREE.Mesh(puffGeo, cloudPuffMaterial)
+    const puff = new THREE.Mesh(cloudPuffGeometry, cloudPuffMaterial)
+    puff.scale.setScalar(r)
     puff.position.set(
       (Math.random() - 0.5) * 6,
       (Math.random() - 0.5) * 1.5,
