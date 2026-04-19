@@ -7,6 +7,7 @@ import {
   createParticleEffect,
   updateParticles,
   getActiveEffectCount,
+  prepareEffectConfigs,
   dispose
 } from './particles.js'
 
@@ -71,4 +72,34 @@ test('initParticles resets stale pool bookkeeping between scene mounts', () => {
     dispose()
     assert.equal(secondScene.children.length, 0)
   })
+})
+
+test('prepareEffectConfigs precomputes reusable RGB color data', () => {
+  const prepared = prepareEffectConfigs({
+    demo: {
+      color: 0x336699,
+      colorVariance: 0x112233,
+      colorPalette: [0xff0000, 0x00ff00],
+      count: 2,
+      size: 1,
+      speed: 1,
+      spread: 1,
+      lifetime: 100,
+      gravity: 0,
+      direction: { x: 0, y: 0, z: 0 },
+      fadeOut: true
+    }
+  })
+
+  const baseColor = new THREE.Color(0x336699)
+  const varianceColor = new THREE.Color(0x112233)
+  const paletteA = new THREE.Color(0xff0000)
+  const paletteB = new THREE.Color(0x00ff00)
+
+  assert.deepEqual(prepared.demo.baseColorRGB, [baseColor.r, baseColor.g, baseColor.b])
+  assert.deepEqual(prepared.demo.varianceColorRGB, [varianceColor.r, varianceColor.g, varianceColor.b])
+  assert.deepEqual(prepared.demo.paletteRGB, [
+    [paletteA.r, paletteA.g, paletteA.b],
+    [paletteB.r, paletteB.g, paletteB.b]
+  ])
 })

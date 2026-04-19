@@ -161,6 +161,29 @@ const EFFECT_CONFIGS = {
   }
 }
 
+const _prepColor = new THREE.Color()
+
+function hexToRGBTuple (hex = 0) {
+  _prepColor.setHex(hex)
+  return [_prepColor.r, _prepColor.g, _prepColor.b]
+}
+
+function prepareEffectConfigs (configs) {
+  return Object.fromEntries(Object.entries(configs).map(([type, config]) => [
+    type,
+    {
+      ...config,
+      baseColorRGB: hexToRGBTuple(config.color),
+      varianceColorRGB: config.colorVariance ? hexToRGBTuple(config.colorVariance) : null,
+      paletteRGB: Array.isArray(config.colorPalette)
+        ? config.colorPalette.map(hexToRGBTuple)
+        : null
+    }
+  ]))
+}
+
+const PREPARED_EFFECT_CONFIGS = prepareEffectConfigs(EFFECT_CONFIGS)
+
 // ── State ────────────────────────────────────────────────────────────────────
 
 let scene = null
@@ -242,10 +265,9 @@ function initParticles (sceneRef) {
 function createParticleEffect (type, position) {
   if (!scene || !instancedMesh) return
 
-  const config = EFFECT_CONFIGS[type]
+  const config = PREPARED_EFFECT_CONFIGS[type]
   if (!config) return
 
-  const baseColor = new THREE.Color(config.color)
   const now = Date.now()
 
   for (let p = 0; p < config.count; p++) {
@@ -265,17 +287,16 @@ function createParticleEffect (type, position) {
 
     // Color: pick from palette if present, otherwise use base + variance
     let r, g, b
-    if (config.colorPalette && config.colorPalette.length > 0) {
-      const pick = new THREE.Color(config.colorPalette[Math.floor(Math.random() * config.colorPalette.length)])
-      r = pick.r; g = pick.g; b = pick.b
+    if (config.paletteRGB && config.paletteRGB.length > 0) {
+      [r, g, b] = config.paletteRGB[Math.floor(Math.random() * config.paletteRGB.length)]
     } else {
-      r = baseColor.r; g = baseColor.g; b = baseColor.b
-      if (config.colorVariance) {
-        const variance = new THREE.Color(config.colorVariance)
+      [r, g, b] = config.baseColorRGB
+      if (config.varianceColorRGB) {
+        const [vr, vg, vb] = config.varianceColorRGB
         const t = Math.random()
-        r = Math.min(1, r + variance.r * t)
-        g = Math.min(1, g + variance.g * t)
-        b = Math.min(1, b + variance.b * t)
+        r = Math.min(1, r + vr * t)
+        g = Math.min(1, g + vg * t)
+        b = Math.min(1, b + vb * t)
       }
     }
     slotR[slot] = r
@@ -398,5 +419,6 @@ export {
   createFootstepDust,
   updateParticles,
   getActiveEffectCount,
+  prepareEffectConfigs,
   dispose
 }
