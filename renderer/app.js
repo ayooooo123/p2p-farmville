@@ -23,6 +23,7 @@ import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeath
 import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon, getTimeOfDay } from './js/daynight.js'
 import { createOverlayEpochTracker, markOverlaySeen, sweepStaleOverlays } from './js/overlay-epochs.js'
 import { formatTimeRemaining, getTimedProgress } from './js/time-progress.js'
+import { buildEnvironmentFrame, getNightFactor } from './js/environment-frame.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -2510,51 +2511,28 @@ let _windGustPhase  = 0   // drives irregular gust amplitude during storms
 const FOOTSTEP_INTERVAL_MS = 180
 let _footstepTimer = 0   // ms since last footstep puff
 
-const WEATHER_WIND = {
-  clear:  { str: 0.6,  freq: 0.0012, treeStr: 0.6  },
-  cloudy: { str: 0.85, freq: 0.0014, treeStr: 0.85 },
-  rainy:  { str: 1.3,  freq: 0.0018, treeStr: 1.3  },
-  stormy: { str: 2.6,  freq: 0.0028, treeStr: 2.5  },
-  snowy:  { str: 0.45, freq: 0.0008, treeStr: 0.40 }
-}
-
-function _getWindParams () {
-  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
-  return WEATHER_WIND[weather] || WEATHER_WIND.clear
-}
-
 // ── Crop wind sway animation ─────────────────────────────────────────────────
 // Applies a gentle per-stem rotation each frame using per-plot phase offsets
 // so crops wave independently rather than in lockstep.
 // Wind strength and frequency now scale with current weather conditions.
-function animateCropWind (time) {
+function animateCropWind (time, frameEnv) {
   if (!terrainData) return
 
-  const wp = _getWindParams()
-  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+  const wp = frameEnv.windParams
+  const weather = frameEnv.weather
 
   // Base wind parameters scaled by weather
   const WIND_FREQ = wp.freq                         // weather-scaled frequency
   const WIND_STR  = 0.18   * wp.str                // weather-scaled amplitude
 
-  // Stormy-only: drift the wind direction and add irregular gusts
-  if (weather === 'stormy') {
-    _windDriftAngle = (_windDriftAngle + 0.000035) % (Math.PI * 2)  // slow direction rotation
-    _windGustPhase  = (_windGustPhase  + 0.000031) % (Math.PI * 2)  // irregular gust cycle
-  } else {
-    // Gently decay drift in non-stormy conditions
-    _windDriftAngle *= 0.9998
-    _windGustPhase  *= 0.9995
-  }
-
   // Gust envelope: in stormy weather adds ±40% amplitude variation
   const gustEnvelope = weather === 'stormy'
-    ? 1.0 + 0.4 * Math.sin(_windGustPhase + time * 0.00041)
+    ? 1.0 + 0.4 * Math.sin(frameEnv.windGustPhase + time * 0.00041)
     : 1.0
 
   // Hoist drift trig outside the per-plot loop — same values for all stems this frame
-  const sinDrift = Math.sin(_windDriftAngle)
-  const cosDrift = Math.cos(_windDriftAngle)
+  const sinDrift = frameEnv.windSinDrift
+  const cosDrift = frameEnv.windCosDrift
 
   const allPlots = terrainData.getAllPlots()
   for (const plot of allPlots) {
@@ -2596,12 +2574,12 @@ function animateCropWind (time) {
 // Amplitude: trunk gets half the sway, canopy gets full sway scaled by radius.
 // Wind strength scales with current weather (stormy = dramatic swaying).
 let _borderTrees = null  // cached once on first call
-function animateBorderTreeWind (time) {
+function animateBorderTreeWind (time, frameEnv) {
   if (!_borderTrees) _borderTrees = getBorderTrees()
   if (!_borderTrees || _borderTrees.length === 0) return
 
-  const wp = _getWindParams()
-  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+  const wp = frameEnv.windParams
+  const weather = frameEnv.weather
 
   // Trees sway at 64% of crop frequency (ponderous mass)
   const WIND_FREQ  = 0.0009 * wp.freq / 0.0014
@@ -2611,12 +2589,12 @@ function animateBorderTreeWind (time) {
 
   // Stormy: use the same gust envelope from crop wind
   const gustEnvelope = weather === 'stormy'
-    ? 1.0 + 0.35 * Math.sin(_windGustPhase * 0.73 + time * 0.00035)
+    ? 1.0 + 0.35 * Math.sin(frameEnv.windGustPhase * 0.73 + time * 0.00035)
     : 1.0
 
   // Hoist drift trig — same for every tree this frame
-  const treeSinDrift = Math.sin(_windDriftAngle)
-  const treeCosDrift = Math.cos(_windDriftAngle)
+  const treeSinDrift = frameEnv.windSinDrift
+  const treeCosDrift = frameEnv.windCosDrift
 
   for (const treeGroup of _borderTrees) {
     const phase = treeGroup.userData.windPhase || 0
@@ -2672,11 +2650,11 @@ function animateBorderTreeWind (time) {
 // sways in a figure-eight pattern rather than a simple pendulum.
 // Each tree group carries a unique userData.windPhase set at mesh creation time
 // so adjacent trees don't wave in lockstep.
-function animateFarmTreeWind (time) {
+function animateFarmTreeWind (time, frameEnv) {
   if (!farmState || !farmState.trees || farmState.trees.length === 0) return
 
-  const wp = _getWindParams()
-  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
+  const wp = frameEnv.windParams
+  const weather = frameEnv.weather
 
   // Same frequency ratio as border trees (heavier/slower than crops)
   const WIND_FREQ  = 0.0009 * wp.freq / 0.0014
@@ -2684,14 +2662,14 @@ function animateFarmTreeWind (time) {
   const CANOPY_STR = 0.048  * wp.treeStr    // canopy sways more visibly
   const CANOPY_SCL = 0.010  * wp.treeStr    // scale per unit of canopy radius
 
-  // Stormy gust envelope (reuses _windGustPhase from animateCropWind)
+  // Stormy gust envelope (reuses shared wind phase for this frame)
   const gustEnvelope = weather === 'stormy'
-    ? 1.0 + 0.35 * Math.sin(_windGustPhase * 0.73 + time * 0.00035)
+    ? 1.0 + 0.35 * Math.sin(frameEnv.windGustPhase * 0.73 + time * 0.00035)
     : 1.0
 
   // Reuse the same drift trig as border trees for a unified wind direction
-  const treeSinDrift = Math.sin(_windDriftAngle)
-  const treeCosDrift = Math.cos(_windDriftAngle)
+  const treeSinDrift = frameEnv.windSinDrift
+  const treeCosDrift = frameEnv.windCosDrift
 
   for (const tree of farmState.trees) {
     if (!tree.mesh) continue
@@ -2899,23 +2877,20 @@ const _WATER_ANIM_PROFILES = {
 }
 let _lastDecorationAnimMs = 0
 
-function updateDecorations (time) {
+function updateDecorations (time, frameEnv) {
   const t = time * 0.001 // seconds
-  const wp = _getWindParams()
-  const weather = getCurrentWeather ? getCurrentWeather() : 'clear'
-  const nightFactor = _nightFactorFromTime(getTimeOfDay())
-  const lampWeatherBoost = weather === 'stormy' ? 1.14 : weather === 'rainy' ? 1.08 : 1.0
-  const dtMs = _lastDecorationAnimMs > 0
-    ? Math.max(0, Math.min(50, time - _lastDecorationAnimMs))
-    : 16.67
-  _lastDecorationAnimMs = time
+  const wp = frameEnv.windParams
+  const weather = frameEnv.weather
+  const nightFactor = frameEnv.nightFactor
+  const lampWeatherBoost = frameEnv.lampWeatherBoost
+  const dtMs = frameEnv.decorationDtMs
 
   const gustEnvelope = weather === 'stormy'
-    ? 1.0 + 0.35 * Math.sin(_windGustPhase * 0.79 + time * 0.00045)
+    ? 1.0 + 0.35 * Math.sin(frameEnv.windGustPhase * 0.79 + time * 0.00045)
     : 1.0
   const decoWindFreq = 0.0016 * wp.freq / 0.0014
-  const sinDrift = Math.sin(_windDriftAngle)
-  const cosDrift = Math.cos(_windDriftAngle)
+  const sinDrift = frameEnv.windSinDrift
+  const cosDrift = frameEnv.windCosDrift
 
   for (const deco of farmState.decorations) {
     if (!deco.mesh) continue
@@ -3008,13 +2983,11 @@ function updateDecorations (time) {
 const _chimneyLastEmit = new Map()  // chimneyMesh.uuid → last emit timestamp (ms)
 const _chimneyWorldPos = new THREE.Vector3()
 
-function animateChimneySmoke (time) {
+function animateChimneySmoke (time, frameEnv) {
   if (!farmState.buildings || !farmState.buildings.length) return
 
   // Emit less often at night (buildings still active but quieter)
-  const tod = getTimeOfDay()
-  const isNightTime = tod > 0.62 || tod < 0.08
-  const interval = isNightTime ? 2400 : 800
+  const interval = frameEnv.isNightTime ? 2400 : 800
 
   for (const building of farmState.buildings) {
     if (!building.mesh) continue
@@ -3074,16 +3047,11 @@ let _lastWindowGlowMs = 0
 let _windowGlowUpdateStamp = 0
 
 function _nightFactorFromTime (t) {
-  // t is 0..1 fraction of a full day cycle where 0.33 = noon (sun angle π/2)
-  // We want nightFactor=0 at noon (t≈0.33) and nightFactor=1 at midnight (t≈0.83).
-  // Map to sun elevation angle: sunAngle = t*2π - π/2 (matches daynight.js)
-  const sunAngle = t * Math.PI * 2 - Math.PI / 2
-  const elevation = Math.sin(sunAngle) // 1 at noon, -1 at midnight
-  return Math.max(0, Math.min(1, (1 - elevation) / 2)) // 0 at noon, 1 at midnight
+  return getNightFactor(t)
 }
 
-function applyWindowGlow () {
-  const nightFactor = _nightFactorFromTime(getTimeOfDay())
+function applyWindowGlow (frameEnv = null) {
+  const nightFactor = frameEnv ? frameEnv.nightFactor : _nightFactorFromTime(getTimeOfDay())
   const glowStamp = ++_windowGlowUpdateStamp
 
   for (const building of farmState.buildings) {
@@ -3109,11 +3077,11 @@ function applyWindowGlow () {
   }
 }
 
-function updateWindowGlow (dtMs) {
+function updateWindowGlow (dtMs, frameEnv = null) {
   _lastWindowGlowMs += dtMs
   if (_lastWindowGlowMs < 200) return
   _lastWindowGlowMs = 0
-  applyWindowGlow()
+  applyWindowGlow(frameEnv)
 }
 
 // ── Building crafting update ─────────────────────────────────────────────────
@@ -3430,19 +3398,32 @@ function gameLoop (time) {
   updateWeather(dtMs, sceneData.sunLight)
   updateDayNight(dtMs)
   _updateTimeHUD()
+
+  const frameEnv = buildEnvironmentFrame({
+    time,
+    timeOfDay: getTimeOfDay(),
+    weather: getCurrentWeather ? getCurrentWeather() : 'clear',
+    windDriftAngle: _windDriftAngle,
+    windGustPhase: _windGustPhase,
+    lastDecorationAnimMs: _lastDecorationAnimMs
+  })
+  _windDriftAngle = frameEnv.windDriftAngle
+  _windGustPhase = frameEnv.windGustPhase
+  _lastDecorationAnimMs = time
+
   updateCrops(dtMs)
   animateReadyCrops(time)
-  animateCropWind(time)
-  animateBorderTreeWind(time)
-  animateFarmTreeWind(time)
+  animateCropWind(time, frameEnv)
+  animateBorderTreeWind(time, frameEnv)
+  animateFarmTreeWind(time, frameEnv)
   updateCropTimers(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
   updateAnimalProductIndicators()
   updateBuildings(dtMs)
-  updateWindowGlow(dtMs)
-  updateDecorations(time)
-  animateChimneySmoke(time)
+  updateWindowGlow(dtMs, frameEnv)
+  updateDecorations(time, frameEnv)
+  animateChimneySmoke(time, frameEnv)
   updateParticles(dtMs)
 
   // Energy regen
