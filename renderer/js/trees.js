@@ -1,4 +1,5 @@
 import * as THREE from './three.module.min.js'
+import { applySeasonalColors, createSeasonalColorScratch } from './seasonal-colors.js'
 
 // ── 15+ Tree Definitions ────────────────────────────────────────────────────
 export const TREE_DEFINITIONS = {
@@ -260,9 +261,7 @@ export function harvestTree (tree) {
 }
 
 // ── Seasonal canopy color shift ───────────────────────────────────────────────
-// Scratch THREE.Color instances — no per-call allocation.
-const _sc_base   = new THREE.Color()
-const _sc_target = new THREE.Color()
+const _seasonalTreeColorScratch = createSeasonalColorScratch()
 
 const CANOPY_SEASON_TARGETS = {
   spring: { deciduous: { hex: 0x4ccf30, t: 0.30 }, pine: null },
@@ -281,38 +280,23 @@ export function setFarmTreeSeasonColors (placedTrees, season) {
   const seasonDef = CANOPY_SEASON_TARGETS[season]
   if (!seasonDef) return
 
+  const getBlend = (child) => child.userData.isPine ? seasonDef.pine : seasonDef.deciduous
+
   for (const tree of placedTrees) {
     if (!tree.mesh) continue
     const canopies = tree.mesh.userData.canopyMeshes
     if (Array.isArray(canopies) && canopies.length > 0) {
-      for (const child of canopies) {
-        const isPine = child.userData.isPine
-        const blend  = isPine ? seasonDef.pine : seasonDef.deciduous
-        _sc_base.set(child.userData.baseColor)
-        if (!blend) {
-          // summer (no shift) or spring/autumn pine: restore base color
-          child.material.color.copy(_sc_base)
-        } else {
-          _sc_target.set(blend.hex)
-          child.material.color.copy(_sc_base).lerp(_sc_target, blend.t)
-        }
-      }
+      applySeasonalColors(canopies, getBlend, _seasonalTreeColorScratch)
       continue
     }
 
     // Fallback for any legacy meshes created before cached refs existed.
+    const legacyCanopies = []
     tree.mesh.traverse((child) => {
       if (!child.isMesh || !child.userData.isFarmCanopy) return
-      const isPine = child.userData.isPine
-      const blend  = isPine ? seasonDef.pine : seasonDef.deciduous
-      _sc_base.set(child.userData.baseColor)
-      if (!blend) {
-        child.material.color.copy(_sc_base)
-      } else {
-        _sc_target.set(blend.hex)
-        child.material.color.copy(_sc_base).lerp(_sc_target, blend.t)
-      }
+      legacyCanopies.push(child)
     })
+    applySeasonalColors(legacyCanopies, getBlend, _seasonalTreeColorScratch)
   }
 }
 

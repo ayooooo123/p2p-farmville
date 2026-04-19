@@ -1,5 +1,6 @@
 import * as THREE from './three.module.min.js'
 import { createPlotGrid } from './terrain.js'
+import { applySeasonalColors, createSeasonalColorScratch } from './seasonal-colors.js'
 
 const FARM_WIDTH = 80
 const FARM_DEPTH = 80
@@ -330,8 +331,7 @@ function getCameraOffset () {
 }
 
 // ── Seasonal border-tree canopy color shift ───────────────────────────────────
-const _bt_base   = new THREE.Color()
-const _bt_target = new THREE.Color()
+const _btScratch = createSeasonalColorScratch()
 
 const BORDER_CANOPY_SEASON = {
   spring: { hex: 0x4ccf30, t: 0.30 },
@@ -350,30 +350,17 @@ function setBorderTreeSeasonColors (season) {
   for (const treeGroup of borderTreeGroups) {
     const canopies = treeGroup.userData.canopyMeshes
     if (Array.isArray(canopies) && canopies.length > 0) {
-      for (const child of canopies) {
-        if (!child.material) continue
-        _bt_base.set(child.userData.baseColor)
-        if (!blend) {
-          child.material.color.copy(_bt_base)
-        } else {
-          _bt_target.set(blend.hex)
-          child.material.color.copy(_bt_base).lerp(_bt_target, blend.t)
-        }
-      }
+      applySeasonalColors(canopies, () => blend, _btScratch)
       continue
     }
 
     // Fallback for any legacy border trees created before canopy caches existed.
+    const legacyCanopies = []
     treeGroup.traverse((child) => {
       if (!child.isMesh || !child.userData.isBorderCanopy) return
-      _bt_base.set(child.userData.baseColor)
-      if (!blend) {
-        child.material.color.copy(_bt_base)
-      } else {
-        _bt_target.set(blend.hex)
-        child.material.color.copy(_bt_base).lerp(_bt_target, blend.t)
-      }
+      legacyCanopies.push(child)
     })
+    applySeasonalColors(legacyCanopies, () => blend, _btScratch)
   }
 }
 
