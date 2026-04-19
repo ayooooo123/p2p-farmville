@@ -122,6 +122,8 @@ const _tmpFog    = new THREE.Color()
 // Stars
 let starsGroup = null
 const STAR_COUNT = 200
+const STAR_BRIGHTNESS_BUCKETS = 8
+const starMaterialCache = new Map()
 
 // Fireflies
 let firefliesGroup = null
@@ -151,28 +153,51 @@ function initDayNight (sceneRef, sunRef, ambientRef, hemiRef, options) {
   _createFireflies()
 }
 
+function _getStarBrightnessBucket (brightness) {
+  return Math.max(0, Math.min(
+    STAR_BRIGHTNESS_BUCKETS - 1,
+    Math.round((brightness - 0.3) / 0.7 * (STAR_BRIGHTNESS_BUCKETS - 1))
+  ))
+}
+
+function _getStarMaterialForBucket (bucket) {
+  if (!starMaterialCache.has(bucket)) {
+    const brightness = 0.3 + (bucket / (STAR_BRIGHTNESS_BUCKETS - 1)) * 0.7
+    starMaterialCache.set(bucket, new THREE.MeshBasicMaterial({
+      color: new THREE.Color(brightness, brightness, brightness * 0.9),
+      fog: false
+    }))
+  }
+  return starMaterialCache.get(bucket)
+}
+
+function _setStarMaterialOpacity (opacity) {
+  const transparent = opacity < 1
+  for (const material of starMaterialCache.values()) {
+    material.opacity = opacity
+    material.transparent = transparent
+  }
+}
+
 function _createStars () {
   starsGroup = new THREE.Group()
   starsGroup.visible = false
 
   const starGeo = new THREE.SphereGeometry(0.15, 4, 4)
-  // fog: false so scene fog doesn't wash out stars into the sky colour
-  const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })
 
   for (let i = 0; i < STAR_COUNT; i++) {
-    const star = new THREE.Mesh(starGeo, starMat)
     const theta = Math.random() * Math.PI * 2
     const phi = Math.random() * Math.PI * 0.4 + 0.1 // upper hemisphere
     const r = 120 + Math.random() * 50
+    const brightness = 0.5 + Math.random() * 0.5
+    const brightnessBucket = _getStarBrightnessBucket(brightness)
+    const star = new THREE.Mesh(starGeo, _getStarMaterialForBucket(brightnessBucket))
+    star.userData.starBrightnessBucket = brightnessBucket
     star.position.set(
       r * Math.sin(phi) * Math.cos(theta),
       r * Math.cos(phi),
       r * Math.sin(phi) * Math.sin(theta)
     )
-    // Vary brightness
-    const brightness = 0.5 + Math.random() * 0.5
-    star.material = starMat.clone()
-    star.material.color.setRGB(brightness, brightness, brightness * 0.9)
     starsGroup.add(star)
   }
 
@@ -342,22 +367,21 @@ function updateDayNight (dtMs) {
     starsGroup.visible = isNightish
 
     if (isNightish) {
-      // Twinkle effect
+      // Twinkle effect — occasionally swap a star to another shared brightness bucket.
       const children = starsGroup.children
       for (let i = 0; i < children.length; i++) {
         if (Math.random() < 0.02) {
-          const b = 0.3 + Math.random() * 0.7
-          children[i].material.color.setRGB(b, b, b * 0.9)
+          const brightness = 0.3 + Math.random() * 0.7
+          const bucket = _getStarBrightnessBucket(brightness)
+          children[i].userData.starBrightnessBucket = bucket
+          children[i].material = _getStarMaterialForBucket(bucket)
         }
       }
-      // Fade stars based on how "night" it is
+      // Fade stars based on how "night" it is.
       let starOpacity = 1
       if (phase === 'dusk') starOpacity = phaseProgress
       else if (phase === 'dawn') starOpacity = 1 - phaseProgress * 2
-      starsGroup.children.forEach(s => {
-        s.material.opacity = Math.max(0, starOpacity)
-        s.material.transparent = starOpacity < 1
-      })
+      _setStarMaterialOpacity(Math.max(0, starOpacity))
     }
   }
 
