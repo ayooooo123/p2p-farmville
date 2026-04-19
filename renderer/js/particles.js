@@ -165,6 +165,8 @@ const EFFECT_CONFIGS = {
 
 let scene = null
 let instancedMesh = null
+let activeSlotCount = 0
+let nextAcquireSlot = 0
 
 // Per-slot typed arrays — parallel to InstancedMesh slots
 const slotInUse   = new Uint8Array(MAX_INSTANCES)
@@ -189,9 +191,18 @@ const _color  = new THREE.Color()
 
 // ── Pool Management ──────────────────────────────────────────────────────────
 
+function _resetPoolState () {
+  slotInUse.fill(0)
+  activeSlotCount = 0
+  nextAcquireSlot = 0
+}
+
 function _acquireSlot () {
   for (let i = 0; i < MAX_INSTANCES; i++) {
-    if (!slotInUse[i]) return i
+    const slot = (nextAcquireSlot + i) % MAX_INSTANCES
+    if (slotInUse[slot]) continue
+    nextAcquireSlot = (slot + 1) % MAX_INSTANCES
+    return slot
   }
   return -1
 }
@@ -207,7 +218,9 @@ function _hideSlot (i) {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 function initParticles (sceneRef) {
+  if (instancedMesh) dispose()
   scene = sceneRef
+  _resetPoolState()
 
   const geo = new THREE.SphereGeometry(1, 4, 4)
   // fog: false — particles are close-range VFX; scene fog would wash out their colours
@@ -240,6 +253,7 @@ function createParticleEffect (type, position) {
     if (slot < 0) break
 
     slotInUse[slot] = 1
+    activeSlotCount++
 
     // Spawn position — small jitter
     slotPX[slot] = position.x + (Math.random() - 0.5) * config.spread * 0.3
@@ -309,6 +323,7 @@ function updateParticles (dtMs) {
 
     if (progress >= 1) {
       slotInUse[i] = 0
+      activeSlotCount = Math.max(0, activeSlotCount - 1)
       _hideSlot(i)
       continue
     }
@@ -354,21 +369,18 @@ function updateParticles (dtMs) {
 }
 
 function getActiveEffectCount () {
-  let count = 0
-  for (let i = 0; i < MAX_INSTANCES; i++) {
-    if (slotInUse[i]) count++
-  }
-  return count
+  return activeSlotCount
 }
 
 function dispose () {
-  for (let i = 0; i < MAX_INSTANCES; i++) slotInUse[i] = 0
+  _resetPoolState()
   if (instancedMesh) {
     scene.remove(instancedMesh)
     instancedMesh.geometry.dispose()
     instancedMesh.material.dispose()
     instancedMesh = null
   }
+  scene = null
 }
 
 /**
