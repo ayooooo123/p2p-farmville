@@ -230,6 +230,7 @@ let currentSeason = 'summer'
 let baseTerrainMesh = null  // ref to the large background plane
 
 let plotGrid = []
+let allPlots = []
 let plotMeshes = []
 let raycaster = null
 let scene = null
@@ -301,6 +302,7 @@ function createPlotGrid (sceneRef) {
   scene = sceneRef
   raycaster = new THREE.Raycaster()
   plotGrid = []
+  allPlots = []
   plotMeshes = []
 
   // Build shared canvas textures
@@ -353,7 +355,7 @@ function createPlotGrid (sceneRef) {
       scene.add(plotMesh)
       plotMeshes.push(plotMesh)
 
-      plotGrid[row][col] = {
+      const plot = {
         row,
         col,
         state: PLOT_STATES.GRASS,
@@ -363,6 +365,8 @@ function createPlotGrid (sceneRef) {
         x,
         z
       }
+      plotGrid[row][col] = plot
+      allPlots.push(plot)
     }
   }
 
@@ -528,16 +532,12 @@ function getPlotAt (row, col) {
 }
 
 /**
- * Get all plots as a flat array
+ * Get all plots as a stable flat array.
+ * Reused across hot renderer/app.js loops to avoid rebuilding a 400-entry list
+ * several times per frame.
  */
 function getAllPlots () {
-  const all = []
-  for (let row = 0; row < GRID_ROWS; row++) {
-    for (let col = 0; col < GRID_COLS; col++) {
-      all.push(plotGrid[row][col])
-    }
-  }
-  return all
+  return allPlots
 }
 
 /**
