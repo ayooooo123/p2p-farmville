@@ -22,6 +22,7 @@ import { SoundSystem } from './js/sounds.js'
 import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
 import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon, getTimeOfDay } from './js/daynight.js'
 import { createOverlayEpochTracker, markOverlaySeen, sweepStaleOverlays } from './js/overlay-epochs.js'
+import { formatTimeRemaining, getTimedProgress } from './js/time-progress.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -1240,10 +1241,13 @@ function handleTreeInteract (tree) {
   } else if (tree.growthScale < 1) {
     showFeedback(def.name + ' is still growing...', '#7df9ff')
   } else {
-    const elapsed = Date.now() - (tree.lastHarvest || tree.plantedAt)
-    const remaining = Math.max(0, def.harvestTime - elapsed)
-    const secs = Math.ceil(remaining / 1000)
-    showFeedback(def.name + ' fruit in ' + secs + 's', '#7df9ff')
+    const countdown = getTimedProgress({
+      now: Date.now(),
+      startedAt: tree.lastHarvest || tree.plantedAt,
+      durationMs: def.harvestTime,
+      readyLabel: '1s'
+    })
+    showFeedback(def.name + ' fruit in ' + countdown.timeLabel, '#7df9ff')
   }
   updateHUD()
 }
@@ -1284,10 +1288,13 @@ function handleAnimalInteract (animal) {
     }
   } else {
     // Waiting for product
-    const elapsed = Date.now() - animal.lastFed
-    const remaining = Math.max(0, def.harvestTime - elapsed)
-    const secs = Math.ceil(remaining / 1000)
-    showFeedback(def.name + ': ' + def.product + ' in ' + secs + 's', '#7df9ff')
+    const countdown = getTimedProgress({
+      now: Date.now(),
+      startedAt: animal.lastFed,
+      durationMs: def.harvestTime,
+      readyLabel: '1s'
+    })
+    showFeedback(def.name + ': ' + def.product + ' in ' + countdown.timeLabel, '#7df9ff')
   }
   updateHUD()
 }
@@ -1976,6 +1983,7 @@ window.addEventListener('mouseup', (e) => {
 })
 
 function updateHoverTooltip () {
+  const now = Date.now()
   const raycaster = _setPointerRayFromMouse()
 
   const { allMeshes, objectMap } = getPlacedObjectRaycastData()
@@ -2009,15 +2017,14 @@ function updateHoverTooltip () {
         info = 'Click to harvest!  +' + (def ? def.sellPrice : '?') + ' coins  +' + (def ? def.xp : '?') + ' XP'
         progress = { pct: 100, label: 'Ready to harvest!', watered: false }
       } else if (def) {
-        const elapsed = Date.now() - (tree.lastHarvest || tree.plantedAt)
-        const pct = Math.min(100, Math.round((elapsed / def.harvestTime) * 100))
-        const msLeft = Math.max(0, def.harvestTime - elapsed)
-        let timeLabel
-        if (msLeft < 60000) timeLabel = Math.ceil(msLeft / 1000) + 's'
-        else if (msLeft < 3600000) timeLabel = Math.ceil(msLeft / 60000) + 'm'
-        else timeLabel = (msLeft / 3600000).toFixed(1) + 'h'
-        info = 'Growing  · ~' + timeLabel + ' to harvest'
-        progress = { pct, label: pct + '% ready  · ~' + timeLabel + ' remaining', watered: false }
+        const countdown = getTimedProgress({
+          now,
+          startedAt: tree.lastHarvest || tree.plantedAt,
+          durationMs: def.harvestTime,
+          readyLabel: '1s'
+        })
+        info = 'Growing  · ~' + countdown.timeLabel + ' to harvest'
+        progress = { pct: countdown.pct, label: countdown.pct + '% ready  · ~' + countdown.timeLabel + ' remaining', watered: false }
       } else {
         info = 'Growing...'
       }
@@ -2031,15 +2038,14 @@ function updateHoverTooltip () {
         info = 'Click to collect ' + (def ? def.product : 'product') + '!  +' + (def ? def.sellPrice : '?') + ' coins'
         progress = { pct: 100, label: 'Product ready to collect!', watered: false }
       } else if (animal.fed && def) {
-        const elapsed = Date.now() - animal.lastFed
-        const pct = Math.min(100, Math.round((elapsed / def.harvestTime) * 100))
-        const msLeft = Math.max(0, def.harvestTime - elapsed)
-        let timeLabel
-        if (msLeft < 60000) timeLabel = Math.ceil(msLeft / 1000) + 's'
-        else if (msLeft < 3600000) timeLabel = Math.ceil(msLeft / 60000) + 'm'
-        else timeLabel = (msLeft / 3600000).toFixed(1) + 'h'
-        info = 'Producing ' + (def.product || 'product') + '  · ~' + timeLabel + ' remaining'
-        progress = { pct, label: pct + '% complete  · ~' + timeLabel + ' remaining', watered: true }
+        const countdown = getTimedProgress({
+          now,
+          startedAt: animal.lastFed,
+          durationMs: def.harvestTime,
+          readyLabel: '1s'
+        })
+        info = 'Producing ' + (def.product || 'product') + '  · ~' + countdown.timeLabel + ' remaining'
+        progress = { pct: countdown.pct, label: countdown.pct + '% complete  · ~' + countdown.timeLabel + ' remaining', watered: true }
       } else {
         info = 'Click to feed  (costs ' + (def ? def.feedCost : '?') + ' coins)'
       }
@@ -2056,6 +2062,7 @@ function updateHoverTooltip () {
 }
 
 function _showCropTooltip (plot, px, py) {
+  const now = Date.now()
   const crop = plot.crop
   const def = CROP_DEFINITIONS[crop.type]
   if (!def) { hideTooltip(); return }
@@ -2070,12 +2077,12 @@ function _showCropTooltip (plot, px, py) {
   if (isMature) {
     // Calculate wither countdown
     const witherTime = def.growTime * 3
-    const elapsed = Date.now() - crop.plantedAt
-    const witherMsLeft = Math.max(0, witherTime - elapsed)
+    const witherCountdown = getTimedProgress({ now, startedAt: crop.plantedAt, durationMs: witherTime })
+    const witherMsLeft = witherCountdown.msLeft
     const witherPct = witherMsLeft / (def.growTime * 2)
     let witherNote = ''
     if (witherMsLeft > 0) {
-      const witherLabel = _fmtTimeRemaining(witherMsLeft)
+      const witherLabel = witherCountdown.timeLabel
       if (witherPct <= 0.25) {
         witherNote = '  · ⚠ Withers in ' + witherLabel + '!'
       } else if (witherPct <= 0.5) {
@@ -2095,14 +2102,7 @@ function _showCropTooltip (plot, px, py) {
     const accumLeft = timePerStage - (crop.growthAccum || 0)
     const multiplier = crop.watered ? 2 : 1
     const msLeft = (accumLeft + (stagesLeft - 1) * timePerStage) / multiplier
-    let timeLabel
-    if (msLeft < 60000) {
-      timeLabel = Math.ceil(msLeft / 1000) + 's'
-    } else if (msLeft < 3600000) {
-      timeLabel = Math.ceil(msLeft / 60000) + 'm'
-    } else {
-      timeLabel = (msLeft / 3600000).toFixed(1) + 'h'
-    }
+    const timeLabel = formatTimeRemaining(msLeft, { readyLabel: '1s' })
 
     const wateredNote = crop.watered ? '  · Watered (2x)' : '  · Water to speed up'
     info = 'Stage ' + crop.stage + '/' + maxStage + wateredNote
@@ -2744,13 +2744,6 @@ const _cropTimerEls = new Map()
 const _cropTimerEpoch = createOverlayEpochTracker()
 let _lastCropTimerTextAt = 0
 
-function _fmtTimeRemaining (msLeft) {
-  if (msLeft <= 0) return 'Ready!'
-  if (msLeft < 60000) return Math.ceil(msLeft / 1000) + 's'
-  if (msLeft < 3600000) return Math.ceil(msLeft / 60000) + 'm'
-  return (msLeft / 3600000).toFixed(1) + 'h'
-}
-
 function updateCropTimers (time) {
   if (!terrainData || !sceneData || !gameState.running || !gameContainer) return
 
@@ -2798,11 +2791,11 @@ function updateCropTimers (time) {
           el.className = 'crop-timer ready'
         } else if (witherPct <= 0.25) {
           // Last 25% of wither window — red urgent countdown
-          el.textContent = '★ ' + _fmtTimeRemaining(witherMsLeft)
+          el.textContent = '★ ' + formatTimeRemaining(witherMsLeft)
           el.className = 'crop-timer ready wither-urgent'
         } else if (witherPct <= 0.5) {
           // Middle 25-50% — orange warning
-          el.textContent = '★ ' + _fmtTimeRemaining(witherMsLeft)
+          el.textContent = '★ ' + formatTimeRemaining(witherMsLeft)
           el.className = 'crop-timer ready wither-warn'
         } else {
           // Fresh mature — just the star (no countdown clutter)
@@ -2815,7 +2808,7 @@ function updateCropTimers (time) {
         const accumLeft = timePerStage - (plot.crop.growthAccum || 0)
         const multiplier = plot.crop.watered ? 2 : 1
         const msLeft = (accumLeft + (stagesLeft - 1) * timePerStage) / multiplier
-        el.textContent = _fmtTimeRemaining(msLeft)
+        el.textContent = formatTimeRemaining(msLeft, { readyLabel: '1s' })
         el.className = 'crop-timer' + (plot.crop.watered ? ' watered' : '')
       }
     }
