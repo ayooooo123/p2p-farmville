@@ -71,14 +71,72 @@ let puddleMat    = null  // shared material — one opacity write per frame
 // Auto-water callback
 let autoWaterCallback = null
 
+function _disposeMaterial (material) {
+  if (!material) return
+  if (Array.isArray(material)) {
+    for (const entry of material) entry?.dispose?.()
+    return
+  }
+  material.dispose?.()
+}
+
+function _disposeMeshResources (mesh) {
+  if (!mesh) return
+  mesh.geometry?.dispose?.()
+  _disposeMaterial(mesh.material)
+}
+
+function _disposeGroupResources (group) {
+  if (!group) return
+
+  const geometries = new Set()
+  const materials = new Set()
+  group.traverse(child => {
+    if (!child.isMesh) return
+    if (child.geometry) geometries.add(child.geometry)
+    if (Array.isArray(child.material)) {
+      for (const material of child.material) {
+        if (material) materials.add(material)
+      }
+      return
+    }
+    if (child.material) materials.add(child.material)
+  })
+
+  for (const geometry of geometries) geometry.dispose?.()
+  for (const material of materials) material.dispose?.()
+}
+
+function _resetWeatherSystems () {
+  rainMesh?.parent?.remove(rainMesh)
+  snowMesh?.parent?.remove(snowMesh)
+  cloudGroup?.parent?.remove(cloudGroup)
+  puddleGroup?.parent?.remove(puddleGroup)
+
+  _disposeMeshResources(rainMesh)
+  _disposeMeshResources(snowMesh)
+  _disposeGroupResources(puddleGroup)
+
+  rainMesh = null
+  snowMesh = null
+  cloudGroup = null
+  clouds = []
+  puddleGroup = null
+  puddleMeshes = []
+  puddleMat = null
+  lastCloudVisualOpacity = -1
+  lastCloudVisualColor = null
+  lastLightningTime = 0
+}
+
 function initWeather (sceneRef, options) {
+  _resetWeatherSystems()
+
   scene = sceneRef
   currentWeather = 'clear'
   nextWeatherChange = Date.now() + _randomInterval()
-
-  if (options && options.onAutoWater) {
-    autoWaterCallback = options.onAutoWater
-  }
+  hasAutoWateredThisCycle = false
+  autoWaterCallback = options && options.onAutoWater ? options.onAutoWater : null
 
   _createRainSystem()
   _createCloudSystem()
