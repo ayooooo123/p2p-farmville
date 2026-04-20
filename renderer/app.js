@@ -20,7 +20,7 @@ import { QuestSystem } from './js/quests.js'
 import { openAlmanac, closeAlmanac, isAlmanacOpen } from './js/almanac.js'
 import { SoundSystem } from './js/sounds.js'
 import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
-import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon, getTimeOfDay } from './js/daynight.js'
+import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon, getTimeOfDay, setSeason as setDayNightSeason } from './js/daynight.js'
 import { createOverlayEpochTracker, markOverlaySeen, sweepStaleOverlays } from './js/overlay-epochs.js'
 import { formatTimeRemaining, getTimedProgress } from './js/time-progress.js'
 import { buildEnvironmentFrame, getNightFactor } from './js/environment-frame.js'
@@ -395,6 +395,8 @@ function updateSeasonIfChanged () {
   _lastSeasonCheck = now
 
   const season = getSeasonFromDate()
+  // Idempotent — keeps day/night seasonal tint in sync even if terrain branch is no-op.
+  setDayNightSeason(season)
   if (terrainData && terrainData.getCurrentSeason() !== season) {
     terrainData.setSeasonColors(season)
     SceneManager.setBorderTreeSeasonColors(season)
@@ -3471,11 +3473,14 @@ function startGame () {
   updateHUD()
   updateVehicleStatus()
 
-  // Apply initial season colors
+  // Apply initial season colors. Sync day/night seasonal tint here too — the
+  // updateSeasonIfChanged() throttle would otherwise no-op for ~60s and leave
+  // lighting in the default 'summer' tint.
   if (terrainData) {
-    terrainData.setSeasonColors(getSeasonFromDate())
+    const initialSeason = getSeasonFromDate()
+    terrainData.setSeasonColors(initialSeason)
+    setDayNightSeason(initialSeason)
     _lastSeasonCheck = Date.now()
-    updateSeasonIfChanged()
   }
 
   // ── Initialize weather system ──────────────────────────────────────────────

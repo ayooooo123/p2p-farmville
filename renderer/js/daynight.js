@@ -110,6 +110,20 @@ let cycleDuration = DAY_CYCLE_MS
 let currentPhase = 'noon'
 let timeOfDay = 0.3 // fraction 0-1
 
+// ── Seasonal lighting modifiers ─────────────────────────────────────────────
+// Subtle per-season tint and intensity bias applied AFTER the per-phase lerp.
+// `accent` is mixed into sun/ambient/hemi colors at strength `accentT`; intensity
+// and exposure scale by their respective multipliers. Effect attenuates through
+// night so winter does not crush moonlight to black.
+const SEASON_MODIFIERS = {
+  spring: { intensityMult: 1.00, exposureMult: 1.00, accent: new THREE.Color(0xddffe0), accentT: 0.04 },
+  summer: { intensityMult: 1.06, exposureMult: 1.04, accent: new THREE.Color(0xfff2c8), accentT: 0.05 },
+  autumn: { intensityMult: 0.94, exposureMult: 0.96, accent: new THREE.Color(0xffc080), accentT: 0.10 },
+  winter: { intensityMult: 0.80, exposureMult: 0.85, accent: new THREE.Color(0xcfe0ff), accentT: 0.14 }
+}
+let currentSeasonKey = 'summer'
+let currentSeasonMod = SEASON_MODIFIERS.summer
+
 // Scratch Color objects reused every frame to avoid per-frame GC pressure.
 // Each caller passes its own 'out' Color so there's no shared-reference aliasing risk.
 const _tmpSun    = new THREE.Color()
@@ -295,6 +309,16 @@ function _lerp (a, b, t) {
   return a + (b - a) * t
 }
 
+function setSeason (season) {
+  if (!SEASON_MODIFIERS[season] || season === currentSeasonKey) return
+  currentSeasonKey = season
+  currentSeasonMod = SEASON_MODIFIERS[season]
+}
+
+function getCurrentSeason () {
+  return currentSeasonKey
+}
+
 function updateDayNight (dtMs) {
   if (!sunLight || !scene) return
 
@@ -316,9 +340,23 @@ function updateDayNight (dtMs) {
   // Smooth transition between phases
   const t = Math.min(1, Math.max(0, phaseProgress))
 
+  // Seasonal lighting attenuation: full strength in daylight, partially gated through
+  // night so e.g. winter doesn't drag night-time exposure into total black. Dusk
+  // ramps INTO night (factor rises with t); dawn ramps OUT of night (factor falls).
+  const nightFactor =
+    phase === 'night' ? 1 :
+      phase === 'dusk' ? t :
+        phase === 'dawn' ? 1 - t :
+          0
+  const seasonGate = 1 - nightFactor * 0.7
+  const aT     = currentSeasonMod.accentT       * seasonGate
+  const iMult  = 1 + (currentSeasonMod.intensityMult - 1) * seasonGate
+  const eMult  = 1 + (currentSeasonMod.exposureMult  - 1) * seasonGate
+
   // Update sun light
   sunLight.color.copy(_lerpColor(_tmpSun, current.sunColor, next.sunColor, t))
-  sunLight.intensity = _lerp(current.sunIntensity, next.sunIntensity, t)
+  sunLight.color.lerp(currentSeasonMod.accent, aT * 0.5)   // half-strength on direct sun
+  sunLight.intensity = _lerp(current.sunIntensity, next.sunIntensity, t) * iMult
 
   // Move sun position based on time
   const sunAngle = timeOfDay * Math.PI * 2 - Math.PI / 2
@@ -332,14 +370,15 @@ function updateDayNight (dtMs) {
   //   dawn/dusk → warm orange-amber, noon → near-white, night → cool blue
   if (ambientLight) {
     ambientLight.color.copy(_lerpColor(_tmpAmb, current.ambientColor, next.ambientColor, t))
-    ambientLight.intensity = _lerp(current.ambientIntensity, next.ambientIntensity, t)
+    ambientLight.color.lerp(currentSeasonMod.accent, aT)
+    ambientLight.intensity = _lerp(current.ambientIntensity, next.ambientIntensity, t) * iMult
   }
 
   // Drive renderer toneMappingExposure to match phase brightness:
   //   noon → 1.3 (peak bright), night → 0.60 (deep dark), dawn/dusk → 0.85–0.88
   // Smooth lerp prevents jarring jumps at phase boundaries.
   if (renderer && current.dirExposure !== undefined && next.dirExposure !== undefined) {
-    const targetExposure = _lerp(current.dirExposure, next.dirExposure, t)
+    const targetExposure = _lerp(current.dirExposure, next.dirExposure, t) * eMult
     // Soft-lerp renderer exposure toward target (avoids 1-frame snap)
     renderer.toneMappingExposure += (targetExposure - renderer.toneMappingExposure) * 0.05
   }
@@ -347,8 +386,10 @@ function updateDayNight (dtMs) {
   // Update hemisphere light — color temperature + intensity follow day/night arc
   if (hemiLight) {
     hemiLight.color.copy(_lerpColor(_tmpHemSky, current.hemiSky, next.hemiSky, t))
+    hemiLight.color.lerp(currentSeasonMod.accent, aT * 0.7)
     hemiLight.groundColor.copy(_lerpColor(_tmpHemGnd, current.hemiGround, next.hemiGround, t))
-    hemiLight.intensity = _lerp(current.hemiIntensity, next.hemiIntensity, t)
+    hemiLight.groundColor.lerp(currentSeasonMod.accent, aT * 0.3)
+    hemiLight.intensity = _lerp(current.hemiIntensity, next.hemiIntensity, t) * iMult
   }
 
   // Update sky/fog — each uses its own dedicated scratch Color, no aliasing possible
@@ -447,5 +488,7 @@ export {
   getGameClockString,
   getPhaseIcon,
   isNight,
-  getLightMultiplier
+  getLightMultiplier,
+  setSeason,
+  getCurrentSeason
 }
