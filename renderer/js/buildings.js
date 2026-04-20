@@ -105,8 +105,28 @@ function _markSharedAsset (asset) {
 
 // Shared window glow materials are keyed by building type so every barn/bakery/etc.
 // reuses the same emissive glass material instance instead of cloning one per pane.
+const BUILDING_GEOMETRY_CACHE = new Map()
+const BUILDING_MATERIAL_CACHE = new Map()
 const WINDOW_GLOW_MATERIAL_CACHE = new Map()
 const WINDOW_PANE_GEOMETRY_CACHE = new Map()
+
+function _getSharedGeometry (key, factory) {
+  let geometry = BUILDING_GEOMETRY_CACHE.get(key)
+  if (geometry) return geometry
+
+  geometry = _markSharedAsset(factory())
+  BUILDING_GEOMETRY_CACHE.set(key, geometry)
+  return geometry
+}
+
+function _getSharedMaterial (key, factory) {
+  let material = BUILDING_MATERIAL_CACHE.get(key)
+  if (material) return material
+
+  material = _markSharedAsset(factory())
+  BUILDING_MATERIAL_CACHE.set(key, material)
+  return material
+}
 
 function _getSharedWindowGlowMaterial (buildingType, glowDef) {
   let material = WINDOW_GLOW_MATERIAL_CACHE.get(buildingType)
@@ -140,6 +160,16 @@ function _getSharedWindowPaneGeometry (axis, winW, winH, thickness) {
   return geometry
 }
 
+function _getBuildingPartGeometry (part, dimensions, factory) {
+  const key = `${part}:${dimensions.map(value => Number(value).toFixed(3)).join(':')}`
+  return _getSharedGeometry(key, factory)
+}
+
+function _getBuildingPartMaterial (part, values, factory) {
+  const key = `${part}:${values.join(':')}`
+  return _getSharedMaterial(key, factory)
+}
+
 function _trackInteractiveMesh (group, mesh) {
   if (mesh?.isMesh) group.userData.interactiveMeshes.push(mesh)
   return mesh
@@ -155,10 +185,14 @@ function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, paneMaterial, p
   // Frame (slightly larger, dark wood)
   const frameW = winW + 0.12
   const frameH = winH + 0.12
-  const frameGeo = axis === 'z'
-    ? new THREE.BoxGeometry(frameW, frameH, thk * 0.6)
-    : new THREE.BoxGeometry(thk * 0.6, frameH, frameW)
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x3e2206, roughness: 0.85 })
+  const frameGeo = _getBuildingPartGeometry(
+    `window-frame:${axis}`,
+    axis === 'z' ? [frameW, frameH, thk * 0.6] : [thk * 0.6, frameH, frameW],
+    () => axis === 'z'
+      ? new THREE.BoxGeometry(frameW, frameH, thk * 0.6)
+      : new THREE.BoxGeometry(thk * 0.6, frameH, frameW)
+  )
+  const frameMat = _getBuildingPartMaterial('window-frame', ['0x3e2206', '0.85'], () => new THREE.MeshStandardMaterial({ color: 0x3e2206, roughness: 0.85 }))
   const frame = new THREE.Mesh(frameGeo, frameMat)
   _trackInteractiveMesh(rootGroup, frame)
 
@@ -203,10 +237,11 @@ export function createBuildingMesh (buildingType) {
   const d = def.depth
   const wallH = def.height * 0.7   // wall height derived from building definition
   const roofH = def.height * 0.3   // roof peak height derived from building definition
+  const isGreenhouse = buildingType === 'greenhouse'
 
   // --- Foundation slab: slightly wider/deeper, gives a raised-floor look ---
-  const slabGeo = new THREE.BoxGeometry(w + 0.3, 0.18, d + 0.3)
-  const slabMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.95, metalness: 0.05 })
+  const slabGeo = _getBuildingPartGeometry('slab', [w + 0.3, 0.18, d + 0.3], () => new THREE.BoxGeometry(w + 0.3, 0.18, d + 0.3))
+  const slabMat = _getBuildingPartMaterial('slab', ['0x666666', '0.95', '0.05'], () => new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.95, metalness: 0.05 }))
   const slab = new THREE.Mesh(slabGeo, slabMat)
   _trackInteractiveMesh(group, slab)
   slab.position.y = 0.09
@@ -214,12 +249,19 @@ export function createBuildingMesh (buildingType) {
   group.add(slab)
 
   // --- Walls: BoxGeometry ---
-  const wallGeo = new THREE.BoxGeometry(w, wallH, d)
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: def.wallColor,
-    roughness: 0.85,
-    metalness: 0.05
-  })
+  const wallGeo = _getBuildingPartGeometry('walls', [w, wallH, d], () => new THREE.BoxGeometry(w, wallH, d))
+  const wallMat = _getBuildingPartMaterial(
+    'walls',
+    [def.wallColor, '0.85', '0.05', isGreenhouse ? 'greenhouse' : 'opaque'],
+    () => new THREE.MeshStandardMaterial({
+      color: def.wallColor,
+      roughness: 0.85,
+      metalness: 0.05,
+      transparent: isGreenhouse,
+      opacity: isGreenhouse ? 0.45 : 1,
+      depthWrite: !isGreenhouse
+    })
+  )
   const walls = new THREE.Mesh(wallGeo, wallMat)
   _trackInteractiveMesh(group, walls)
   walls.position.y = wallH / 2 + 0.18   // sit on slab
@@ -233,12 +275,19 @@ export function createBuildingMesh (buildingType) {
   // After rotation.y = PI/4 the base corners align with the XZ axes, then
   // scale.x = w/√2 and scale.z = d/√2 stretches the footprint to exactly w×d.
   // openEnded=true removes the redundant bottom cap (sits flush on box top).
-  const roofGeo = new THREE.CylinderGeometry(0, 1, roofH, 4, 1, true)
-  const roofMat = new THREE.MeshStandardMaterial({
-    color: def.roofColor,
-    roughness: 0.8,
-    metalness: 0.0
-  })
+  const roofGeo = _getBuildingPartGeometry('roof', [roofH], () => new THREE.CylinderGeometry(0, 1, roofH, 4, 1, true))
+  const roofMat = _getBuildingPartMaterial(
+    'roof',
+    [def.roofColor, '0.8', '0.0', isGreenhouse ? 'greenhouse' : 'opaque'],
+    () => new THREE.MeshStandardMaterial({
+      color: def.roofColor,
+      roughness: 0.8,
+      metalness: 0.0,
+      transparent: isGreenhouse,
+      opacity: isGreenhouse ? 0.55 : 1,
+      depthWrite: !isGreenhouse
+    })
+  )
   const roof = new THREE.Mesh(roofGeo, roofMat)
   _trackInteractiveMesh(group, roof)
   roof.position.y = wallTop + roofH / 2
@@ -249,8 +298,8 @@ export function createBuildingMesh (buildingType) {
   group.add(roof)
 
   // --- Roof overhang accent (flat ring to give eave depth) ---
-  const eaveGeo = new THREE.BoxGeometry(w + 0.4, 0.1, d + 0.4)
-  const eaveMat = new THREE.MeshStandardMaterial({ color: def.roofColor, roughness: 0.8 })
+  const eaveGeo = _getBuildingPartGeometry('eave', [w + 0.4, 0.1, d + 0.4], () => new THREE.BoxGeometry(w + 0.4, 0.1, d + 0.4))
+  const eaveMat = _getBuildingPartMaterial('eave', [def.roofColor, '0.8'], () => new THREE.MeshStandardMaterial({ color: def.roofColor, roughness: 0.8 }))
   const eave = new THREE.Mesh(eaveGeo, eaveMat)
   _trackInteractiveMesh(group, eave)
   eave.position.y = wallTop + 0.05
@@ -261,8 +310,8 @@ export function createBuildingMesh (buildingType) {
   // --- Door: small box on the front face (+Z side) ---
   const doorW = Math.min(w * 0.25, 1.0)
   const doorH = Math.min(wallH * 0.55, 1.0)
-  const doorGeo = new THREE.BoxGeometry(doorW, doorH, 0.12)
-  const doorMat = new THREE.MeshStandardMaterial({ color: def.doorColor, roughness: 0.7 })
+  const doorGeo = _getBuildingPartGeometry('door', [doorW, doorH, 0.12], () => new THREE.BoxGeometry(doorW, doorH, 0.12))
+  const doorMat = _getBuildingPartMaterial('door', [def.doorColor, '0.7'], () => new THREE.MeshStandardMaterial({ color: def.doorColor, roughness: 0.7 }))
   const door = new THREE.Mesh(doorGeo, doorMat)
   _trackInteractiveMesh(group, door)
   door.position.set(0, 0.18 + doorH / 2, d / 2 + 0.06)
@@ -272,8 +321,8 @@ export function createBuildingMesh (buildingType) {
   // --- Door frame accent (thin border around door) ---
   const dfW = doorW + 0.16
   const dfH = doorH + 0.10
-  const doorFrameGeo = new THREE.BoxGeometry(dfW, dfH, 0.08)
-  const doorFrameMat = new THREE.MeshStandardMaterial({ color: 0x3e2206, roughness: 0.8 })
+  const doorFrameGeo = _getBuildingPartGeometry('door-frame', [dfW, dfH, 0.08], () => new THREE.BoxGeometry(dfW, dfH, 0.08))
+  const doorFrameMat = _getBuildingPartMaterial('door-frame', ['0x3e2206', '0.8'], () => new THREE.MeshStandardMaterial({ color: 0x3e2206, roughness: 0.8 }))
   const doorFrame = new THREE.Mesh(doorFrameGeo, doorFrameMat)
   _trackInteractiveMesh(group, doorFrame)
   doorFrame.position.set(0, 0.18 + doorH / 2, d / 2 + 0.02)
@@ -318,8 +367,8 @@ export function createBuildingMesh (buildingType) {
   if (HAS_CHIMNEY.has(buildingType)) {
     const chimW = 0.35
     const chimH = roofH * 0.9 + 0.5
-    const chimGeo = new THREE.BoxGeometry(chimW, chimH, chimW)
-    const chimMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.95 })
+    const chimGeo = _getBuildingPartGeometry('chimney', [chimW, chimH, chimW], () => new THREE.BoxGeometry(chimW, chimH, chimW))
+    const chimMat = _getBuildingPartMaterial('chimney', ['0x555555', '0.95'], () => new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.95 }))
     const chim = new THREE.Mesh(chimGeo, chimMat)
     _trackInteractiveMesh(group, chim)
     // Place chimney off-center on the roof
@@ -328,24 +377,14 @@ export function createBuildingMesh (buildingType) {
     group.add(chim)
 
     // Chimney cap (small wider cylinder) — tagged so app.js can find it for smoke
-    const capGeo = new THREE.CylinderGeometry(chimW * 0.7, chimW * 0.55, 0.12, 6)
-    const capMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 })
+    const capGeo = _getBuildingPartGeometry('chimney-cap', [chimW * 0.7, chimW * 0.55, 0.12, 6], () => new THREE.CylinderGeometry(chimW * 0.7, chimW * 0.55, 0.12, 6))
+    const capMat = _getBuildingPartMaterial('chimney-cap', ['0x444444', '0.9'], () => new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 }))
     const cap = new THREE.Mesh(capGeo, capMat)
     _trackInteractiveMesh(group, cap)
     cap.position.set(w * 0.25, wallTop + chimH + roofH * 0.35 + 0.06, -d * 0.2)
     cap.userData.isChimneyTop = true
     group.userData.chimneyTopMeshes.push(cap)
     group.add(cap)
-  }
-
-  // Greenhouse special: glass-like treatment on both walls and roof
-  if (buildingType === 'greenhouse') {
-    wallMat.transparent = true
-    wallMat.opacity = 0.45
-    wallMat.depthWrite = false
-    roofMat.transparent = true
-    roofMat.opacity = 0.55
-    roofMat.depthWrite = false
   }
 
   return group
