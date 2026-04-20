@@ -424,6 +424,48 @@ const sproutMaterial = _markSharedAsset(new THREE.MeshStandardMaterial({ color: 
 const witheredStemGeometry = _markSharedAsset(new THREE.CylinderGeometry(0.035, 0.055, 0.16, 5))
 const witheredStemMaterial = _markSharedAsset(new THREE.MeshStandardMaterial({ color: 0x6a5842, roughness: 1.0 }))
 
+// Shared ring/arc assets used by every ready / growing crop instance.
+// Ready-crop glow rings share one of two materials — normal (yellow) or
+// wither-warn (orange) — swapped by setCropWitherWarn. Opacity is animated
+// globally by setReadyGlowOpacity so animateReadyCrops mutates shared state
+// exactly twice per frame instead of once per ring.
+const GLOW_RING_GEOMETRY = _markSharedAsset(new THREE.RingGeometry(0.28, 0.46, 32))
+const GLOW_RING_MATERIAL_NORMAL = _markSharedAsset(new THREE.MeshBasicMaterial({
+  color: 0xffee44,
+  transparent: true,
+  opacity: 0.75,
+  side: THREE.DoubleSide,
+  depthWrite: false
+}))
+const GLOW_RING_MATERIAL_WARN = _markSharedAsset(new THREE.MeshBasicMaterial({
+  color: 0xff6600,
+  transparent: true,
+  opacity: 0.75,
+  side: THREE.DoubleSide,
+  depthWrite: false
+}))
+
+const PROGRESS_ARC_MATERIAL = _markSharedAsset(new THREE.MeshBasicMaterial({
+  color: 0x44ff88,
+  transparent: true,
+  opacity: 0.65,
+  side: THREE.DoubleSide,
+  depthWrite: false
+}))
+const progressArcGeometryCache = new Map()
+
+function _getProgressArcGeometry (stage, maxStage) {
+  if (!Number.isFinite(maxStage) || maxStage <= 0) return null
+  const cacheKey = stage + ':' + maxStage
+  let geo = progressArcGeometryCache.get(cacheKey)
+  if (!geo) {
+    const arcLen = 2 * Math.PI * (stage / maxStage)
+    geo = _markSharedAsset(new THREE.RingGeometry(0.26, 0.36, 32, 1, -Math.PI / 2, arcLen))
+    progressArcGeometryCache.set(cacheKey, geo)
+  }
+  return geo
+}
+
 function _getCropStemGeometry (radiusTop, radiusBottom, height, radialSegments) {
   const cacheKey = radiusTop + ':' + radiusBottom + ':' + height + ':' + radialSegments
   let geo = cropStemGeometryCache.get(cacheKey)
@@ -622,17 +664,7 @@ export function createCropMesh (cropType, stage) {
 
   // Glow ring for ready/mature crops (pulsing handled in app.js animate loop via userData)
   if (isReady) {
-    const ringInner = 0.28
-    const ringOuter = 0.46
-    const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 32)
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffee44,
-      transparent: true,
-      opacity: 0.75,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    })
-    const ring = new THREE.Mesh(ringGeo, ringMat)
+    const ring = new THREE.Mesh(GLOW_RING_GEOMETRY, GLOW_RING_MATERIAL_NORMAL)
     ring.rotation.x = -Math.PI / 2
     ring.position.y = 0.04
     ring.userData.isGlowRing = true
@@ -642,22 +674,14 @@ export function createCropMesh (cropType, stage) {
 
   // Progress arc for growing (non-seed, non-mature) crops
   if (clampedStage > 0 && !isReady) {
-    const arcInner = 0.26
-    const arcOuter = 0.36
-    const arcLen = 2 * Math.PI * (clampedStage / maxStage)
-    const arcGeo = new THREE.RingGeometry(arcInner, arcOuter, 32, 1, -Math.PI / 2, arcLen)
-    const arcMat = new THREE.MeshBasicMaterial({
-      color: 0x44ff88,
-      transparent: true,
-      opacity: 0.65,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    })
-    const arc = new THREE.Mesh(arcGeo, arcMat)
-    arc.rotation.x = -Math.PI / 2
-    arc.position.y = 0.04
-    arc.userData.isProgressArc = true
-    group.add(arc)
+    const arcGeo = _getProgressArcGeometry(clampedStage, maxStage)
+    if (arcGeo) {
+      const arc = new THREE.Mesh(arcGeo, PROGRESS_ARC_MATERIAL)
+      arc.rotation.x = -Math.PI / 2
+      arc.position.y = 0.04
+      arc.userData.isProgressArc = true
+      group.add(arc)
+    }
   }
 
   group.userData.cropType = cropType
@@ -777,4 +801,41 @@ export function animateHarvestPop (mesh, scene, onComplete) {
   requestAnimationFrame(animate)
 }
 
-window.CropSystem = { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop }
+/**
+ * Swap a ready crop's glow-ring material between the shared normal/warn
+ * references. No per-mesh color mutation — both materials are shared, so
+ * changing `ring.material` is a pointer swap rather than a color write.
+ * @param {THREE.Group} group - crop mesh returned by createCropMesh
+ * @param {boolean} warn - true to show orange wither warning, false for normal yellow
+ */
+export function setCropWitherWarn (group, warn) {
+  if (!group || !group.userData) return
+  let rings = group.userData.glowRingMeshes
+  if (!Array.isArray(rings) || rings.length === 0) {
+    // Defensive fallback: any crop constructed before the glowRingMeshes
+    // cache (e.g. stale persisted state) is still warned correctly.
+    rings = []
+    group.traverse(child => {
+      if (child && child.userData && child.userData.isGlowRing) rings.push(child)
+    })
+    if (rings.length === 0) return
+  }
+  const target = warn ? GLOW_RING_MATERIAL_WARN : GLOW_RING_MATERIAL_NORMAL
+  for (const ring of rings) {
+    if (ring) ring.material = target
+  }
+}
+
+/**
+ * Set the shared glow-ring opacity for every ready crop in one call.
+ * The two shared materials (normal/warn) are mutated once each per frame
+ * instead of once per ring — O(1) instead of O(ready crop count).
+ * @param {number} opacity - 0..1
+ */
+export function setReadyGlowOpacity (opacity) {
+  const value = opacity < 0 ? 0 : opacity > 1 ? 1 : opacity
+  GLOW_RING_MATERIAL_NORMAL.opacity = value
+  GLOW_RING_MATERIAL_WARN.opacity = value
+}
+
+window.CropSystem = { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop, setCropWitherWarn, setReadyGlowOpacity }

@@ -1,6 +1,6 @@
 import * as THREE from './js/three.module.min.js'
 import { initScene, animate as renderScene, initCameraControls, updateCamera, resetCamera, getBorderTrees } from './js/scene.js'
-import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop } from './js/crops.js'
+import { CROP_DEFINITIONS, createCropMesh, createWitheredMesh, updateCropGrowth, animateHarvestPop, setCropWitherWarn, setReadyGlowOpacity } from './js/crops.js'
 import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed, setSelectedSeed, updateSeedStrip, loadPinnedSeeds, pinSeedToSlot, getPinnedSeeds, renderSeedHotbar, CONSUMABLE_DEFINITIONS } from './js/market.js'
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
@@ -2412,19 +2412,9 @@ function updateCrops (dtMs) {
           const elapsed = Date.now() - plot.crop.plantedAt
           const warnThreshold = def.growTime * 2.5     // 75% into 2x wither window
           if (elapsed >= warnThreshold) {
-            // Tint glow ring orange as a persistent visual warning.
-            const glowRings = plot.cropMesh.userData.glowRingMeshes
-            if (Array.isArray(glowRings) && glowRings.length > 0) {
-              for (const ring of glowRings) {
-                if (ring.material) ring.material.color.setHex(0xff6600)
-              }
-            } else {
-              plot.cropMesh.traverse(child => {
-                if (child.userData.isGlowRing && child.material) {
-                  child.material.color.setHex(0xff6600)
-                }
-              })
-            }
+            // Swap ring material to the shared orange warn material (pointer
+            // swap — safe because we never mutate a shared material's color).
+            setCropWitherWarn(plot.cropMesh, true)
             // Toast once per crop
             if (!plot.crop.witherWarned) {
               plot.crop.witherWarned = true
@@ -2465,25 +2455,14 @@ function animateReadyCrops (time) {
   if (!terrainData) return
   const allPlots = terrainData.getAllPlots()
   const glowOpacity = Math.sin(Date.now() * 0.004) * 0.5 + 0.5
+  // Shared glow-ring materials — one write per frame covers every ready crop.
+  setReadyGlowOpacity(glowOpacity)
   for (const plot of allPlots) {
     if (!plot.cropMesh) continue
     if (plot.crop && !plot.crop.withered && plot.cropMesh.userData.isReady) {
       // Gentle pulse: scale between 1.0 and 1.15 with a slow sine wave
       const pulse = 1.0 + 0.15 * Math.sin(time * 0.003 + plot.x * 1.7 + plot.z * 2.3)
       plot.cropMesh.scale.set(pulse, 1, pulse)
-      // Pulse glow ring opacity without traversing the crop subtree every frame.
-      const glowRings = plot.cropMesh.userData.glowRingMeshes
-      if (Array.isArray(glowRings) && glowRings.length > 0) {
-        for (const ring of glowRings) {
-          if (ring.material) ring.material.opacity = glowOpacity
-        }
-      } else {
-        plot.cropMesh.traverse(child => {
-          if (child.userData.isGlowRing && child.material) {
-            child.material.opacity = glowOpacity
-          }
-        })
-      }
     } else {
       // Reset scale for non-ready crops
       plot.cropMesh.scale.set(1, 1, 1)
