@@ -40,6 +40,57 @@ const NEIGHBOR_FENCE_MATERIAL = markSharedAsset(new THREE.MeshStandardMaterial({
   color: 0x8b5e3c,
   roughness: 0.8
 }))
+const NEIGHBOR_CROP_STEM_GEOMETRY_CACHE = new Map()
+const NEIGHBOR_CROP_STEM_MATERIAL_CACHE = new Map()
+const NEIGHBOR_CROP_CANOPY_GEOMETRY_CACHE = new Map()
+const NEIGHBOR_CROP_CANOPY_MATERIAL_CACHE = new Map()
+
+function getSharedNeighborCropStemGeometry (stage) {
+  if (!NEIGHBOR_CROP_STEM_GEOMETRY_CACHE.has(stage)) {
+    NEIGHBOR_CROP_STEM_GEOMETRY_CACHE.set(
+      stage,
+      markSharedAsset(new THREE.CylinderGeometry(0.15 + stage * 0.05, 0.1, 0.1 + stage * 0.25, 6))
+    )
+  }
+
+  return NEIGHBOR_CROP_STEM_GEOMETRY_CACHE.get(stage)
+}
+
+function getSharedNeighborCropStemMaterial (stage, withered) {
+  const key = withered ? 'withered' : `stage:${stage}`
+  if (!NEIGHBOR_CROP_STEM_MATERIAL_CACHE.has(key)) {
+    const color = withered ? 0x808080 : (0x228b22 + stage * 0x111100)
+    NEIGHBOR_CROP_STEM_MATERIAL_CACHE.set(key, markSharedAsset(new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.8
+    })))
+  }
+
+  return NEIGHBOR_CROP_STEM_MATERIAL_CACHE.get(key)
+}
+
+function getSharedNeighborCropCanopyGeometry (stage) {
+  if (!NEIGHBOR_CROP_CANOPY_GEOMETRY_CACHE.has(stage)) {
+    NEIGHBOR_CROP_CANOPY_GEOMETRY_CACHE.set(
+      stage,
+      markSharedAsset(new THREE.SphereGeometry(0.15 + stage * 0.05, 6, 4))
+    )
+  }
+
+  return NEIGHBOR_CROP_CANOPY_GEOMETRY_CACHE.get(stage)
+}
+
+function getSharedNeighborCropCanopyMaterial (withered) {
+  const key = withered ? 'withered' : 'healthy'
+  if (!NEIGHBOR_CROP_CANOPY_MATERIAL_CACHE.has(key)) {
+    NEIGHBOR_CROP_CANOPY_MATERIAL_CACHE.set(key, markSharedAsset(new THREE.MeshStandardMaterial({
+      color: withered ? 0x666666 : 0x32cd32,
+      roughness: 0.7
+    })))
+  }
+
+  return NEIGHBOR_CROP_CANOPY_MATERIAL_CACHE.get(key)
+}
 
 // Active neighbor farm renders: Map<key, { group, nameSprite, lastState }>
 const renderedNeighbors = new Map()
@@ -217,14 +268,10 @@ function createSimpleCrop (crop, x, z) {
   const group = new THREE.Group()
   const stage = crop.stage || 0
   const height = 0.1 + stage * 0.25
-  const color = crop.withered ? 0x808080 : (0x228b22 + stage * 0x111100)
 
   // Simple cylinder for crop
-  const geo = new THREE.CylinderGeometry(0.15 + stage * 0.05, 0.1, height, 6)
-  const mat = new THREE.MeshStandardMaterial({
-    color: color,
-    roughness: 0.8
-  })
+  const geo = getSharedNeighborCropStemGeometry(stage)
+  const mat = getSharedNeighborCropStemMaterial(stage, crop.withered)
   const mesh = new THREE.Mesh(geo, mat)
   mesh.position.y = height / 2 + 0.08
   mesh.castShadow = true
@@ -232,11 +279,8 @@ function createSimpleCrop (crop, x, z) {
 
   // Add leaf sphere at top for mature crops
   if (stage >= 2) {
-    const leafGeo = new THREE.SphereGeometry(0.15 + stage * 0.05, 6, 4)
-    const leafMat = new THREE.MeshStandardMaterial({
-      color: crop.withered ? 0x666666 : 0x32cd32,
-      roughness: 0.7
-    })
+    const leafGeo = getSharedNeighborCropCanopyGeometry(stage)
+    const leafMat = getSharedNeighborCropCanopyMaterial(crop.withered)
     const leaf = new THREE.Mesh(leafGeo, leafMat)
     leaf.position.y = height + 0.1
     leaf.castShadow = true

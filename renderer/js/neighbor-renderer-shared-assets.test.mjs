@@ -100,3 +100,69 @@ test('neighbor renderer reuses repeated shell and plot preview assets across vis
 
   cleanupNeighbors()
 })
+
+test('neighbor renderer reuses repeated crop preview assets for matching stages', () => {
+  cleanupNeighbors()
+
+  const scene = new THREE.Scene()
+  init(scene)
+
+  const farmState = {
+    plots: [[
+      { state: 'planted', x: -4, z: 0, crop: { stage: 2 } },
+      { state: 'planted', x: -1, z: 0, crop: { stage: 2 } },
+      { state: 'planted', x: 2, z: 0, crop: { stage: 3 } },
+      { state: 'planted', x: 5, z: 0, crop: { stage: 2, withered: true } }
+    ]]
+  }
+
+  updateNeighbors([
+    { key: 'alpha', name: 'Alpha', position: { x: 1, z: 0 }, farmState },
+    { key: 'beta', name: 'Beta', position: { x: -1, z: 0 }, farmState }
+  ])
+
+  const alphaGroup = renderedNeighbors.get('alpha')?.group
+  const betaGroup = renderedNeighbors.get('beta')?.group
+  assert.ok(alphaGroup)
+  assert.ok(betaGroup)
+
+  const alphaCropStems = findMeshes(alphaGroup, mesh => mesh.geometry?.type === 'CylinderGeometry' && mesh.geometry.parameters.radiusTop >= 0.2)
+  const betaCropStems = findMeshes(betaGroup, mesh => mesh.geometry?.type === 'CylinderGeometry' && mesh.geometry.parameters.radiusTop >= 0.2)
+  const alphaCropCanopies = findMeshes(alphaGroup, mesh => mesh.geometry?.type === 'SphereGeometry' && mesh.geometry.parameters.radius >= 0.25)
+  const betaCropCanopies = findMeshes(betaGroup, mesh => mesh.geometry?.type === 'SphereGeometry' && mesh.geometry.parameters.radius >= 0.25)
+
+  const alphaStage2Stems = alphaCropStems.filter(mesh => mesh.geometry.parameters.height === 0.6 && mesh.material.color.getHex() !== 0x808080)
+  const betaStage2Stems = betaCropStems.filter(mesh => mesh.geometry.parameters.height === 0.6 && mesh.material.color.getHex() !== 0x808080)
+  const alphaStage3Stem = alphaCropStems.find(mesh => mesh.geometry.parameters.height === 0.85)
+  const alphaWitheredStage2Stem = alphaCropStems.find(mesh => mesh.material.color.getHex() === 0x808080)
+
+  const alphaStage2Canopies = alphaCropCanopies.filter(mesh => mesh.geometry.parameters.radius === 0.25 && mesh.material.color.getHex() === 0x32cd32)
+  const betaStage2Canopies = betaCropCanopies.filter(mesh => mesh.geometry.parameters.radius === 0.25 && mesh.material.color.getHex() === 0x32cd32)
+  const alphaStage3Canopy = alphaCropCanopies.find(mesh => mesh.geometry.parameters.radius > 0.25 && mesh.material.color.getHex() === 0x32cd32)
+  const alphaWitheredStage2Canopy = alphaCropCanopies.find(mesh => mesh.geometry.parameters.radius === 0.25 && mesh.material.color.getHex() === 0x666666)
+
+  assert.equal(alphaStage2Stems.length, 2)
+  assert.equal(betaStage2Stems.length, 2)
+  assert.equal(alphaStage2Canopies.length, 2)
+  assert.equal(betaStage2Canopies.length, 2)
+  assert.ok(alphaStage3Stem)
+  assert.ok(alphaStage3Canopy)
+  assert.ok(alphaWitheredStage2Stem)
+  assert.ok(alphaWitheredStage2Canopy)
+
+  assert.strictEqual(alphaStage2Stems[0].geometry, alphaStage2Stems[1].geometry)
+  assert.strictEqual(alphaStage2Stems[0].material, alphaStage2Stems[1].material)
+  assert.strictEqual(alphaStage2Stems[0].geometry, betaStage2Stems[0].geometry)
+  assert.strictEqual(alphaStage2Stems[0].material, betaStage2Stems[0].material)
+  assert.notStrictEqual(alphaStage2Stems[0].geometry, alphaStage3Stem.geometry)
+  assert.notStrictEqual(alphaStage2Stems[0].material, alphaWitheredStage2Stem.material)
+
+  assert.strictEqual(alphaStage2Canopies[0].geometry, alphaStage2Canopies[1].geometry)
+  assert.strictEqual(alphaStage2Canopies[0].material, alphaStage2Canopies[1].material)
+  assert.strictEqual(alphaStage2Canopies[0].geometry, betaStage2Canopies[0].geometry)
+  assert.strictEqual(alphaStage2Canopies[0].material, betaStage2Canopies[0].material)
+  assert.notStrictEqual(alphaStage2Canopies[0].geometry, alphaStage3Canopy.geometry)
+  assert.notStrictEqual(alphaStage2Canopies[0].material, alphaWitheredStage2Canopy.material)
+
+  cleanupNeighbors()
+})
