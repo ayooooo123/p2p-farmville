@@ -96,15 +96,23 @@ const WINDOW_GLOW = {
 // Buildings that get a chimney (smoke-producing)
 const HAS_CHIMNEY = new Set(['barn', 'bakery', 'winery', 'kitchen'])
 
+function _markSharedAsset (asset) {
+  if (!asset) return asset
+  asset.userData = asset.userData || {}
+  asset.userData.sharedAsset = true
+  return asset
+}
+
 // Shared window glow materials are keyed by building type so every barn/bakery/etc.
 // reuses the same emissive glass material instance instead of cloning one per pane.
 const WINDOW_GLOW_MATERIAL_CACHE = new Map()
+const WINDOW_PANE_GEOMETRY_CACHE = new Map()
 
 function _getSharedWindowGlowMaterial (buildingType, glowDef) {
   let material = WINDOW_GLOW_MATERIAL_CACHE.get(buildingType)
   if (material) return material
 
-  material = new THREE.MeshStandardMaterial({
+  material = _markSharedAsset(new THREE.MeshStandardMaterial({
     color: glowDef.pane,
     emissive: new THREE.Color(glowDef.emissive),
     emissiveIntensity: glowDef.emissiveIntensity,
@@ -112,10 +120,24 @@ function _getSharedWindowGlowMaterial (buildingType, glowDef) {
     metalness: 0.0,
     transparent: true,
     opacity: 0.88
-  })
+  }))
   material.userData.baseEmissiveIntensity = glowDef.emissiveIntensity
   WINDOW_GLOW_MATERIAL_CACHE.set(buildingType, material)
   return material
+}
+
+function _getSharedWindowPaneGeometry (axis, winW, winH, thickness) {
+  const key = `${axis}:${winW.toFixed(3)}:${winH.toFixed(3)}:${thickness.toFixed(3)}`
+  let geometry = WINDOW_PANE_GEOMETRY_CACHE.get(key)
+  if (geometry) return geometry
+
+  geometry = _markSharedAsset(
+    axis === 'z'
+      ? new THREE.BoxGeometry(winW, winH, thickness)
+      : new THREE.BoxGeometry(thickness, winH, winW)
+  )
+  WINDOW_PANE_GEOMETRY_CACHE.set(key, geometry)
+  return geometry
 }
 
 function _trackInteractiveMesh (group, mesh) {
@@ -141,9 +163,7 @@ function _makeWindow (winW, winH, yPos, lateralPos, faceZ, axis, paneMaterial, p
   _trackInteractiveMesh(rootGroup, frame)
 
   // Pane (emissive lit glass)
-  const paneGeo = axis === 'z'
-    ? new THREE.BoxGeometry(winW, winH, thk)
-    : new THREE.BoxGeometry(thk, winH, winW)
+  const paneGeo = _getSharedWindowPaneGeometry(axis, winW, winH, thk)
   const pane = new THREE.Mesh(paneGeo, paneMaterial)
   _trackInteractiveMesh(rootGroup, pane)
   pane.userData.isWindowPane = true
