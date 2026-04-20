@@ -112,6 +112,34 @@ function _createRng (seed) {
   }
 }
 
+const decorationGeometryCache = new Map()
+const decorationMaterialCache = new Map()
+
+function _markSharedAsset (asset) {
+  if (!asset) return asset
+  asset.userData = asset.userData || {}
+  asset.userData.sharedAsset = true
+  return asset
+}
+
+function _getSharedGeometry (cacheKey, factory) {
+  let geometry = decorationGeometryCache.get(cacheKey)
+  if (!geometry) {
+    geometry = _markSharedAsset(factory())
+    decorationGeometryCache.set(cacheKey, geometry)
+  }
+  return geometry
+}
+
+function _getSharedMaterial (cacheKey, factory) {
+  let material = decorationMaterialCache.get(cacheKey)
+  if (!material) {
+    material = _markSharedAsset(factory())
+    decorationMaterialCache.set(cacheKey, material)
+  }
+  return material
+}
+
 /**
  * Create procedural 3D decoration mesh
  * @param {string} decoType - key in DECO_DEFINITIONS
@@ -178,10 +206,12 @@ function _trackWindmillRotor (group, rotor) {
 }
 
 function _buildFence (g, def) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
+  const mat = _getSharedMaterial(`fence:mat:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const postGeo = _getSharedGeometry('fence:post', () => new THREE.CylinderGeometry(0.05, 0.06, 0.8, 5))
+  const railGeo = _getSharedGeometry('fence:rail', () => new THREE.BoxGeometry(1.5, 0.06, 0.04))
+
   // Two posts
   for (const side of [-0.7, 0.7]) {
-    const postGeo = new THREE.CylinderGeometry(0.05, 0.06, 0.8, 5)
     const post = new THREE.Mesh(postGeo, mat)
     post.position.set(side, 0.4, 0)
     post.castShadow = true
@@ -189,7 +219,6 @@ function _buildFence (g, def) {
   }
   // Two rails
   for (const y of [0.25, 0.55]) {
-    const railGeo = new THREE.BoxGeometry(1.5, 0.06, 0.04)
     const rail = new THREE.Mesh(railGeo, mat)
     rail.position.y = y
     rail.castShadow = true
@@ -198,16 +227,18 @@ function _buildFence (g, def) {
 }
 
 function _buildPath (g, def, rng) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.95 })
-  const pathGeo = new THREE.BoxGeometry(1.8, 0.04, 1.8)
+  const mat = _getSharedMaterial(`path:mat:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.95 }))
+  const pathGeo = _getSharedGeometry('path:base', () => new THREE.BoxGeometry(1.8, 0.04, 1.8))
+  const stoneMat = _getSharedMaterial('path:stone:mat', () => new THREE.MeshStandardMaterial({ color: 0x696969 }))
+  const stoneGeo = _getSharedGeometry('path:stone:geo', () => new THREE.CylinderGeometry(0.15, 0.18, 0.03, 6))
+
   const path = new THREE.Mesh(pathGeo, mat)
   path.position.y = 0.02
   path.receiveShadow = true
   g.add(path)
+
   // Stone details
-  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x696969 })
   for (let i = 0; i < 4; i++) {
-    const stoneGeo = new THREE.CylinderGeometry(0.15, 0.18, 0.03, 6)
     const stone = new THREE.Mesh(stoneGeo, stoneMat)
     stone.position.set((rng() - 0.5) * 1.2, 0.05, (rng() - 0.5) * 1.2)
     g.add(stone)
@@ -215,8 +246,8 @@ function _buildPath (g, def, rng) {
 }
 
 function _buildHayBale (g, def) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
-  const baleGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.7, 12)
+  const mat = _getSharedMaterial(`hay-bale:mat:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const baleGeo = _getSharedGeometry('hay-bale:geo', () => new THREE.CylinderGeometry(0.5, 0.5, 0.7, 12))
   const bale = new THREE.Mesh(baleGeo, mat)
   bale.rotation.z = Math.PI / 2
   bale.position.y = 0.5
@@ -288,9 +319,12 @@ function _buildFlower (g, def, rng) {
 }
 
 function _buildFountain (g, def, rng) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
+  const mat = _getSharedMaterial(`fountain:stone:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const baseGeo = _getSharedGeometry('fountain:base', () => new THREE.CylinderGeometry(1.2, 1.4, 0.3, 16))
+  const pillarGeo = _getSharedGeometry('fountain:pillar', () => new THREE.CylinderGeometry(0.15, 0.2, 1.2, 8))
+  const topGeo = _getSharedGeometry('fountain:top', () => new THREE.CylinderGeometry(0.5, 0.4, 0.15, 12))
+
   // Base
-  const baseGeo = new THREE.CylinderGeometry(1.2, 1.4, 0.3, 16)
   const base = new THREE.Mesh(baseGeo, mat)
   base.position.y = 0.15
   g.add(base)
@@ -302,53 +336,52 @@ function _buildFountain (g, def, rng) {
   _trackWaterMesh(g, water, 'fountain', rng)
   g.add(water)
   // Center pillar
-  const pillarGeo = new THREE.CylinderGeometry(0.15, 0.2, 1.2, 8)
   const pillar = new THREE.Mesh(pillarGeo, mat)
   pillar.position.y = 0.9
   pillar.castShadow = true
   g.add(pillar)
   // Top basin
-  const topGeo = new THREE.CylinderGeometry(0.5, 0.4, 0.15, 12)
   const top = new THREE.Mesh(topGeo, mat)
   top.position.y = 1.55
   g.add(top)
 }
 
 function _buildScarecrow (g, def, rng) {
-  const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
+  const woodMat = _getSharedMaterial('scarecrow:wood', () => new THREE.MeshStandardMaterial({ color: 0x8b6914 }))
+  const poleGeo = _getSharedGeometry('scarecrow:pole', () => new THREE.CylinderGeometry(0.05, 0.06, 2.0, 5))
+  const armGeo = _getSharedGeometry('scarecrow:arm', () => new THREE.CylinderGeometry(0.04, 0.04, 1.4, 5))
+  const headMat = _getSharedMaterial('scarecrow:head', () => new THREE.MeshStandardMaterial({ color: 0xdeb887 }))
+  const headGeo = _getSharedGeometry('scarecrow:head', () => new THREE.SphereGeometry(0.2, 8, 6))
+  const hatMat = _getSharedMaterial('scarecrow:hat', () => new THREE.MeshStandardMaterial({ color: 0x8b4513 }))
+  const hatGeo = _getSharedGeometry('scarecrow:hat', () => new THREE.ConeGeometry(0.3, 0.3, 8))
+  const brimGeo = _getSharedGeometry('scarecrow:brim', () => new THREE.CylinderGeometry(0.35, 0.35, 0.04, 10))
+  const clothMat = _getSharedMaterial('scarecrow:cloth', () => new THREE.MeshStandardMaterial({ color: 0xcd5c5c }))
+  const clothGeo = _getSharedGeometry('scarecrow:cloth', () => new THREE.BoxGeometry(0.5, 0.6, 0.05))
+
   // Vertical pole
-  const poleGeo = new THREE.CylinderGeometry(0.05, 0.06, 2.0, 5)
   const pole = new THREE.Mesh(poleGeo, woodMat)
   pole.position.y = 1.0
   pole.castShadow = true
   g.add(pole)
   // Horizontal bar (arms)
-  const armGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.4, 5)
   const arm = new THREE.Mesh(armGeo, woodMat)
   arm.rotation.z = Math.PI / 2
   arm.position.y = 1.5
   arm.castShadow = true
   g.add(arm)
   // Head
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xdeb887 })
-  const headGeo = new THREE.SphereGeometry(0.2, 8, 6)
   const head = new THREE.Mesh(headGeo, headMat)
   head.position.y = 2.15
   head.castShadow = true
   g.add(head)
   // Hat
-  const hatMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 })
-  const hatGeo = new THREE.ConeGeometry(0.3, 0.3, 8)
   const hat = new THREE.Mesh(hatGeo, hatMat)
   hat.position.y = 2.45
   g.add(hat)
-  const brimGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.04, 10)
   const brim = new THREE.Mesh(brimGeo, hatMat)
   brim.position.y = 2.32
   g.add(brim)
   // Cloth on arms — tagged so app.js can sway it with the weather-driven wind system
-  const clothMat = new THREE.MeshStandardMaterial({ color: 0xcd5c5c })
-  const clothGeo = new THREE.BoxGeometry(0.5, 0.6, 0.05)
   const cloth = new THREE.Mesh(clothGeo, clothMat)
   cloth.position.set(0, 1.2, 0)
   cloth.userData.isWindDecoration = true
@@ -360,23 +393,24 @@ function _buildScarecrow (g, def, rng) {
 }
 
 function _buildMailbox (g, def, rng) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
+  const mat = _getSharedMaterial(`mailbox:box:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const postMat = _getSharedMaterial('mailbox:post', () => new THREE.MeshStandardMaterial({ color: 0x8b6914 }))
+  const postGeo = _getSharedGeometry('mailbox:post', () => new THREE.CylinderGeometry(0.06, 0.06, 1.0, 5))
+  const boxGeo = _getSharedGeometry('mailbox:box', () => new THREE.BoxGeometry(0.35, 0.25, 0.2))
+  const flagMat = _getSharedMaterial('mailbox:flag', () => new THREE.MeshStandardMaterial({ color: 0xff0000 }))
+  const flagGeo = _getSharedGeometry('mailbox:flag', () => new THREE.BoxGeometry(0.04, 0.15, 0.04))
+
   // Post
-  const postGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.0, 5)
   const post = new THREE.Mesh(postGeo, postMat)
   post.position.y = 0.5
   post.castShadow = true
   g.add(post)
   // Box
-  const boxGeo = new THREE.BoxGeometry(0.35, 0.25, 0.2)
   const box = new THREE.Mesh(boxGeo, mat)
   box.position.y = 1.1
   box.castShadow = true
   g.add(box)
   // Flag — tagged so the weather-driven wind system can flutter it
-  const flagMat = new THREE.MeshStandardMaterial({ color: 0xff0000 })
-  const flagGeo = new THREE.BoxGeometry(0.04, 0.15, 0.04)
   const flag = new THREE.Mesh(flagGeo, flagMat)
   flag.position.set(0.2, 1.2, 0)
   flag.castShadow = true
@@ -389,16 +423,18 @@ function _buildMailbox (g, def, rng) {
 }
 
 function _buildLampPost (g, def) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
+  const mat = _getSharedMaterial(`lamp-post:metal:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const poleGeo = _getSharedGeometry('lamp-post:pole', () => new THREE.CylinderGeometry(0.06, 0.08, 2.5, 6))
+  const lampGeo = _getSharedGeometry('lamp-post:lamp-geo', () => new THREE.SphereGeometry(0.2, 8, 6))
+  const armGeo = _getSharedGeometry('lamp-post:arm', () => new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4))
+
   // Pole
-  const poleGeo = new THREE.CylinderGeometry(0.06, 0.08, 2.5, 6)
   const pole = new THREE.Mesh(poleGeo, mat)
   pole.position.y = 1.25
   pole.castShadow = true
   g.add(pole)
   // Lamp head — starts dim, brightened at night by applyWindowGlow
   const lampMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xfff0a0, emissiveIntensity: 0.0 })
-  const lampGeo = new THREE.SphereGeometry(0.2, 8, 6)
   const lamp = new THREE.Mesh(lampGeo, lampMat)
   lamp.position.y = 2.6
   lamp.userData.isLampGlow = true // tagged for day/night wiring in app.js
@@ -422,7 +458,6 @@ function _buildLampPost (g, def) {
   g.add(halo)
 
   // Arm
-  const armGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4)
   const arm = new THREE.Mesh(armGeo, mat)
   arm.rotation.z = Math.PI / 3
   arm.position.set(0.1, 2.5, 0)
@@ -439,23 +474,24 @@ function _buildLampPost (g, def) {
 }
 
 function _buildBench (g, def) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
+  const mat = _getSharedMaterial(`bench:wood:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const seatGeo = _getSharedGeometry('bench:seat', () => new THREE.BoxGeometry(1.2, 0.06, 0.4))
+  const backGeo = _getSharedGeometry('bench:back', () => new THREE.BoxGeometry(1.2, 0.5, 0.06))
+  const legMat = _getSharedMaterial('bench:leg', () => new THREE.MeshStandardMaterial({ color: 0x333333 }))
+  const legGeo = _getSharedGeometry('bench:leg', () => new THREE.CylinderGeometry(0.04, 0.04, 0.45, 4))
+
   // Seat
-  const seatGeo = new THREE.BoxGeometry(1.2, 0.06, 0.4)
   const seat = new THREE.Mesh(seatGeo, mat)
   seat.position.y = 0.45
   seat.castShadow = true
   g.add(seat)
   // Back
-  const backGeo = new THREE.BoxGeometry(1.2, 0.5, 0.06)
   const back = new THREE.Mesh(backGeo, mat)
   back.position.set(0, 0.7, 0.18)
   back.castShadow = true
   g.add(back)
   // Legs
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x333333 })
   for (const x of [-0.5, 0.5]) {
-    const legGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.45, 4)
     const leg = new THREE.Mesh(legGeo, legMat)
     leg.position.set(x, 0.22, 0)
     g.add(leg)
@@ -463,45 +499,50 @@ function _buildBench (g, def) {
 }
 
 function _buildGnome (g, def) {
+  const bodyMat = _getSharedMaterial('gnome:body', () => new THREE.MeshStandardMaterial({ color: 0x4169e1 }))
+  const bodyGeo = _getSharedGeometry('gnome:body', () => new THREE.CylinderGeometry(0.15, 0.2, 0.4, 8))
+  const headMat = _getSharedMaterial('gnome:head', () => new THREE.MeshStandardMaterial({ color: 0xffcc99 }))
+  const headGeo = _getSharedGeometry('gnome:head', () => new THREE.SphereGeometry(0.14, 8, 6))
+  const hatMat = _getSharedMaterial(`gnome:hat:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const hatGeo = _getSharedGeometry('gnome:hat', () => new THREE.ConeGeometry(0.15, 0.35, 8))
+  const beardMat = _getSharedMaterial('gnome:beard', () => new THREE.MeshStandardMaterial({ color: 0xffffff }))
+  const beardGeo = _getSharedGeometry('gnome:beard', () => new THREE.ConeGeometry(0.1, 0.2, 6))
+
   // Body
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4169e1 })
-  const bodyGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.4, 8)
   const body = new THREE.Mesh(bodyGeo, bodyMat)
   body.position.y = 0.25
   body.castShadow = true
   g.add(body)
   // Head
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 })
-  const headGeo = new THREE.SphereGeometry(0.14, 8, 6)
   const head = new THREE.Mesh(headGeo, headMat)
   head.position.y = 0.55
   g.add(head)
   // Hat
-  const hatMat = new THREE.MeshStandardMaterial({ color: def.color })
-  const hatGeo = new THREE.ConeGeometry(0.15, 0.35, 8)
   const hat = new THREE.Mesh(hatGeo, hatMat)
   hat.position.y = 0.82
   hat.castShadow = true
   g.add(hat)
   // Beard
-  const beardMat = new THREE.MeshStandardMaterial({ color: 0xffffff })
-  const beardGeo = new THREE.ConeGeometry(0.1, 0.2, 6)
   const beard = new THREE.Mesh(beardGeo, beardMat)
   beard.position.set(0, 0.4, -0.08)
   g.add(beard)
 }
 
 function _buildWindmill (g) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff })
+  const mat = _getSharedMaterial('windmill:tower', () => new THREE.MeshStandardMaterial({ color: 0xffffff }))
+  const towerGeo = _getSharedGeometry('windmill:tower', () => new THREE.CylinderGeometry(0.5, 0.8, 3.5, 8))
+  const roofMat = _getSharedMaterial('windmill:roof', () => new THREE.MeshStandardMaterial({ color: 0xb22222 }))
+  const roofGeo = _getSharedGeometry('windmill:roof', () => new THREE.ConeGeometry(0.7, 0.8, 8))
+  const hubGeo = _getSharedGeometry('windmill:hub', () => new THREE.SphereGeometry(0.15, 6, 4))
+  const bladeMat = _getSharedMaterial('windmill:blade', () => new THREE.MeshStandardMaterial({ color: 0xdeb887 }))
+  const bladeGeo = _getSharedGeometry('windmill:blade', () => new THREE.BoxGeometry(0.15, 1.5, 0.03))
+
   // Tower
-  const towerGeo = new THREE.CylinderGeometry(0.5, 0.8, 3.5, 8)
   const tower = new THREE.Mesh(towerGeo, mat)
   tower.position.y = 1.75
   tower.castShadow = true
   g.add(tower)
   // Roof
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0xb22222 })
-  const roofGeo = new THREE.ConeGeometry(0.7, 0.8, 8)
   const roof = new THREE.Mesh(roofGeo, roofMat)
   roof.position.y = 3.9
   roof.castShadow = true
@@ -511,12 +552,9 @@ function _buildWindmill (g) {
   rotor.position.set(0, 3.0, -0.55)
   _trackWindmillRotor(g, rotor)
   g.add(rotor)
-  const hubGeo = new THREE.SphereGeometry(0.15, 6, 4)
   rotor.add(new THREE.Mesh(hubGeo, mat))
   // 4 blades radiating outward from rotor pivot
-  const bladeMat = new THREE.MeshStandardMaterial({ color: 0xdeb887 })
   for (let i = 0; i < 4; i++) {
-    const bladeGeo = new THREE.BoxGeometry(0.15, 1.5, 0.03)
     const blade = new THREE.Mesh(bladeGeo, bladeMat)
     const angle = (Math.PI / 2) * i
     blade.position.set(Math.cos(angle) * 0.75, Math.sin(angle) * 0.75, -0.10)
@@ -527,23 +565,24 @@ function _buildWindmill (g) {
 }
 
 function _buildDoghouse (g, def) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
+  const mat = _getSharedMaterial(`doghouse:base:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const baseGeo = _getSharedGeometry('doghouse:base', () => new THREE.BoxGeometry(0.8, 0.6, 0.8))
+  const roofMat = _getSharedMaterial('doghouse:roof', () => new THREE.MeshStandardMaterial({ color: 0x333333 }))
+  const roofGeo = _getSharedGeometry('doghouse:roof', () => new THREE.ConeGeometry(0.65, 0.4, 4))
+  const doorMat = _getSharedMaterial('doghouse:door', () => new THREE.MeshStandardMaterial({ color: 0x222222 }))
+  const doorGeo = _getSharedGeometry('doghouse:door', () => new THREE.CylinderGeometry(0.15, 0.15, 0.05, 8))
+
   // Base
-  const baseGeo = new THREE.BoxGeometry(0.8, 0.6, 0.8)
   const base = new THREE.Mesh(baseGeo, mat)
   base.position.y = 0.3
   base.castShadow = true
   g.add(base)
   // Roof
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x333333 })
-  const roofGeo = new THREE.ConeGeometry(0.65, 0.4, 4)
   const roof = new THREE.Mesh(roofGeo, roofMat)
   roof.position.y = 0.8
   roof.rotation.y = Math.PI / 4
   g.add(roof)
   // Door hole
-  const doorMat = new THREE.MeshStandardMaterial({ color: 0x222222 })
-  const doorGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 8)
   const door = new THREE.Mesh(doorGeo, doorMat)
   door.rotation.x = Math.PI / 2
   door.position.set(0, 0.22, -0.42)
@@ -571,23 +610,24 @@ function _buildPond (g, def, rng) {
 }
 
 function _buildBridge (g, def) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
+  const mat = _getSharedMaterial(`bridge:wood:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const deckGeo = _getSharedGeometry('bridge:deck', () => new THREE.BoxGeometry(2.0, 0.1, 1.0))
+  const railGeo = _getSharedGeometry('bridge:rail', () => new THREE.BoxGeometry(2.0, 0.4, 0.06))
+  const postGeo = _getSharedGeometry('bridge:post', () => new THREE.CylinderGeometry(0.04, 0.04, 0.5, 4))
+
   // Deck
-  const deckGeo = new THREE.BoxGeometry(2.0, 0.1, 1.0)
   const deck = new THREE.Mesh(deckGeo, mat)
   deck.position.y = 0.3
   deck.receiveShadow = true
   g.add(deck)
   // Railings
   for (const side of [-1, 1]) {
-    const railGeo = new THREE.BoxGeometry(2.0, 0.4, 0.06)
     const rail = new THREE.Mesh(railGeo, mat)
     rail.position.set(0, 0.55, side * 0.48)
     rail.castShadow = true
     g.add(rail)
     // Posts
     for (const x of [-0.8, 0, 0.8]) {
-      const postGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.5, 4)
       const post = new THREE.Mesh(postGeo, mat)
       post.position.set(x, 0.55, side * 0.48)
       g.add(post)
@@ -596,9 +636,13 @@ function _buildBridge (g, def) {
 }
 
 function _buildWell (g, def, rng) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
+  const mat = _getSharedMaterial(`well:stone:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const baseGeo = _getSharedGeometry('well:base', () => new THREE.CylinderGeometry(0.5, 0.55, 0.7, 10))
+  const woodMat = _getSharedMaterial('well:wood', () => new THREE.MeshStandardMaterial({ color: 0x8b6914 }))
+  const postGeo = _getSharedGeometry('well:post', () => new THREE.CylinderGeometry(0.05, 0.05, 1.2, 5))
+  const roofGeo = _getSharedGeometry('well:roof', () => new THREE.ConeGeometry(0.6, 0.4, 4))
+
   // Base cylinder
-  const baseGeo = new THREE.CylinderGeometry(0.5, 0.55, 0.7, 10)
   const base = new THREE.Mesh(baseGeo, mat)
   base.position.y = 0.35
   base.castShadow = true
@@ -611,16 +655,13 @@ function _buildWell (g, def, rng) {
   _trackWaterMesh(g, water, 'well', rng)
   g.add(water)
   // Roof supports
-  const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b6914 })
   for (const side of [-1, 1]) {
-    const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.2, 5)
     const post = new THREE.Mesh(postGeo, woodMat)
     post.position.set(side * 0.45, 1.3, 0)
     post.castShadow = true
     g.add(post)
   }
   // Roof
-  const roofGeo = new THREE.ConeGeometry(0.6, 0.4, 4)
   const roof = new THREE.Mesh(roofGeo, woodMat)
   roof.position.y = 2.1
   roof.rotation.y = Math.PI / 4
@@ -628,15 +669,16 @@ function _buildWell (g, def, rng) {
 }
 
 function _buildBirdBath (g, def, rng) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
+  const mat = _getSharedMaterial(`birdbath:stone:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const pedGeo = _getSharedGeometry('birdbath:pedestal', () => new THREE.CylinderGeometry(0.12, 0.2, 0.8, 8))
+  const basinGeo = _getSharedGeometry('birdbath:basin', () => new THREE.CylinderGeometry(0.5, 0.3, 0.15, 12))
+
   // Pedestal
-  const pedGeo = new THREE.CylinderGeometry(0.12, 0.2, 0.8, 8)
   const ped = new THREE.Mesh(pedGeo, mat)
   ped.position.y = 0.4
   ped.castShadow = true
   g.add(ped)
   // Basin
-  const basinGeo = new THREE.CylinderGeometry(0.5, 0.3, 0.15, 12)
   const basin = new THREE.Mesh(basinGeo, mat)
   basin.position.y = 0.85
   g.add(basin)
@@ -651,8 +693,8 @@ function _buildBirdBath (g, def, rng) {
 }
 
 function _buildGeneric (g, def) {
-  const mat = new THREE.MeshStandardMaterial({ color: def.color })
-  const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5)
+  const mat = _getSharedMaterial(`generic:mat:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const geo = _getSharedGeometry('generic:geo', () => new THREE.BoxGeometry(0.5, 0.5, 0.5))
   const mesh = new THREE.Mesh(geo, mat)
   mesh.position.y = 0.25
   mesh.castShadow = true
