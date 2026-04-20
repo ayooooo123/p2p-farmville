@@ -240,15 +240,8 @@ function _updateRain (dtMs) {
     ? _stormRainTilt
     : _rainTilt
 
-  for (let i = 0; i < MAX_RAIN_DROPS; i++) {
-    if (i >= activeCount) {
-      // Park invisible instances far below ground
-      _iPos.set(0, -100, 0)
-      _iMat.compose(_iPos, tilt, _iScl)
-      rainMesh.setMatrixAt(i, _iMat)
-      continue
-    }
-
+  rainMesh.count = activeCount
+  for (let i = 0; i < activeCount; i++) {
     rainY[i] -= rainSpd[i] * dt
     rainX[i] += windX
 
