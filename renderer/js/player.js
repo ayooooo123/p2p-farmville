@@ -20,6 +20,7 @@ let bobTime = 0
 const keys = { w: false, a: false, s: false, d: false }
 const playerPos = { x: 0, z: 0 }
 let isMoving = false
+let keyboardListenersAttached = false
 
 // Visiting state
 let visiting = false
@@ -27,7 +28,28 @@ let visitingNeighborKey = null
 let visitingNeighborName = ''
 let onVisitChangeCallback = null
 
+function _handleKeyDown (e) {
+  const key = e.key.toLowerCase()
+  if (key in keys) keys[key] = true
+}
+
+function _handleKeyUp (e) {
+  const key = e.key.toLowerCase()
+  if (key in keys) keys[key] = false
+}
+
+function _ensureKeyboardListeners () {
+  if (keyboardListenersAttached) return
+  window.addEventListener('keydown', _handleKeyDown)
+  window.addEventListener('keyup', _handleKeyUp)
+  keyboardListenersAttached = true
+}
+
 function initPlayer (scene) {
+  if (playerMesh?.parent) {
+    playerMesh.parent.remove(playerMesh)
+  }
+
   // 3D capsule-like player: cylinder body + sphere head with shadow
   const group = new THREE.Group()
 
@@ -116,20 +138,11 @@ function initPlayer (scene) {
   dirIndicator.position.set(0, 0.6, -0.42)
   group.add(dirIndicator)
 
-  group.position.set(0, 0, 0)
+  group.position.set(playerPos.x, 0, playerPos.z)
   scene.add(group)
   playerMesh = group
 
-  // Key listeners
-  window.addEventListener('keydown', (e) => {
-    const key = e.key.toLowerCase()
-    if (key in keys) keys[key] = true
-  })
-
-  window.addEventListener('keyup', (e) => {
-    const key = e.key.toLowerCase()
-    if (key in keys) keys[key] = false
-  })
+  _ensureKeyboardListeners()
 
   return playerMesh
 }
