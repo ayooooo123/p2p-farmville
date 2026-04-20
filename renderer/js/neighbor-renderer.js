@@ -1,5 +1,11 @@
 import * as THREE from './three.module.min.js'
 
+function markSharedAsset (asset) {
+  asset.userData = asset.userData || {}
+  asset.userData.sharedAsset = true
+  return asset
+}
+
 // ── Neighbor Farm Renderer ──────────────────────────────────────────────────
 // Renders neighboring farms adjacent to the player's farm in the 3D scene.
 // Only renders the 2 closest neighbors for performance.
@@ -7,6 +13,33 @@ import * as THREE from './three.module.min.js'
 const FARM_WIDTH = 90 // spacing between farms (farm is 80 + paths)
 const MAX_VISIBLE_NEIGHBORS = 2
 const NEIGHBOR_TINT = 0.85 // slightly dimmer to distinguish
+
+const NEIGHBOR_TERRAIN_GEOMETRY = markSharedAsset(new THREE.PlaneGeometry(80, 80))
+const NEIGHBOR_TERRAIN_MATERIAL = markSharedAsset(new THREE.MeshStandardMaterial({
+  color: 0x3d6b24,
+  roughness: 0.95,
+  metalness: 0.0
+}))
+const NEIGHBOR_GRID_GEOMETRY = markSharedAsset(new THREE.PlaneGeometry(40, 40))
+const NEIGHBOR_GRID_MATERIAL = markSharedAsset(new THREE.MeshStandardMaterial({
+  color: 0x4a7c2e,
+  roughness: 0.9,
+  metalness: 0.0,
+  transparent: true,
+  opacity: 0.8
+}))
+const NEIGHBOR_PLOT_GEOMETRY = markSharedAsset(new THREE.BoxGeometry(1.9, 0.06, 1.9))
+const NEIGHBOR_PLOT_MATERIAL = markSharedAsset(new THREE.MeshStandardMaterial({
+  color: 0x6b4226,
+  roughness: 0.9
+}))
+const NEIGHBOR_FENCE_POST_GEOMETRY = markSharedAsset(new THREE.CylinderGeometry(0.12, 0.12, 1.2, 6))
+const NEIGHBOR_FENCE_RAIL_GEOMETRY_Z = markSharedAsset(new THREE.BoxGeometry(0.08, 0.08, 84))
+const NEIGHBOR_FENCE_RAIL_GEOMETRY_X = markSharedAsset(new THREE.BoxGeometry(84, 0.08, 0.08))
+const NEIGHBOR_FENCE_MATERIAL = markSharedAsset(new THREE.MeshStandardMaterial({
+  color: 0x8b5e3c,
+  roughness: 0.8
+}))
 
 // Active neighbor farm renders: Map<key, { group, nameSprite, lastState }>
 const renderedNeighbors = new Map()
@@ -67,28 +100,14 @@ function renderNeighborFarm (neighbor, offsetX) {
   group.position.set(offsetX, 0, 0)
 
   // Base terrain
-  const terrainGeo = new THREE.PlaneGeometry(80, 80)
-  const terrainMat = new THREE.MeshStandardMaterial({
-    color: 0x3d6b24,
-    roughness: 0.95,
-    metalness: 0.0
-  })
-  const terrain = new THREE.Mesh(terrainGeo, terrainMat)
+  const terrain = new THREE.Mesh(NEIGHBOR_TERRAIN_GEOMETRY, NEIGHBOR_TERRAIN_MATERIAL)
   terrain.rotation.x = -Math.PI / 2
   terrain.position.y = -0.04
   terrain.receiveShadow = true
   group.add(terrain)
 
   // Grid overlay (subtle)
-  const gridGeo = new THREE.PlaneGeometry(40, 40)
-  const gridMat = new THREE.MeshStandardMaterial({
-    color: 0x4a7c2e,
-    roughness: 0.9,
-    metalness: 0.0,
-    transparent: true,
-    opacity: 0.8
-  })
-  const gridMesh = new THREE.Mesh(gridGeo, gridMat)
+  const gridMesh = new THREE.Mesh(NEIGHBOR_GRID_GEOMETRY, NEIGHBOR_GRID_MATERIAL)
   gridMesh.rotation.x = -Math.PI / 2
   gridMesh.position.y = 0.01
   gridMesh.receiveShadow = true
@@ -176,12 +195,7 @@ function renderNeighborPlots (data, plots) {
 
       // Render plowed plots
       if (plot.state === 'plowed' || plot.state === 'planted') {
-        const plotGeo = new THREE.BoxGeometry(1.9, 0.06, 1.9)
-        const plotMat = new THREE.MeshStandardMaterial({
-          color: 0x6b4226,
-          roughness: 0.9
-        })
-        const plotMesh = new THREE.Mesh(plotGeo, plotMat)
+        const plotMesh = new THREE.Mesh(NEIGHBOR_PLOT_GEOMETRY, NEIGHBOR_PLOT_MATERIAL)
         plotMesh.position.set(plot.x || 0, 0.03, plot.z || 0)
         plotMesh.receiveShadow = true
         data.group.add(plotMesh)
@@ -348,11 +362,6 @@ function createSimpleDeco (deco) {
 
 // ── Boundary fence between farms ────────────────────────────────────────────
 function addBoundaryFence (group) {
-  const fenceMat = new THREE.MeshStandardMaterial({
-    color: 0x8b5e3c,
-    roughness: 0.8
-  })
-
   const halfW = 42
   const postSpacing = 6
   const fenceHeight = 1.2
@@ -360,8 +369,7 @@ function addBoundaryFence (group) {
   // Fence posts along left and right boundaries
   for (const xSign of [-1, 1]) {
     for (let z = -halfW; z <= halfW; z += postSpacing) {
-      const postGeo = new THREE.CylinderGeometry(0.12, 0.12, fenceHeight, 6)
-      const post = new THREE.Mesh(postGeo, fenceMat)
+      const post = new THREE.Mesh(NEIGHBOR_FENCE_POST_GEOMETRY, NEIGHBOR_FENCE_MATERIAL)
       post.position.set(xSign * halfW, fenceHeight / 2, z)
       post.castShadow = true
       group.add(post)
@@ -369,8 +377,7 @@ function addBoundaryFence (group) {
 
     // Horizontal rails
     for (const railY of [0.4, 0.9]) {
-      const railGeo = new THREE.BoxGeometry(0.08, 0.08, halfW * 2)
-      const rail = new THREE.Mesh(railGeo, fenceMat)
+      const rail = new THREE.Mesh(NEIGHBOR_FENCE_RAIL_GEOMETRY_Z, NEIGHBOR_FENCE_MATERIAL)
       rail.position.set(xSign * halfW, railY, 0)
       group.add(rail)
     }
@@ -379,16 +386,14 @@ function addBoundaryFence (group) {
   // Front and back fence
   for (const zSign of [-1, 1]) {
     for (let x = -halfW; x <= halfW; x += postSpacing) {
-      const postGeo = new THREE.CylinderGeometry(0.12, 0.12, fenceHeight, 6)
-      const post = new THREE.Mesh(postGeo, fenceMat)
+      const post = new THREE.Mesh(NEIGHBOR_FENCE_POST_GEOMETRY, NEIGHBOR_FENCE_MATERIAL)
       post.position.set(x, fenceHeight / 2, zSign * halfW)
       post.castShadow = true
       group.add(post)
     }
 
     for (const railY of [0.4, 0.9]) {
-      const railGeo = new THREE.BoxGeometry(halfW * 2, 0.08, 0.08)
-      const rail = new THREE.Mesh(railGeo, fenceMat)
+      const rail = new THREE.Mesh(NEIGHBOR_FENCE_RAIL_GEOMETRY_X, NEIGHBOR_FENCE_MATERIAL)
       rail.position.set(0, railY, zSign * halfW)
       group.add(rail)
     }
