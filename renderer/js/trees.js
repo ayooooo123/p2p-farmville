@@ -70,9 +70,117 @@ function _trackInteractiveMesh (group, mesh) {
   return mesh
 }
 
+// ── Shared asset caches ─────────────────────────────────────────────────────
+// Trees of the same type share trunk/canopy/fruit geometries and materials so
+// that growth-stage rebuilds (createTreeMesh is called every time growth crosses
+// a threshold) and save/visit reloads stop allocating fresh GPU resources.
+//
+// Geometries are unit-sized; per-tree growthScale and per-type canopySize are
+// applied via mesh.scale, so a single CylinderGeometry/SphereGeometry/ConeGeometry
+// covers every tree at every growth stage.
+//
+// Materials are keyed by treeType because setFarmTreeSeasonColors() mutates
+// canopy material colors and we want all trees of the same type to season-shift
+// in lockstep — which is the desired behavior.
+const treeGeometryCache = new Map()
+const treeMaterialCache = new Map()
+
+// Track current season so canopy materials created AFTER a season change still
+// pick up the right tint. setFarmTreeSeasonColors() updates this; the canopy
+// material factory consults it to seed new materials with the active blend.
+let currentTreeSeason = null
+const _newCanopyColorScratch = new THREE.Color()
+const _newCanopyTargetScratch = new THREE.Color()
+
+const CANOPY_SEASON_TARGETS = {
+  spring: { deciduous: { hex: 0x4ccf30, t: 0.30 }, pine: null },
+  summer: { deciduous: null,                         pine: null },
+  autumn: { deciduous: { hex: 0xd4780a, t: 0.72 }, pine: null },
+  winter: { deciduous: { hex: 0x8a7a6a, t: 0.80 }, pine: { hex: 0xccddcc, t: 0.15 } }
+}
+
+function _applySeasonToCanopyMaterial (material, def, season) {
+  if (!material || !def) return
+  const seasonDef = season ? CANOPY_SEASON_TARGETS[season] : null
+  const blend = seasonDef ? (def.isPine ? seasonDef.pine : seasonDef.deciduous) : null
+  _newCanopyColorScratch.set(def.canopyColor)
+  if (!blend) {
+    material.color.copy(_newCanopyColorScratch)
+    return
+  }
+  _newCanopyTargetScratch.set(blend.hex)
+  material.color.copy(_newCanopyColorScratch).lerp(_newCanopyTargetScratch, blend.t)
+}
+
+function _markSharedAsset (asset) {
+  if (!asset) return asset
+  asset.userData = asset.userData || {}
+  asset.userData.sharedAsset = true
+  return asset
+}
+
+function _getSharedTreeGeometry (cacheKey, factory) {
+  let geometry = treeGeometryCache.get(cacheKey)
+  if (!geometry) {
+    geometry = _markSharedAsset(factory())
+    treeGeometryCache.set(cacheKey, geometry)
+  }
+  return geometry
+}
+
+function _getSharedTreeMaterial (cacheKey, factory) {
+  let material = treeMaterialCache.get(cacheKey)
+  if (!material) {
+    material = _markSharedAsset(factory())
+    treeMaterialCache.set(cacheKey, material)
+  }
+  return material
+}
+
+function _getTrunkGeometry () {
+  return _getSharedTreeGeometry('tree:trunk:cyl',
+    () => new THREE.CylinderGeometry(0.18, 0.216, 1.2, 7))
+}
+function _getCanopySphereGeometry () {
+  return _getSharedTreeGeometry('tree:canopy:sphere',
+    () => new THREE.SphereGeometry(1, 10, 8))
+}
+function _getCanopyConeGeometry () {
+  return _getSharedTreeGeometry('tree:canopy:cone',
+    () => new THREE.ConeGeometry(1, 1, 10))
+}
+function _getFruitGeometry () {
+  return _getSharedTreeGeometry('tree:fruit:sphere',
+    () => new THREE.SphereGeometry(0.13, 5, 4))
+}
+
+function _getTrunkMaterial (treeType, def) {
+  return _getSharedTreeMaterial(`tree:trunk:mat:${treeType}`,
+    () => new THREE.MeshStandardMaterial({ color: def.trunkColor, roughness: 0.9, metalness: 0 }))
+}
+function _getCanopyMaterial (treeType, def) {
+  return _getSharedTreeMaterial(`tree:canopy:mat:${treeType}`, () => {
+    const mat = new THREE.MeshStandardMaterial({ color: def.canopyColor, roughness: 0.85, metalness: 0 })
+    // Seed with current season tint so trees spawned mid-season are not stuck
+    // on summer color until the next season transition.
+    _applySeasonToCanopyMaterial(mat, def, currentTreeSeason)
+    return mat
+  })
+}
+function _getFruitMaterial (treeType, def) {
+  return _getSharedTreeMaterial(`tree:fruit:mat:${treeType}`,
+    () => new THREE.MeshStandardMaterial({ color: def.fruitColor, roughness: 0.7, metalness: 0 }))
+}
+
 /**
  * Create a 3D tree mesh: cylinder trunk + sphere/cone canopy.
  * Viewed top-down the canopy dominates; 3D geometry casts proper shadows.
+ *
+ * Geometries and materials are shared across all trees of the same type via
+ * module-level caches (see _getSharedTree* helpers). Per-tree growthScale and
+ * per-type canopySize are applied via mesh.scale so the same unit geometry
+ * serves every tree at every growth stage.
+ *
  * @param {string} treeType - key in TREE_DEFINITIONS
  * @param {boolean} mature - whether to show fruits
  * @param {number} growthScale - 0..1 for growth animation
@@ -94,17 +202,11 @@ export function createTreeMesh (treeType, mature, growthScale) {
 
   const canopyR = def.canopySize * scale
   const trunkH = 1.2 * scale
-  const trunkR = 0.18 * scale
 
-  // Trunk — thin cylinder standing upright
-  const trunkGeo = new THREE.CylinderGeometry(trunkR, trunkR * 1.2, trunkH, 7)
-  const trunkMat = new THREE.MeshStandardMaterial({
-    color: def.trunkColor,
-    roughness: 0.9,
-    metalness: 0
-  })
-  const trunk = new THREE.Mesh(trunkGeo, trunkMat)
+  // Trunk — shared unit cylinder, scaled per-tree to match growth.
+  const trunk = new THREE.Mesh(_getTrunkGeometry(), _getTrunkMaterial(treeType, def))
   _trackInteractiveMesh(group, trunk)
+  trunk.scale.setScalar(scale)
   trunk.position.y = trunkH / 2
   trunk.castShadow = true
   trunk.receiveShadow = true
@@ -114,20 +216,18 @@ export function createTreeMesh (treeType, mature, growthScale) {
   group.userData.trunkMeshes.push(trunk)
 
   if (def.isPine) {
-    // Pine: layered cones (stacked, decreasing radius upward)
+    // Pine: layered cones (stacked, decreasing radius upward) — shared unit cone
+    // geometry, per-mesh scale handles per-layer radius and per-tree growth.
     const layers = 3
+    const coneGeo = _getCanopyConeGeometry()
+    const coneMat = _getCanopyMaterial(treeType, def)
     for (let i = 0; i < layers; i++) {
       const t = i / (layers - 1)
       const coneR = canopyR * (1 - t * 0.45)
       const coneH = canopyR * 0.9
-      const coneGeo = new THREE.ConeGeometry(coneR, coneH, 10)
-      const coneMat = new THREE.MeshStandardMaterial({
-        color: def.canopyColor,
-        roughness: 0.85,
-        metalness: 0
-      })
       const cone = new THREE.Mesh(coneGeo, coneMat)
       _trackInteractiveMesh(group, cone)
+      cone.scale.set(coneR, coneH, coneR)
       cone.position.y = trunkH + (i * coneH * 0.55)
       cone.castShadow = true
       cone.receiveShadow = true
@@ -139,15 +239,10 @@ export function createTreeMesh (treeType, mature, growthScale) {
       group.userData.canopyMeshes.push(cone)
     }
   } else {
-    // Broadleaf: sphere canopy sitting atop trunk
-    const sphereGeo = new THREE.SphereGeometry(canopyR, 10, 8)
-    const sphereMat = new THREE.MeshStandardMaterial({
-      color: def.canopyColor,
-      roughness: 0.85,
-      metalness: 0
-    })
-    const canopy = new THREE.Mesh(sphereGeo, sphereMat)
+    // Broadleaf: shared unit sphere scaled to canopyR.
+    const canopy = new THREE.Mesh(_getCanopySphereGeometry(), _getCanopyMaterial(treeType, def))
     _trackInteractiveMesh(group, canopy)
+    canopy.scale.setScalar(canopyR)
     canopy.position.y = trunkH + canopyR * 0.65
     canopy.castShadow = true
     canopy.receiveShadow = true
@@ -158,20 +253,16 @@ export function createTreeMesh (treeType, mature, growthScale) {
     group.add(canopy)
     group.userData.canopyMeshes.push(canopy)
 
-    // Fruit dots as small spheres embedded in the canopy (only on mature trees)
+    // Fruit dots as small spheres embedded in the canopy (only on mature trees).
+    // Shared fruit geometry (fixed 0.13 radius) + per-type material.
     if (mature && scale >= 0.9) {
       const fruitCount = 4 + Math.floor(Math.random() * 3)
-      const fruitR = 0.13
+      const r = canopyR * 0.85
+      const fruitGeo = _getFruitGeometry()
+      const fruitMat = _getFruitMaterial(treeType, def)
       for (let i = 0; i < fruitCount; i++) {
         const angle = (i / fruitCount) * Math.PI * 2 + Math.random() * 0.5
         const elevAngle = Math.random() * Math.PI * 0.4 // upper hemisphere
-        const r = canopyR * 0.85
-        const fruitGeo = new THREE.SphereGeometry(fruitR, 5, 4)
-        const fruitMat = new THREE.MeshStandardMaterial({
-          color: def.fruitColor,
-          roughness: 0.7,
-          metalness: 0
-        })
         const fruit = new THREE.Mesh(fruitGeo, fruitMat)
         _trackInteractiveMesh(group, fruit)
         fruit.position.set(
@@ -263,16 +354,17 @@ export function harvestTree (tree) {
 // ── Seasonal canopy color shift ───────────────────────────────────────────────
 const _seasonalTreeColorScratch = createSeasonalColorScratch()
 
-const CANOPY_SEASON_TARGETS = {
-  spring: { deciduous: { hex: 0x4ccf30, t: 0.30 }, pine: null },
-  summer: { deciduous: null,                         pine: null },
-  autumn: { deciduous: { hex: 0xd4780a, t: 0.72 }, pine: null },
-  winter: { deciduous: { hex: 0x8a7a6a, t: 0.80 }, pine: { hex: 0xccddcc, t: 0.15 } }
-}
+const _CANOPY_MAT_KEY_PREFIX = 'tree:canopy:mat:'
 
 /**
- * Update canopy material colors on all placed trees to match the given season.
+ * Update canopy material colors to match the given season.
  * Called only on season change — zero per-frame cost.
+ *
+ * Walks every cached canopy material directly so types not present in
+ * `placedTrees` (e.g. a tree type the player will plant later in this season)
+ * still get the correct tint. Also runs the legacy per-mesh pass for any
+ * canopy whose material is not in the cache.
+ *
  * @param {Array} placedTrees — array of tree data objects with a .mesh property
  * @param {string} season — 'spring' | 'summer' | 'autumn' | 'winter'
  */
@@ -280,13 +372,30 @@ export function setFarmTreeSeasonColors (placedTrees, season) {
   const seasonDef = CANOPY_SEASON_TARGETS[season]
   if (!seasonDef) return
 
-  const getBlend = (child) => child.userData.isPine ? seasonDef.pine : seasonDef.deciduous
+  currentTreeSeason = season
 
+  // Pass 1: walk cached canopy materials so every tree type — including ones
+  // not currently placed — has the right base color when next instantiated.
+  for (const [key, material] of treeMaterialCache) {
+    if (!key.startsWith(_CANOPY_MAT_KEY_PREFIX)) continue
+    const treeType = key.slice(_CANOPY_MAT_KEY_PREFIX.length)
+    const def = TREE_DEFINITIONS[treeType]
+    if (!def) continue
+    _applySeasonToCanopyMaterial(material, def, season)
+  }
+
+  // Pass 2: legacy per-mesh fallback for any canopy mesh whose material is
+  // not in the cache (none today, but kept for safety against future refactors).
+  const getBlend = (child) => child.userData.isPine ? seasonDef.pine : seasonDef.deciduous
   for (const tree of placedTrees) {
     if (!tree.mesh) continue
     const canopies = tree.mesh.userData.canopyMeshes
     if (Array.isArray(canopies) && canopies.length > 0) {
-      applySeasonalColors(canopies, getBlend, _seasonalTreeColorScratch)
+      // Skip canopies whose material is in the cache — Pass 1 already handled them.
+      const uncached = canopies.filter(c => c.material && !c.material.userData?.sharedAsset)
+      if (uncached.length > 0) {
+        applySeasonalColors(uncached, getBlend, _seasonalTreeColorScratch)
+      }
       continue
     }
 
