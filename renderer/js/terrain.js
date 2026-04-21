@@ -235,6 +235,7 @@ let plotMeshes = []
 let raycaster = null
 let scene = null
 let gridLinesMesh = null
+let terrainSceneObjects = []
 
 // ── Hover highlight mesh ─────────────────────────────────────────────────────
 let hoverHighlightMesh = null
@@ -245,6 +246,62 @@ const HIGHLIGHT_COLORS = {
   harvest: { color: 0xffd700, opacity: 0.35 },
   remove:  { color: 0xff4444, opacity: 0.35 },
   default: { color: 0xffffff, opacity: 0.20 }
+}
+
+function _trackTerrainObject (object3d) {
+  terrainSceneObjects.push(object3d)
+  return object3d
+}
+
+function _disposeObjectMaterial (material, disposedMaterials) {
+  if (!material || disposedMaterials.has(material)) return
+  disposedMaterials.add(material)
+  const ownedTextures = material.userData?.ownedTextures
+  if (Array.isArray(ownedTextures)) {
+    ownedTextures.forEach(texture => texture?.dispose?.())
+    material.userData.ownedTextures = []
+  }
+  material.dispose()
+}
+
+function _disposeObject3DResources (object3d, disposedGeometries, disposedMaterials) {
+  if (!object3d) return
+  if (
+    object3d.geometry &&
+    !object3d.geometry.userData?.sharedAsset &&
+    !disposedGeometries.has(object3d.geometry)
+  ) {
+    disposedGeometries.add(object3d.geometry)
+    object3d.geometry.dispose()
+  }
+  if (Array.isArray(object3d.material)) {
+    object3d.material.forEach(material => _disposeObjectMaterial(material, disposedMaterials))
+  } else {
+    _disposeObjectMaterial(object3d.material, disposedMaterials)
+  }
+}
+
+function _resetTerrainScene (nextScene = null) {
+  if (scene) {
+    for (const row of plotGrid) {
+      for (const plot of row) {
+        if (plot?._furrows) _removeFurrows(plot)
+      }
+    }
+
+    const disposedGeometries = new Set()
+    const disposedMaterials = new Set()
+    for (const object3d of terrainSceneObjects) {
+      scene.remove(object3d)
+      _disposeObject3DResources(object3d, disposedGeometries, disposedMaterials)
+    }
+  }
+
+  terrainSceneObjects = []
+  baseTerrainMesh = null
+  hoverHighlightMesh = null
+  gridLinesMesh = null
+  if (nextScene) scene = nextScene
 }
 
 /**
@@ -289,7 +346,7 @@ function _createGridLines (sceneRef) {
   // Static geometry — disable auto matrix update for a free perf gain
   lines.matrixAutoUpdate = false
   lines.updateMatrix()
-  sceneRef.add(lines)
+  sceneRef.add(_trackTerrainObject(lines))
   gridLinesMesh = lines
 }
 
@@ -299,7 +356,7 @@ function _createGridLines (sceneRef) {
  * @returns {object} { plots, getPlotAt, setPlotState, getPlotFromIntersect }
  */
 function createPlotGrid (sceneRef) {
-  scene = sceneRef
+  _resetTerrainScene(sceneRef)
   raycaster = new THREE.Raycaster()
   plotGrid = []
   allPlots = []
@@ -319,12 +376,13 @@ function createPlotGrid (sceneRef) {
     roughness: 0.95,
     metalness: 0.0
   })
+  terrainMat.userData.ownedTextures = [terrainBaseTex]
   const terrain = new THREE.Mesh(terrainGeo, terrainMat)
   terrain.rotation.x = -Math.PI / 2
   terrain.position.y = -0.05
   terrain.name = 'baseTerrain'
   terrain.receiveShadow = true
-  scene.add(terrain)
+  scene.add(_trackTerrainObject(terrain))
   baseTerrainMesh = terrain
 
   // Path borders around farm
@@ -352,7 +410,7 @@ function createPlotGrid (sceneRef) {
       plotMesh.userData.col = col
       plotMesh.userData.isPlot = true
       plotMesh.receiveShadow = true
-      scene.add(plotMesh)
+      scene.add(_trackTerrainObject(plotMesh))
       plotMeshes.push(plotMesh)
 
       const plot = {
@@ -386,7 +444,7 @@ function createPlotGrid (sceneRef) {
   hoverHighlightMesh.rotation.x = -Math.PI / 2
   hoverHighlightMesh.position.y = 0.05
   hoverHighlightMesh.visible = false
-  scene.add(hoverHighlightMesh)
+  scene.add(_trackTerrainObject(hoverHighlightMesh))
 
   return {
     plots: plotGrid,
@@ -423,6 +481,7 @@ function _createPaths (scene) {
       roughness: 0.88,
       metalness: 0.0
     })
+    pathMat.userData.ownedTextures = [tex]
     const pathGeo = new THREE.PlaneGeometry(totalW, pathWidth)
     const path = new THREE.Mesh(pathGeo, pathMat)
     path.rotation.x = -Math.PI / 2
@@ -430,7 +489,7 @@ function _createPaths (scene) {
     path.receiveShadow = true
     path.matrixAutoUpdate = false
     path.updateMatrix()
-    scene.add(path)
+    scene.add(_trackTerrainObject(path))
   }
 
   // Left/right paths
@@ -444,6 +503,7 @@ function _createPaths (scene) {
       roughness: 0.88,
       metalness: 0.0
     })
+    pathMat.userData.ownedTextures = [tex]
     const pathGeo = new THREE.PlaneGeometry(pathWidth, totalD)
     const path = new THREE.Mesh(pathGeo, pathMat)
     path.rotation.x = -Math.PI / 2
@@ -451,7 +511,7 @@ function _createPaths (scene) {
     path.receiveShadow = true
     path.matrixAutoUpdate = false
     path.updateMatrix()
-    scene.add(path)
+    scene.add(_trackTerrainObject(path))
   }
 
   // ── 3D Fence posts at corners and mid-spans ────────────────────────────────
@@ -460,6 +520,11 @@ function _createPaths (scene) {
   const postH   = 0.8
   const postR   = 0.18
   const capR    = 0.22
+
+  // All 8 posts are identical cylinders; all 8 caps are identical hemispheres.
+  // Build geometries once and reuse across every mesh instance.
+  const postGeo = new THREE.CylinderGeometry(postR, postR * 1.1, postH, 8)
+  const capGeo  = new THREE.SphereGeometry(capR, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2)
 
   // Corner + mid-span post positions
   const postXPositions = [-halfW, 0, halfW]
@@ -472,24 +537,20 @@ function _createPaths (scene) {
       const isMidSide = (px === 0 || pz === 0) && !(px === 0 && pz === 0)
       if (!isCorner && !isMidSide) continue
 
-      // Post cylinder
-      const postGeo = new THREE.CylinderGeometry(postR, postR * 1.1, postH, 8)
       const post = new THREE.Mesh(postGeo, postMat)
       post.position.set(px, postH / 2, pz)
       post.castShadow = true
       post.receiveShadow = true
       post.matrixAutoUpdate = false
       post.updateMatrix()
-      scene.add(post)
+      scene.add(_trackTerrainObject(post))
 
-      // Rounded cap on top
-      const capGeo = new THREE.SphereGeometry(capR, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2)
       const cap = new THREE.Mesh(capGeo, capMat)
       cap.position.set(px, postH, pz)
       cap.castShadow = true
       cap.matrixAutoUpdate = false
       cap.updateMatrix()
-      scene.add(cap)
+      scene.add(_trackTerrainObject(cap))
     }
   }
 
@@ -498,28 +559,30 @@ function _createPaths (scene) {
   const railH   = 0.06  // rail cross-section
   const railY   = postH * 0.65  // height of rail along post
 
+  // halfW === halfD (GRID_COLS === GRID_ROWS and PLOT_SIZE constant), so a single
+  // long-X rail geometry serves all 4 rails — left/right rails just rotate 90° around Y.
+  const railLen = halfW * 2
+  const railGeo = new THREE.BoxGeometry(railLen, railH, railH)
+
   // Top and bottom rails (parallel to X)
   for (const pz of [-halfD, halfD]) {
-    const railLen = halfW * 2
-    const railGeo = new THREE.BoxGeometry(railLen, railH, railH)
     const rail = new THREE.Mesh(railGeo, railMat)
     rail.position.set(0, railY, pz)
     rail.castShadow = true
     rail.matrixAutoUpdate = false
     rail.updateMatrix()
-    scene.add(rail)
+    scene.add(_trackTerrainObject(rail))
   }
 
-  // Left and right rails (parallel to Z)
+  // Left and right rails (parallel to Z) — rotate shared X-axis geometry 90° around Y
   for (const px of [-halfW, halfW]) {
-    const railLen = halfD * 2
-    const railGeo = new THREE.BoxGeometry(railH, railH, railLen)
     const rail = new THREE.Mesh(railGeo, railMat)
     rail.position.set(px, railY, 0)
+    rail.rotation.y = Math.PI / 2
     rail.castShadow = true
     rail.matrixAutoUpdate = false
     rail.updateMatrix()
-    scene.add(rail)
+    scene.add(_trackTerrainObject(rail))
   }
 }
 
@@ -587,7 +650,13 @@ function _addFurrows (plot) {
 
 function _removeFurrows (plot) {
   if (!plot._furrows) return
-  plot._furrows.children.forEach(f => scene.remove(f))
+  const materials = new Set()
+  plot._furrows.children.forEach(f => {
+    scene.remove(f)
+    if (f.material) materials.add(f.material)
+    f.geometry?.dispose?.()
+  })
+  materials.forEach(material => material.dispose())
   plot._furrows = null
 }
 
@@ -662,9 +731,13 @@ function setSeasonColors (season) {
 
   // Update the large background terrain plane
   if (baseTerrainMesh) {
-    if (baseTerrainMesh.material.map) baseTerrainMesh.material.map.dispose()
+    const ownedTextures = baseTerrainMesh.material.userData?.ownedTextures
+    if (Array.isArray(ownedTextures)) {
+      ownedTextures.forEach(texture => texture?.dispose?.())
+    }
     const newBaseTex = _makeGrassTexture(base, primary, 128)
     newBaseTex.repeat.set(14, 14)
+    baseTerrainMesh.material.userData.ownedTextures = [newBaseTex]
     baseTerrainMesh.material.map = newBaseTex
     baseTerrainMesh.material.color.setHex(0xffffff)
     baseTerrainMesh.material.needsUpdate = true
