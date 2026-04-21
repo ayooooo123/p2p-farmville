@@ -154,6 +154,19 @@ export function createAnimalMesh (animalType) {
   head.castShadow = true
   headGroup.add(head)
 
+  // Eyes: one small dark sphere per side, mounted on headGroup so they follow
+  // the walk-cycle head animation. Shared unit geometry/material avoids adding
+  // per-animal allocations for this cosmetic detail.
+  const eyeGeo = _getSharedGeometry('eye:unit', () => new THREE.SphereGeometry(1, 6, 5))
+  const eyeMat = _getSharedMaterial('eye:dark', () => new THREE.MeshBasicMaterial({ color: 0x111111 }))
+  const eyeR = def.headSize * 0.16
+  for (const ex of [-def.headSize * 0.55, def.headSize * 0.55]) {
+    const eye = new THREE.Mesh(eyeGeo, eyeMat)
+    eye.position.set(ex, def.headSize * 0.18, -def.headSize * 0.78)
+    eye.scale.setScalar(eyeR)
+    headGroup.add(eye)
+  }
+
   // ── Legs: each wrapped in a pivot Group for rotation ─────────────────────
   // Pivot is placed at the body-bottom attachment point.
   // The leg mesh hangs downward from the pivot (position.y = -legH/2).

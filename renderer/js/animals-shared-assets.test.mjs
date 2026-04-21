@@ -69,11 +69,30 @@ test('createAnimalMesh groups chicken head accessories under a shared head pivot
   const headGroup = chicken.userData.headGroup
 
   assert.ok(headGroup?.isGroup, 'expected headGroup to be stored on userData')
-  assert.equal(headGroup.children.length, 4, 'head pivot should include head, beak, and two comb meshes')
+  assert.equal(headGroup.children.length, 6, 'head pivot should include head, two eyes, beak, and two comb meshes')
   assert.equal(headGroup.children[0], getInteractiveMesh(chicken, 1), 'head mesh should remain the second interactive mesh')
-  assert.equal(headGroup.children[1], getInteractiveMesh(chicken, 4), 'beak should follow the head pivot')
-  assert.equal(headGroup.children[2], getInteractiveMesh(chicken, 5), 'first comb should follow the head pivot')
-  assert.equal(headGroup.children[3], getInteractiveMesh(chicken, 6), 'second comb should follow the head pivot')
+  // Eyes are cosmetic (not tracked in interactiveMeshes) and live between head and beak.
+  assert.equal(headGroup.children[1].material.color.getHex(), 0x111111, 'first eye should be the dark eye material')
+  assert.equal(headGroup.children[2].material.color.getHex(), 0x111111, 'second eye should be the dark eye material')
+  assert.equal(headGroup.children[3], getInteractiveMesh(chicken, 4), 'beak should follow the head pivot')
+  assert.equal(headGroup.children[4], getInteractiveMesh(chicken, 5), 'first comb should follow the head pivot')
+  assert.equal(headGroup.children[5], getInteractiveMesh(chicken, 6), 'second comb should follow the head pivot')
+})
+
+test('createAnimalMesh adds a shared pair of eyes to the head pivot for every animal', () => {
+  const cow = createAnimalMesh('cow')
+  const sheep = createAnimalMesh('sheep')
+
+  const cowEyeA = cow.userData.headGroup.children[1]
+  const cowEyeB = cow.userData.headGroup.children[2]
+  const sheepEyeA = sheep.userData.headGroup.children[1]
+
+  assert.ok(cowEyeA?.isMesh && cowEyeB?.isMesh, 'cow head should contain two eye meshes')
+  assert.strictEqual(cowEyeA.geometry, cowEyeB.geometry, 'eye geometry should be shared between left and right eye')
+  assert.strictEqual(cowEyeA.material, cowEyeB.material, 'eye material should be shared between left and right eye')
+  assert.strictEqual(cowEyeA.geometry, sheepEyeA.geometry, 'eye geometry should be shared across animal types')
+  assert.strictEqual(cowEyeA.material, sheepEyeA.material, 'eye material should be shared across animal types')
+  assert.equal(cowEyeA.castShadow, false, 'eye meshes should not cast shadows')
 })
 
 test('updateAnimalState animates the stored head pivot for walking animals', () => {
