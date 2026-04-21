@@ -214,3 +214,85 @@ test('neighbor renderer reuses tree preview assets across growth scales', () => 
 
   cleanupNeighbors()
 })
+
+test('neighbor renderer reuses animal and building preview assets for matching previews', () => {
+  cleanupNeighbors()
+
+  const scene = new THREE.Scene()
+  init(scene)
+
+  const farmState = {
+    animals: [
+      { x: -5, z: 0 },
+      { x: -2, z: 0 }
+    ],
+    buildings: [
+      { x: 2, z: 0, width: 4, height: 3, depth: 4, wallColor: 0xb22222, roofColor: 0x8b0000 },
+      { x: 6, z: 0, width: 4, height: 3, depth: 4, wallColor: 0xb22222, roofColor: 0x8b0000 },
+      { x: 10, z: 0, width: 5, height: 4, depth: 5, wallColor: 0x556b2f, roofColor: 0x2f4f4f }
+    ]
+  }
+
+  updateNeighbors([
+    { key: 'alpha', name: 'Alpha', position: { x: 1, z: 0 }, farmState },
+    { key: 'beta', name: 'Beta', position: { x: -1, z: 0 }, farmState }
+  ])
+
+  const alphaGroup = renderedNeighbors.get('alpha')?.group
+  const betaGroup = renderedNeighbors.get('beta')?.group
+  assert.ok(alphaGroup)
+  assert.ok(betaGroup)
+
+  const alphaAnimalBodies = findMeshes(alphaGroup, mesh => mesh.geometry?.type === 'BoxGeometry' && mesh.geometry.parameters.width === 0.8 && mesh.geometry.parameters.height === 0.5 && mesh.geometry.parameters.depth === 1.2)
+  const betaAnimalBodies = findMeshes(betaGroup, mesh => mesh.geometry?.type === 'BoxGeometry' && mesh.geometry.parameters.width === 0.8 && mesh.geometry.parameters.height === 0.5 && mesh.geometry.parameters.depth === 1.2)
+  const alphaAnimalHeads = findMeshes(alphaGroup, mesh => mesh.geometry?.type === 'BoxGeometry' && mesh.geometry.parameters.width === 0.4 && mesh.geometry.parameters.height === 0.4 && mesh.geometry.parameters.depth === 0.4)
+  const betaAnimalHeads = findMeshes(betaGroup, mesh => mesh.geometry?.type === 'BoxGeometry' && mesh.geometry.parameters.width === 0.4 && mesh.geometry.parameters.height === 0.4 && mesh.geometry.parameters.depth === 0.4)
+
+  assert.equal(alphaAnimalBodies.length, 2)
+  assert.equal(betaAnimalBodies.length, 2)
+  assert.equal(alphaAnimalHeads.length, 2)
+  assert.equal(betaAnimalHeads.length, 2)
+  assert.strictEqual(alphaAnimalBodies[0].geometry, alphaAnimalBodies[1].geometry)
+  assert.strictEqual(alphaAnimalBodies[0].material, alphaAnimalBodies[1].material)
+  assert.strictEqual(alphaAnimalBodies[0].geometry, betaAnimalBodies[0].geometry)
+  assert.strictEqual(alphaAnimalBodies[0].material, betaAnimalBodies[0].material)
+  assert.strictEqual(alphaAnimalHeads[0].geometry, alphaAnimalHeads[1].geometry)
+  assert.strictEqual(alphaAnimalHeads[0].material, alphaAnimalHeads[1].material)
+  assert.strictEqual(alphaAnimalHeads[0].geometry, betaAnimalHeads[0].geometry)
+  assert.strictEqual(alphaAnimalHeads[0].material, betaAnimalHeads[0].material)
+
+  const alphaBuildingWalls = findMeshes(alphaGroup, mesh => mesh.geometry?.type === 'BoxGeometry' && mesh.geometry.parameters.width >= 4 && mesh.geometry.parameters.height >= 3 && mesh.geometry.parameters.depth >= 4 && mesh.position.y > 1)
+  const betaBuildingWalls = findMeshes(betaGroup, mesh => mesh.geometry?.type === 'BoxGeometry' && mesh.geometry.parameters.width >= 4 && mesh.geometry.parameters.height >= 3 && mesh.geometry.parameters.depth >= 4 && mesh.position.y > 1)
+  const alphaBuildingRoofs = findMeshes(alphaGroup, mesh => mesh.geometry?.type === 'ConeGeometry')
+  const betaBuildingRoofs = findMeshes(betaGroup, mesh => mesh.geometry?.type === 'ConeGeometry')
+
+  const alphaRepeatedWalls = alphaBuildingWalls.filter(mesh => mesh.geometry.parameters.width === 4 && mesh.material.color.getHex() === 0xb22222)
+  const betaRepeatedWalls = betaBuildingWalls.filter(mesh => mesh.geometry.parameters.width === 4 && mesh.material.color.getHex() === 0xb22222)
+  const alphaDistinctWall = alphaBuildingWalls.find(mesh => mesh.geometry.parameters.width === 5)
+  const alphaRepeatedRoofs = alphaBuildingRoofs.filter(mesh => mesh.geometry.parameters.radius === 2.8 && mesh.material.color.getHex() === 0x8b0000)
+  const betaRepeatedRoofs = betaBuildingRoofs.filter(mesh => mesh.geometry.parameters.radius === 2.8 && mesh.material.color.getHex() === 0x8b0000)
+  const alphaDistinctRoof = alphaBuildingRoofs.find(mesh => mesh.geometry.parameters.radius === 3.5)
+
+  assert.equal(alphaRepeatedWalls.length, 2)
+  assert.equal(betaRepeatedWalls.length, 2)
+  assert.ok(alphaDistinctWall)
+  assert.equal(alphaRepeatedRoofs.length, 2)
+  assert.equal(betaRepeatedRoofs.length, 2)
+  assert.ok(alphaDistinctRoof)
+
+  assert.strictEqual(alphaRepeatedWalls[0].geometry, alphaRepeatedWalls[1].geometry)
+  assert.strictEqual(alphaRepeatedWalls[0].material, alphaRepeatedWalls[1].material)
+  assert.strictEqual(alphaRepeatedWalls[0].geometry, betaRepeatedWalls[0].geometry)
+  assert.strictEqual(alphaRepeatedWalls[0].material, betaRepeatedWalls[0].material)
+  assert.notStrictEqual(alphaRepeatedWalls[0].geometry, alphaDistinctWall.geometry)
+  assert.notStrictEqual(alphaRepeatedWalls[0].material, alphaDistinctWall.material)
+
+  assert.strictEqual(alphaRepeatedRoofs[0].geometry, alphaRepeatedRoofs[1].geometry)
+  assert.strictEqual(alphaRepeatedRoofs[0].material, alphaRepeatedRoofs[1].material)
+  assert.strictEqual(alphaRepeatedRoofs[0].geometry, betaRepeatedRoofs[0].geometry)
+  assert.strictEqual(alphaRepeatedRoofs[0].material, betaRepeatedRoofs[0].material)
+  assert.notStrictEqual(alphaRepeatedRoofs[0].geometry, alphaDistinctRoof.geometry)
+  assert.notStrictEqual(alphaRepeatedRoofs[0].material, alphaDistinctRoof.material)
+
+  cleanupNeighbors()
+})

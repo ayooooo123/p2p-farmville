@@ -54,6 +54,52 @@ const NEIGHBOR_TREE_CANOPY_MATERIAL = markSharedAsset(new THREE.MeshStandardMate
   color: 0x228b22,
   roughness: 0.7
 }))
+const NEIGHBOR_ANIMAL_BODY_GEOMETRY = markSharedAsset(new THREE.BoxGeometry(0.8, 0.5, 1.2))
+const NEIGHBOR_ANIMAL_HEAD_GEOMETRY = markSharedAsset(new THREE.BoxGeometry(0.4, 0.4, 0.4))
+const NEIGHBOR_ANIMAL_MATERIAL = markSharedAsset(new THREE.MeshStandardMaterial({
+  color: 0xf5f5dc,
+  roughness: 0.8
+}))
+const NEIGHBOR_BUILDING_WALL_GEOMETRY_CACHE = new Map()
+const NEIGHBOR_BUILDING_WALL_MATERIAL_CACHE = new Map()
+const NEIGHBOR_BUILDING_ROOF_GEOMETRY_CACHE = new Map()
+const NEIGHBOR_BUILDING_ROOF_MATERIAL_CACHE = new Map()
+
+function getSharedNeighborBuildingWallGeometry (w, h, d) {
+  const key = `${w}|${h}|${d}`
+  if (!NEIGHBOR_BUILDING_WALL_GEOMETRY_CACHE.has(key)) {
+    NEIGHBOR_BUILDING_WALL_GEOMETRY_CACHE.set(key, markSharedAsset(new THREE.BoxGeometry(w, h, d)))
+  }
+  return NEIGHBOR_BUILDING_WALL_GEOMETRY_CACHE.get(key)
+}
+
+function getSharedNeighborBuildingWallMaterial (color) {
+  if (!NEIGHBOR_BUILDING_WALL_MATERIAL_CACHE.has(color)) {
+    NEIGHBOR_BUILDING_WALL_MATERIAL_CACHE.set(color, markSharedAsset(new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.7
+    })))
+  }
+  return NEIGHBOR_BUILDING_WALL_MATERIAL_CACHE.get(color)
+}
+
+function getSharedNeighborBuildingRoofGeometry (radius, height) {
+  const key = `${radius}|${height}`
+  if (!NEIGHBOR_BUILDING_ROOF_GEOMETRY_CACHE.has(key)) {
+    NEIGHBOR_BUILDING_ROOF_GEOMETRY_CACHE.set(key, markSharedAsset(new THREE.ConeGeometry(radius, height, 4)))
+  }
+  return NEIGHBOR_BUILDING_ROOF_GEOMETRY_CACHE.get(key)
+}
+
+function getSharedNeighborBuildingRoofMaterial (color) {
+  if (!NEIGHBOR_BUILDING_ROOF_MATERIAL_CACHE.has(color)) {
+    NEIGHBOR_BUILDING_ROOF_MATERIAL_CACHE.set(color, markSharedAsset(new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.6
+    })))
+  }
+  return NEIGHBOR_BUILDING_ROOF_MATERIAL_CACHE.get(color)
+}
 
 function getSharedNeighborCropStemGeometry (stage) {
   if (!NEIGHBOR_CROP_STEM_GEOMETRY_CACHE.has(stage)) {
@@ -329,19 +375,13 @@ function createSimpleAnimal (animal) {
   const group = new THREE.Group()
 
   // Body
-  const bodyGeo = new THREE.BoxGeometry(0.8, 0.5, 1.2)
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0xf5f5dc,
-    roughness: 0.8
-  })
-  const body = new THREE.Mesh(bodyGeo, bodyMat)
+  const body = new THREE.Mesh(NEIGHBOR_ANIMAL_BODY_GEOMETRY, NEIGHBOR_ANIMAL_MATERIAL)
   body.position.y = 0.5
   body.castShadow = true
   group.add(body)
 
   // Head
-  const headGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4)
-  const head = new THREE.Mesh(headGeo, bodyMat)
+  const head = new THREE.Mesh(NEIGHBOR_ANIMAL_HEAD_GEOMETRY, NEIGHBOR_ANIMAL_MATERIAL)
   head.position.set(0, 0.7, -0.7)
   head.castShadow = true
   group.add(head)
@@ -357,26 +397,26 @@ function createSimpleBuilding (building) {
   const w = building.width || 4
   const h = building.height || 3
   const d = building.depth || 4
+  const wallColor = building.wallColor || 0xb22222
+  const roofColor = building.roofColor || 0x8b0000
+  const roofRadius = Math.max(w, d) * 0.7
+  const roofHeight = h * 0.4
 
   // Walls
-  const wallGeo = new THREE.BoxGeometry(w, h, d)
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: building.wallColor || 0xb22222,
-    roughness: 0.7
-  })
-  const walls = new THREE.Mesh(wallGeo, wallMat)
+  const walls = new THREE.Mesh(
+    getSharedNeighborBuildingWallGeometry(w, h, d),
+    getSharedNeighborBuildingWallMaterial(wallColor)
+  )
   walls.position.y = h / 2
   walls.castShadow = true
   walls.receiveShadow = true
   group.add(walls)
 
   // Roof
-  const roofGeo = new THREE.ConeGeometry(Math.max(w, d) * 0.7, h * 0.4, 4)
-  const roofMat = new THREE.MeshStandardMaterial({
-    color: building.roofColor || 0x8b0000,
-    roughness: 0.6
-  })
-  const roof = new THREE.Mesh(roofGeo, roofMat)
+  const roof = new THREE.Mesh(
+    getSharedNeighborBuildingRoofGeometry(roofRadius, roofHeight),
+    getSharedNeighborBuildingRoofMaterial(roofColor)
+  )
   roof.position.y = h + h * 0.2
   roof.rotation.y = Math.PI / 4
   roof.castShadow = true
