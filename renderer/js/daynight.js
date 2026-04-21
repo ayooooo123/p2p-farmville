@@ -16,6 +16,11 @@ const PHASE_RANGES = {
   night: { start: 0.70, end: 1.0 }
 }
 
+// Midpoint of the 'noon' phase — used as the anchor for peak sun elevation.
+// Keeping this derived from PHASE_RANGES means tweaks to phase timing
+// automatically keep the sun overhead during the noon window.
+const SUN_NOON_FRAC = (PHASE_RANGES.noon.start + PHASE_RANGES.noon.end) / 2
+
 // Light configs per phase
 // ambientColor uses proper colour temperature:
 //   dawn/dusk  → warm deep orange-amber (CCT ~2000 K feel)
@@ -358,13 +363,19 @@ function updateDayNight (dtMs) {
   sunLight.color.lerp(currentSeasonMod.accent, aT * 0.5)   // half-strength on direct sun
   sunLight.intensity = _lerp(current.sunIntensity, next.sunIntensity, t) * iMult
 
-  // Move sun position based on time
-  const sunAngle = timeOfDay * Math.PI * 2 - Math.PI / 2
+  // Move sun position based on time. Anchor the elevation peak to the actual
+  // noon midpoint so the sun is overhead during the noon phase (not during
+  // dusk, as the previous formula did). Use sin for the east→west swing.
+  const sunAngle = (timeOfDay - SUN_NOON_FRAC) * Math.PI * 2
+  const sunY = Math.cos(sunAngle) * 50 + 10
   sunLight.position.set(
-    Math.cos(sunAngle) * 50,
-    Math.sin(sunAngle) * 50 + 10,
+    -Math.sin(sunAngle) * 50,  // east (+x) at sunrise → west (-x) at sunset
+    sunY,                       // peaks at noon, dips below ground at midnight
     30
   )
+  // Skip the shadow pass while the sun is below the horizon — saves the
+  // shadow render and avoids spurious upward shadow artifacts at night.
+  sunLight.castShadow = sunY > 0
 
   // Update ambient light — color temperature shifts:
   //   dawn/dusk → warm orange-amber, noon → near-white, night → cool blue
