@@ -149,21 +149,63 @@ let firefliesGroup = null
 const FIREFLY_COUNT = 30
 const fireflyData = [] // per-firefly animation state
 
+function _disposeMaterial (material) {
+  if (!material) return
+  if (Array.isArray(material)) {
+    for (const entry of material) _disposeMaterial(entry)
+    return
+  }
+  material.dispose?.()
+}
+
+function _disposeGroupResources (group, preserveMaterials = null) {
+  if (!group) return
+
+  const geometries = new Set()
+  const materials = new Set()
+  group.traverse(child => {
+    if (!child.isMesh) return
+    if (child.geometry) geometries.add(child.geometry)
+    if (Array.isArray(child.material)) {
+      for (const material of child.material) {
+        if (material && !preserveMaterials?.has(material)) materials.add(material)
+      }
+      return
+    }
+    if (child.material && !preserveMaterials?.has(child.material)) {
+      materials.add(child.material)
+    }
+  })
+
+  for (const geometry of geometries) geometry.dispose?.()
+  for (const material of materials) _disposeMaterial(material)
+}
+
+function _resetDayNightEffects () {
+  starsGroup?.parent?.remove(starsGroup)
+  firefliesGroup?.parent?.remove(firefliesGroup)
+
+  _disposeGroupResources(starsGroup, new Set(starMaterialCache.values()))
+  _disposeGroupResources(firefliesGroup)
+
+  starsGroup = null
+  firefliesGroup = null
+  fireflyData.length = 0
+}
+
 function initDayNight (sceneRef, sunRef, ambientRef, hemiRef, options) {
+  _resetDayNightEffects()
+
   scene = sceneRef
   sunLight = sunRef
   ambientLight = ambientRef
   hemiLight = hemiRef
   startTime = Date.now()
+  cycleDuration = options?.cycleDuration ?? DAY_CYCLE_MS
 
-  if (options && options.cycleDuration) {
-    cycleDuration = options.cycleDuration
-  }
-
-  // Accept optional renderer ref so we can drive toneMappingExposure per-phase
-  if (options && options.renderer) {
-    renderer = options.renderer
-  }
+  // Accept optional renderer ref so we can drive toneMappingExposure per-phase.
+  // Reset to null on re-init when a renderer is not supplied so we don't keep a stale ref.
+  renderer = options?.renderer ?? null
 
   // Create stars group
   _createStars()
