@@ -3360,7 +3360,7 @@ function gameLoop (time) {
 
   // Update player movement
   window.PlayerController.updatePlayer(clampedDt)
-  window.PlayerController.updateCamera(sceneData.camera)
+  window.PlayerController.updateCamera(sceneData.camera, clampedDt)
   updateCamera()
 
   // Footstep dust: emit a tiny dust puff at player feet while walking

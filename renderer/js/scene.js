@@ -238,11 +238,17 @@ function setFrustumSize (size) {
   camera.updateProjectionMatrix()
 }
 
-// ─��� Camera controls (pan + zoom) ─────────────────────────────────────────────
+// ── Camera controls (pan + zoom) ─────────────────────────────────────────────
+// PlayerController.updateCamera writes the smoothed follow position into
+// camera.position.{x,z} each frame. updateCamera() here then lerps the pan
+// offset and ADDS it on top, so pan and follow no longer fight for the same
+// write target.
 const camState = {
   targetFrustum: 72,
-  targetX: 0,
-  targetZ: 4,
+  panTargetX: 0,
+  panTargetZ: 0,
+  panCurX: 0,
+  panCurZ: 0,
   panning: false,
   panStartX: 0,
   panStartZ: 0,
@@ -253,7 +259,7 @@ const camState = {
 
 const CAM_MIN_FRUSTUM = 10
 const CAM_MAX_FRUSTUM = 120
-const CAM_CLAMP = 100
+const CAM_PAN_CLAMP = 100
 const CAM_LERP = 0.15
 
 function initCameraControls (canvasEl) {
@@ -271,8 +277,8 @@ function initCameraControls (canvasEl) {
       camState.didPan = false
       camState.panMouseX = e.clientX
       camState.panMouseZ = e.clientY
-      camState.panStartX = camState.targetX
-      camState.panStartZ = camState.targetZ
+      camState.panStartX = camState.panTargetX
+      camState.panStartZ = camState.panTargetZ
       e.preventDefault()
     }
   })
@@ -282,8 +288,8 @@ function initCameraControls (canvasEl) {
     const rect = canvasEl.getBoundingClientRect()
     const dx = (e.clientX - camState.panMouseX) / rect.height * frustumSize * -1
     const dz = (e.clientY - camState.panMouseZ) / rect.height * frustumSize
-    camState.targetX = Math.max(-CAM_CLAMP, Math.min(CAM_CLAMP, camState.panStartX + dx))
-    camState.targetZ = Math.max(-CAM_CLAMP, Math.min(CAM_CLAMP, camState.panStartZ + dz))
+    camState.panTargetX = Math.max(-CAM_PAN_CLAMP, Math.min(CAM_PAN_CLAMP, camState.panStartX + dx))
+    camState.panTargetZ = Math.max(-CAM_PAN_CLAMP, Math.min(CAM_PAN_CLAMP, camState.panStartZ + dz))
     if (Math.abs(dx) > 1 || Math.abs(dz) > 1) camState.didPan = true
   })
 
@@ -311,23 +317,25 @@ function updateCamera () {
     camera.bottom = -frustumSize / 2
     camera.updateProjectionMatrix()
   }
-  // Lerp pan
-  const tx = camState.targetX
-  const tz = camState.targetZ
-  camera.position.x += (tx - camera.position.x) * CAM_LERP
-  camera.position.z += (tz - camera.position.z) * CAM_LERP
-  camera.position.z = Math.max(-CAM_CLAMP, Math.min(CAM_CLAMP, camera.position.z))
+  // Lerp pan offset and apply additively on top of player-follow position.
+  camState.panCurX += (camState.panTargetX - camState.panCurX) * CAM_LERP
+  camState.panCurZ += (camState.panTargetZ - camState.panCurZ) * CAM_LERP
+  camera.position.x += camState.panCurX
+  camera.position.z += camState.panCurZ
 }
 
 
 function resetCamera () {
   camState.targetFrustum = 72
-  camState.targetX = 0
-  camState.targetZ = 4
+  camState.panTargetX = 0
+  camState.panTargetZ = 0
+  // Snap the smoothed pan so reset visibly recenters on the player.
+  camState.panCurX = 0
+  camState.panCurZ = 0
 }
 
 function getCameraOffset () {
-  return { x: camera.position.x, z: camera.position.z }
+  return { x: camState.panCurX, z: camState.panCurZ }
 }
 
 // ── Seasonal border-tree canopy color shift ───────────────────────────────────

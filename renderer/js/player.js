@@ -22,6 +22,13 @@ const playerPos = { x: 0, z: 0 }
 let isMoving = false
 let keyboardListenersAttached = false
 
+// Exponential follow smoothing for the camera. `null` = snap on next update.
+let _camSmoothX = null
+let _camSmoothZ = null
+const _CAM_FOLLOW_RATE = 10      // higher = snappier; ~95% of delta in ~0.3s
+const _CAM_SNAP_DIST_SQ = 100    // snap instead of lerp if >10 world units off target
+const _CAM_MAX_DT = 0.1          // clamp to avoid a giant jump after a stall
+
 const playerGeometryCache = new Map()
 const playerMaterialCache = new Map()
 
@@ -72,6 +79,9 @@ function initPlayer (scene) {
   if (playerMesh?.parent) {
     playerMesh.parent.remove(playerMesh)
   }
+
+  _camSmoothX = null
+  _camSmoothZ = null
 
   // 3D capsule-like player: cylinder body + sphere head with shadow
   const group = new THREE.Group()
@@ -245,13 +255,36 @@ function updatePlayer (dt) {
   checkVisitingState()
 }
 
-function updateCamera (camera) {
+// Top-down: camera directly above player, looking straight down.
+// `dt` is expected in seconds (matches app.js clampedDt). Uses frame-rate
+// independent exponential smoothing so fast WASD movement eases the camera
+// rather than snapping. Large jumps (teleports) snap instantly.
+function updateCamera (camera, dt = 1 / 60) {
   if (!playerMesh || !camera) return
 
-  // Top-down: camera directly above player, looking straight down
-  camera.position.x = playerPos.x
+  const tx = playerPos.x
+  const tz = playerPos.z
+
+  if (_camSmoothX === null || _camSmoothZ === null) {
+    _camSmoothX = tx
+    _camSmoothZ = tz
+  } else {
+    const ex = tx - _camSmoothX
+    const ez = tz - _camSmoothZ
+    if (ex * ex + ez * ez > _CAM_SNAP_DIST_SQ) {
+      _camSmoothX = tx
+      _camSmoothZ = tz
+    } else {
+      const clampedDt = dt > _CAM_MAX_DT ? _CAM_MAX_DT : (dt > 0 ? dt : 0)
+      const k = 1 - Math.exp(-_CAM_FOLLOW_RATE * clampedDt)
+      _camSmoothX += ex * k
+      _camSmoothZ += ez * k
+    }
+  }
+
+  camera.position.x = _camSmoothX
   camera.position.y = 50
-  camera.position.z = playerPos.z
+  camera.position.z = _camSmoothZ
 }
 
 function getPlayerPos () {
@@ -303,6 +336,8 @@ function returnToFarm () {
     playerMesh.position.x = 0
     playerMesh.position.z = 0
   }
+  _camSmoothX = null
+  _camSmoothZ = null
   visiting = false
   visitingNeighborKey = null
   visitingNeighborName = ''
