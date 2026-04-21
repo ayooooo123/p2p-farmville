@@ -15,6 +15,17 @@ let viewportWidth = 1
 let viewportHeight = 1
 let borderTreeGroups = [] // cached refs for wind sway animation
 
+function _markSharedAsset (asset) {
+  if (!asset.userData) asset.userData = {}
+  asset.userData.sharedAsset = true
+  return asset
+}
+
+const BORDER_TREE_TRUNK_RADIUS = 0.16
+const BORDER_TREE_TRUNK_GEOMETRY = _markSharedAsset(new THREE.CylinderGeometry(1, 1.2, 1, 7))
+const BORDER_TREE_TRUNK_MATERIAL = _markSharedAsset(new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 0.9, metalness: 0 }))
+const BORDER_TREE_CANOPY_GEOMETRY = _markSharedAsset(new THREE.SphereGeometry(1, 10, 8))
+
 // Orthographic frustum size (vertical extent in world units)
 let frustumSize = 72
 
@@ -169,50 +180,65 @@ function _addBorderTrees (scene) {
   ]
 
   for (const [x, z] of treePositions) {
-    // 3D border tree: cylinder trunk + sphere canopy
-    const canopyR = 1.2 + Math.random() * 0.8
-    const trunkH = 1.0 + Math.random() * 0.4
-    const trunkR = 0.16
-
-    const treeGroup = new THREE.Group()
-    const px = x + (Math.random() - 0.5) * 2
-    const pz = z + (Math.random() - 0.5) * 2
-    treeGroup.position.set(px, 0, pz)
-    treeGroup.userData.trunkMeshes = []
-    treeGroup.userData.canopyMeshes = []
-
-    // Trunk
-    const trunkGeo = new THREE.CylinderGeometry(trunkR, trunkR * 1.2, trunkH, 7)
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 0.9, metalness: 0 })
-    const trunk = new THREE.Mesh(trunkGeo, trunkMat)
-    trunk.position.y = trunkH / 2
-    trunk.castShadow = true
-    trunk.receiveShadow = true
-    trunk.userData.isBorderTrunk = true
-    trunk.userData.trunkHeight = trunkH
-    treeGroup.add(trunk)
-    treeGroup.userData.trunkMeshes.push(trunk)
-
-    // Canopy sphere
-    const canopyColor = 0x2d7a1e + Math.floor(Math.random() * 0x101010)
-    const sphereGeo = new THREE.SphereGeometry(canopyR, 10, 8)
-    const sphereMat = new THREE.MeshStandardMaterial({ color: canopyColor, roughness: 0.85, metalness: 0 })
-    const canopy = new THREE.Mesh(sphereGeo, sphereMat)
-    canopy.position.y = trunkH + canopyR * 0.65
-    canopy.castShadow = true
-    canopy.receiveShadow = true
-    canopy.userData.isBorderCanopy = true
-    canopy.userData.canopyRadius = canopyR
-    canopy.userData.baseColor = canopyColor
-    treeGroup.add(canopy)
-    treeGroup.userData.canopyMeshes.push(canopy)
-
-    // Per-tree phase offset for independent wind sway (based on world position)
-    treeGroup.userData.windPhase = px * 1.31 + pz * 0.97 + Math.random() * 0.5
+    const treeGroup = createBorderTreeGroup({
+      x,
+      z,
+      offsetX: (Math.random() - 0.5) * 2,
+      offsetZ: (Math.random() - 0.5) * 2,
+      canopyRadius: 1.2 + Math.random() * 0.8,
+      trunkHeight: 1.0 + Math.random() * 0.4,
+      canopyColor: 0x2d7a1e + Math.floor(Math.random() * 0x101010),
+      windPhaseJitter: Math.random() * 0.5
+    })
 
     scene.add(treeGroup)
     borderTreeGroups.push(treeGroup)
   }
+}
+
+function createBorderTreeGroup ({
+  x,
+  z,
+  offsetX = 0,
+  offsetZ = 0,
+  canopyRadius,
+  trunkHeight,
+  canopyColor,
+  windPhaseJitter = 0
+}) {
+  const treeGroup = new THREE.Group()
+  const px = x + offsetX
+  const pz = z + offsetZ
+  treeGroup.position.set(px, 0, pz)
+  treeGroup.userData.trunkMeshes = []
+  treeGroup.userData.canopyMeshes = []
+
+  const trunk = new THREE.Mesh(BORDER_TREE_TRUNK_GEOMETRY, BORDER_TREE_TRUNK_MATERIAL)
+  trunk.position.y = trunkHeight / 2
+  trunk.scale.set(BORDER_TREE_TRUNK_RADIUS, trunkHeight, BORDER_TREE_TRUNK_RADIUS)
+  trunk.castShadow = true
+  trunk.receiveShadow = true
+  trunk.userData.isBorderTrunk = true
+  trunk.userData.trunkHeight = trunkHeight
+  treeGroup.add(trunk)
+  treeGroup.userData.trunkMeshes.push(trunk)
+
+  const canopy = new THREE.Mesh(
+    BORDER_TREE_CANOPY_GEOMETRY,
+    new THREE.MeshStandardMaterial({ color: canopyColor, roughness: 0.85, metalness: 0 })
+  )
+  canopy.position.y = trunkHeight + canopyRadius * 0.65
+  canopy.scale.setScalar(canopyRadius)
+  canopy.castShadow = true
+  canopy.receiveShadow = true
+  canopy.userData.isBorderCanopy = true
+  canopy.userData.canopyRadius = canopyRadius
+  canopy.userData.baseColor = canopyColor
+  treeGroup.add(canopy)
+  treeGroup.userData.canopyMeshes.push(canopy)
+
+  treeGroup.userData.windPhase = px * 1.31 + pz * 0.97 + windPhaseJitter
+  return treeGroup
 }
 
 function getBorderTrees () { return borderTreeGroups }
@@ -373,5 +399,5 @@ function setBorderTreeSeasonColors (season) {
 }
 
 // Export to window for non-module scripts and as ES module
-window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees, setBorderTreeSeasonColors }
-export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees, setBorderTreeSeasonColors }
+window.SceneManager = { initScene, animate, getScene: () => scene, getCamera: () => camera, getTerrainData: () => terrainData, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees, createBorderTreeGroup, setBorderTreeSeasonColors }
+export { initScene, animate, scene, camera, renderer, getSunLight, getAmbientLight, getHemiLight, getFrustumSize, setFrustumSize, initCameraControls, updateCamera, resetCamera, getCameraOffset, getBorderTrees, createBorderTreeGroup, setBorderTreeSeasonColors }
