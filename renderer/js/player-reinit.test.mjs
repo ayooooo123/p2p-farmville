@@ -16,6 +16,15 @@ await import('./player.js')
 
 const { initPlayer } = window.PlayerController
 
+function collectMeshRefs (group) {
+  const meshes = []
+  group.traverse((child) => {
+    if (!child.isMesh) return
+    meshes.push({ geometry: child.geometry, material: child.material })
+  })
+  return meshes
+}
+
 test('initPlayer avoids duplicate scene meshes and keyboard listeners on re-init', () => {
   const scene = new THREE.Scene()
 
@@ -39,4 +48,30 @@ test('initPlayer avoids duplicate scene meshes and keyboard listeners on re-init
     1,
     're-initializing the player should reuse the existing keyup listener instead of stacking duplicates'
   )
+})
+
+test('initPlayer reuses shared player mesh assets across re-init', () => {
+  const scene = new THREE.Scene()
+
+  const firstPlayer = initPlayer(scene)
+  const secondPlayer = initPlayer(scene)
+
+  const firstMeshes = collectMeshRefs(firstPlayer)
+  const secondMeshes = collectMeshRefs(secondPlayer)
+
+  assert.equal(secondMeshes.length, firstMeshes.length)
+  assert.ok(secondMeshes.length > 0, 'expected the player mesh to contain renderable child meshes')
+
+  for (let i = 0; i < secondMeshes.length; i++) {
+    assert.strictEqual(
+      secondMeshes[i].geometry,
+      firstMeshes[i].geometry,
+      `mesh ${i} should reuse the same shared geometry on player re-init`
+    )
+    assert.strictEqual(
+      secondMeshes[i].material,
+      firstMeshes[i].material,
+      `mesh ${i} should reuse the same shared material on player re-init`
+    )
+  }
 })

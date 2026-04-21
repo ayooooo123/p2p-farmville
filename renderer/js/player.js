@@ -22,6 +22,29 @@ const playerPos = { x: 0, z: 0 }
 let isMoving = false
 let keyboardListenersAttached = false
 
+const playerGeometryCache = new Map()
+const playerMaterialCache = new Map()
+
+function _markSharedAsset (asset) {
+  asset.userData = asset.userData || {}
+  asset.userData.sharedAsset = true
+  return asset
+}
+
+function _getSharedGeometry (key, createGeometry) {
+  if (!playerGeometryCache.has(key)) {
+    playerGeometryCache.set(key, _markSharedAsset(createGeometry()))
+  }
+  return playerGeometryCache.get(key)
+}
+
+function _getSharedMaterial (key, createMaterial) {
+  if (!playerMaterialCache.has(key)) {
+    playerMaterialCache.set(key, _markSharedAsset(createMaterial()))
+  }
+  return playerMaterialCache.get(key)
+}
+
 // Visiting state
 let visiting = false
 let visitingNeighborKey = null
@@ -54,8 +77,8 @@ function initPlayer (scene) {
   const group = new THREE.Group()
 
   // Body: cylinder (torso)
-  const bodyGeo = new THREE.CylinderGeometry(0.32, 0.36, 0.72, 12)
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2196f3 })
+  const bodyGeo = _getSharedGeometry('body', () => new THREE.CylinderGeometry(0.32, 0.36, 0.72, 12))
+  const bodyMat = _getSharedMaterial('body', () => new THREE.MeshStandardMaterial({ color: 0x2196f3 }))
   const body = new THREE.Mesh(bodyGeo, bodyMat)
   body.position.y = 0.46
   body.castShadow = true
@@ -65,8 +88,8 @@ function initPlayer (scene) {
 
   // Legs: two small cylinders below body, wrapped in pivot groups for swing animation
   // Each pivot sits at hip height (y=0.30); the mesh is offset -0.15 so it hangs down from the pivot.
-  const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.3, 8)
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x1565c0 })
+  const legGeo = _getSharedGeometry('leg', () => new THREE.CylinderGeometry(0.1, 0.1, 0.3, 8))
+  const legMat = _getSharedMaterial('leg', () => new THREE.MeshStandardMaterial({ color: 0x1565c0 }))
 
   const leftLegPivotGroup = new THREE.Group()
   leftLegPivotGroup.position.set(-0.14, 0.30, 0)
@@ -88,8 +111,8 @@ function initPlayer (scene) {
 
   // Arms: two short cylinders hanging from shoulder pivots, counter-swing to legs
   // Shoulder pivot sits near top of body (y=0.78), offset laterally
-  const armGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.36, 6)
-  const armMat = new THREE.MeshStandardMaterial({ color: 0x1a6bc7 })
+  const armGeo = _getSharedGeometry('arm', () => new THREE.CylinderGeometry(0.085, 0.085, 0.36, 6))
+  const armMat = _getSharedMaterial('arm', () => new THREE.MeshStandardMaterial({ color: 0x1a6bc7 }))
 
   const leftArmPivotGroup = new THREE.Group()
   leftArmPivotGroup.position.set(-0.40, 0.78, 0)
@@ -110,8 +133,8 @@ function initPlayer (scene) {
   rightArmPivot = rightArmPivotGroup
 
   // Head: sphere (skin tone)
-  const headGeo = new THREE.SphereGeometry(0.28, 12, 10)
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xffcc88 })
+  const headGeo = _getSharedGeometry('head', () => new THREE.SphereGeometry(0.28, 12, 10))
+  const headMat = _getSharedMaterial('head', () => new THREE.MeshStandardMaterial({ color: 0xffcc88 }))
   const head = new THREE.Mesh(headGeo, headMat)
   head.position.y = 1.08
   head.castShadow = true
@@ -119,9 +142,9 @@ function initPlayer (scene) {
   playerHead = head
 
   // Hat: small flat cylinder on top of head
-  const hatBrimGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.06, 12)
-  const hatTopGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.26, 12)
-  const hatMat = new THREE.MeshStandardMaterial({ color: 0x5d4037 })
+  const hatBrimGeo = _getSharedGeometry('hatBrim', () => new THREE.CylinderGeometry(0.36, 0.36, 0.06, 12))
+  const hatTopGeo = _getSharedGeometry('hatTop', () => new THREE.CylinderGeometry(0.22, 0.22, 0.26, 12))
+  const hatMat = _getSharedMaterial('hat', () => new THREE.MeshStandardMaterial({ color: 0x5d4037 }))
   const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat)
   hatBrim.position.y = 1.36
   hatBrim.castShadow = true
@@ -132,8 +155,8 @@ function initPlayer (scene) {
   group.add(hatTop)
 
   // Direction indicator: small blue sphere in front
-  const dotGeo = new THREE.SphereGeometry(0.08, 6, 6)
-  const dotMat = new THREE.MeshStandardMaterial({ color: 0x90caf9, emissive: 0x1565c0, emissiveIntensity: 0.4 })
+  const dotGeo = _getSharedGeometry('direction-dot', () => new THREE.SphereGeometry(0.08, 6, 6))
+  const dotMat = _getSharedMaterial('direction-dot', () => new THREE.MeshStandardMaterial({ color: 0x90caf9, emissive: 0x1565c0, emissiveIntensity: 0.4 }))
   dirIndicator = new THREE.Mesh(dotGeo, dotMat)
   dirIndicator.position.set(0, 0.6, -0.42)
   group.add(dirIndicator)
