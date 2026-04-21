@@ -44,6 +44,16 @@ const NEIGHBOR_CROP_STEM_GEOMETRY_CACHE = new Map()
 const NEIGHBOR_CROP_STEM_MATERIAL_CACHE = new Map()
 const NEIGHBOR_CROP_CANOPY_GEOMETRY_CACHE = new Map()
 const NEIGHBOR_CROP_CANOPY_MATERIAL_CACHE = new Map()
+const NEIGHBOR_TREE_TRUNK_GEOMETRY = markSharedAsset(new THREE.CylinderGeometry(0.2, 0.3, 2, 6))
+const NEIGHBOR_TREE_TRUNK_MATERIAL = markSharedAsset(new THREE.MeshStandardMaterial({
+  color: 0x5c3a1e,
+  roughness: 0.9
+}))
+const NEIGHBOR_TREE_CANOPY_GEOMETRY = markSharedAsset(new THREE.SphereGeometry(1.2, 8, 6))
+const NEIGHBOR_TREE_CANOPY_MATERIAL = markSharedAsset(new THREE.MeshStandardMaterial({
+  color: 0x228b22,
+  roughness: 0.7
+}))
 
 function getSharedNeighborCropStemGeometry (stage) {
   if (!NEIGHBOR_CROP_STEM_GEOMETRY_CACHE.has(stage)) {
@@ -297,26 +307,16 @@ function createSimpleTree (tree) {
   const scale = tree.growthScale || 1
 
   // Trunk
-  const trunkH = 2 * scale
-  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, trunkH, 6)
-  const trunkMat = new THREE.MeshStandardMaterial({
-    color: 0x5c3a1e,
-    roughness: 0.9
-  })
-  const trunk = new THREE.Mesh(trunkGeo, trunkMat)
-  trunk.position.y = trunkH / 2
+  const trunk = new THREE.Mesh(NEIGHBOR_TREE_TRUNK_GEOMETRY, NEIGHBOR_TREE_TRUNK_MATERIAL)
+  trunk.scale.setScalar(scale)
+  trunk.position.y = scale
   trunk.castShadow = true
   group.add(trunk)
 
   // Canopy
-  const canopyR = 1.2 * scale
-  const canopyGeo = new THREE.SphereGeometry(canopyR, 8, 6)
-  const canopyMat = new THREE.MeshStandardMaterial({
-    color: 0x228b22,
-    roughness: 0.7
-  })
-  const canopy = new THREE.Mesh(canopyGeo, canopyMat)
-  canopy.position.y = trunkH + canopyR * 0.5
+  const canopy = new THREE.Mesh(NEIGHBOR_TREE_CANOPY_GEOMETRY, NEIGHBOR_TREE_CANOPY_MATERIAL)
+  canopy.scale.setScalar(scale)
+  canopy.position.y = 2.6 * scale
   canopy.castShadow = true
   group.add(canopy)
 

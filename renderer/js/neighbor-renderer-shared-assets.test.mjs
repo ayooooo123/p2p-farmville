@@ -166,3 +166,51 @@ test('neighbor renderer reuses repeated crop preview assets for matching stages'
 
   cleanupNeighbors()
 })
+
+test('neighbor renderer reuses tree preview assets across growth scales', () => {
+  cleanupNeighbors()
+
+  const scene = new THREE.Scene()
+  init(scene)
+
+  const farmState = {
+    trees: [
+      { x: -3, z: 0, growthScale: 1 },
+      { x: 3, z: 0, growthScale: 1.6 }
+    ]
+  }
+
+  updateNeighbors([
+    { key: 'alpha', name: 'Alpha', position: { x: 1, z: 0 }, farmState },
+    { key: 'beta', name: 'Beta', position: { x: -1, z: 0 }, farmState }
+  ])
+
+  const alphaGroup = renderedNeighbors.get('alpha')?.group
+  const betaGroup = renderedNeighbors.get('beta')?.group
+  assert.ok(alphaGroup)
+  assert.ok(betaGroup)
+
+  const alphaTrunks = findMeshes(alphaGroup, mesh => mesh.geometry?.type === 'CylinderGeometry' && mesh.material?.color?.getHex() === 0x5c3a1e)
+  const betaTrunks = findMeshes(betaGroup, mesh => mesh.geometry?.type === 'CylinderGeometry' && mesh.material?.color?.getHex() === 0x5c3a1e)
+  const alphaCanopies = findMeshes(alphaGroup, mesh => mesh.geometry?.type === 'SphereGeometry' && mesh.material?.color?.getHex() === 0x228b22)
+  const betaCanopies = findMeshes(betaGroup, mesh => mesh.geometry?.type === 'SphereGeometry' && mesh.material?.color?.getHex() === 0x228b22)
+
+  assert.equal(alphaTrunks.length, 2)
+  assert.equal(betaTrunks.length, 2)
+  assert.equal(alphaCanopies.length, 2)
+  assert.equal(betaCanopies.length, 2)
+
+  assert.strictEqual(alphaTrunks[0].geometry, alphaTrunks[1].geometry)
+  assert.strictEqual(alphaTrunks[0].material, alphaTrunks[1].material)
+  assert.strictEqual(alphaTrunks[0].geometry, betaTrunks[0].geometry)
+  assert.strictEqual(alphaTrunks[0].material, betaTrunks[0].material)
+  assert.deepEqual(new Set(alphaTrunks.map(mesh => mesh.scale.y)), new Set([1, 1.6]))
+
+  assert.strictEqual(alphaCanopies[0].geometry, alphaCanopies[1].geometry)
+  assert.strictEqual(alphaCanopies[0].material, alphaCanopies[1].material)
+  assert.strictEqual(alphaCanopies[0].geometry, betaCanopies[0].geometry)
+  assert.strictEqual(alphaCanopies[0].material, betaCanopies[0].material)
+  assert.deepEqual(new Set(alphaCanopies.map(mesh => mesh.scale.x)), new Set([1, 1.6]))
+
+  cleanupNeighbors()
+})
