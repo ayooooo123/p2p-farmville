@@ -138,13 +138,21 @@ export function createAnimalMesh (animalType) {
   }
 
   // ── 3D head: sphere offset forward ───────────────────────────────────────
+  const headFwdZ = -(def.bodyD / 2 + def.headSize * 0.55)
+  const headGroup = new THREE.Group()
+  headGroup.position.set(0, bodyH * 0.85, headFwdZ)
+  group.add(headGroup)
+  group.userData.headGroup = headGroup
+  group.userData.headGroupBaseRotX = headGroup.rotation.x
+  group.userData.headGroupBaseY = headGroup.position.y
+
   const headGeo = _getSharedGeometry(`head:${animalType}:${def.headSize}`, () => new THREE.SphereGeometry(def.headSize, 10, 8))
   const headMat = _getSharedMaterial(`head:${animalType}:${def.headColor}`, () => new THREE.MeshStandardMaterial({ color: def.headColor, roughness: 0.8, metalness: 0.0 }))
   const head = new THREE.Mesh(headGeo, headMat)
   _trackInteractiveMesh(group, head)
-  head.position.set(0, bodyH * 0.85, -(def.bodyD / 2 + def.headSize * 0.55))
+  head.position.set(0, 0, 0)
   head.castShadow = true
-  group.add(head)
+  headGroup.add(head)
 
   // ── Legs: each wrapped in a pivot Group for rotation ─────────────────────
   // Pivot is placed at the body-bottom attachment point.
@@ -195,8 +203,6 @@ export function createAnimalMesh (animalType) {
   }
 
   // ── Per-animal characteristic features ────────────────────────────────────
-  const headFwdZ = -(def.bodyD / 2 + def.headSize * 0.55)
-
   if (animalType === 'chicken' || animalType === 'duck') {
     // Beak: small flat cone pointing forward
     const beakGeo = _getSharedGeometry(`beak:${animalType}`, () => new THREE.ConeGeometry(0.045, 0.14, 5))
@@ -204,9 +210,9 @@ export function createAnimalMesh (animalType) {
     const beak = new THREE.Mesh(beakGeo, beakMat)
     _trackInteractiveMesh(group, beak)
     beak.rotation.x = Math.PI / 2
-    beak.position.set(0, bodyH * 0.85, headFwdZ - def.headSize * 0.9)
+    beak.position.set(0, 0, -def.headSize * 0.9)
     beak.castShadow = true
-    group.add(beak)
+    headGroup.add(beak)
 
     if (animalType === 'chicken') {
       // Red comb: two small rounded bumps on top of head
@@ -215,8 +221,8 @@ export function createAnimalMesh (animalType) {
         const combGeo = _getSharedGeometry(`comb:chicken:${i}`, () => new THREE.SphereGeometry(0.04 - i * 0.01, 6, 5))
         const comb = new THREE.Mesh(combGeo, combMat)
         _trackInteractiveMesh(group, comb)
-        comb.position.set(i * 0.04 - 0.02, bodyH * 0.85 + def.headSize + 0.04, headFwdZ)
-        group.add(comb)
+        comb.position.set(i * 0.04 - 0.02, def.headSize + 0.04, 0)
+        headGroup.add(comb)
       }
     }
   }
@@ -228,17 +234,17 @@ export function createAnimalMesh (animalType) {
     const snout = new THREE.Mesh(snoutGeo, snoutMat)
     _trackInteractiveMesh(group, snout)
     snout.rotation.x = Math.PI / 2
-    snout.position.set(0, bodyH * 0.78, headFwdZ - def.headSize * 0.85)
+    snout.position.set(0, -bodyH * 0.07, -def.headSize * 0.85)
     snout.castShadow = true
-    group.add(snout)
+    headGroup.add(snout)
     // Nostrils: two tiny dark spheres on snout face
     const nostrilGeo = _getSharedGeometry('nostril:pig', () => new THREE.SphereGeometry(0.02, 5, 4))
     const nostrilMat = _getSharedMaterial('nostril:pig', () => new THREE.MeshStandardMaterial({ color: 0xcc4455, roughness: 1 }))
     for (const nx of [-0.03, 0.03]) {
       const n = new THREE.Mesh(nostrilGeo, nostrilMat)
       _trackInteractiveMesh(group, n)
-      n.position.set(nx, bodyH * 0.78, headFwdZ - def.headSize * 0.85 - 0.03)
-      group.add(n)
+      n.position.set(nx, -bodyH * 0.07, -def.headSize * 0.85 - 0.03)
+      headGroup.add(n)
     }
   }
 
@@ -251,13 +257,13 @@ export function createAnimalMesh (animalType) {
     for (const ex of [-0.07, 0.07]) {
       const ear = new THREE.Mesh(earGeo, earMat)
       _trackInteractiveMesh(group, ear)
-      ear.position.set(ex, bodyH * 0.85 + def.headSize + 0.19, headFwdZ)
+      ear.position.set(ex, def.headSize + 0.19, 0)
       ear.castShadow = true
-      group.add(ear)
+      headGroup.add(ear)
       const inner = new THREE.Mesh(innerGeo, innerEarMat)
       _trackInteractiveMesh(group, inner)
-      inner.position.set(ex, bodyH * 0.85 + def.headSize + 0.19, headFwdZ - 0.018)
-      group.add(inner)
+      inner.position.set(ex, def.headSize + 0.19, -0.018)
+      headGroup.add(inner)
     }
   }
 
@@ -289,10 +295,10 @@ export function createAnimalMesh (animalType) {
     for (const hx of [-def.headSize * 0.5, def.headSize * 0.5]) {
       const horn = new THREE.Mesh(hornGeo, hornMat)
       _trackInteractiveMesh(group, horn)
-      horn.position.set(hx, bodyH * 0.85 + def.headSize + 0.05, headFwdZ)
+      horn.position.set(hx, def.headSize + 0.05, 0)
       horn.rotation.z = hx < 0 ? 0.3 : -0.3
       horn.castShadow = true
-      group.add(horn)
+      headGroup.add(horn)
     }
   }
 
@@ -303,8 +309,8 @@ export function createAnimalMesh (animalType) {
     const snout = new THREE.Mesh(snoutGeo, snoutMat)
     _trackInteractiveMesh(group, snout)
     snout.scale.set(1, 0.7, 0.8)
-    snout.position.set(0, bodyH * 0.78, headFwdZ - def.headSize * 0.5)
-    group.add(snout)
+    snout.position.set(0, -bodyH * 0.07, -def.headSize * 0.5)
+    headGroup.add(snout)
   }
 
   if (animalType === 'llama') {
@@ -314,9 +320,9 @@ export function createAnimalMesh (animalType) {
     for (const ex of [-0.1, 0.1]) {
       const ear = new THREE.Mesh(earGeo, earMat)
       _trackInteractiveMesh(group, ear)
-      ear.position.set(ex, bodyH * 0.85 + def.headSize + 0.1, headFwdZ)
+      ear.position.set(ex, def.headSize + 0.1, 0)
       ear.rotation.z = ex < 0 ? 0.2 : -0.2
-      group.add(ear)
+      headGroup.add(ear)
     }
     // Fluffy elongated neck
     const neckMat = _getSharedMaterial(`neck:${animalType}:${def.bodyColor}`, () => new THREE.MeshStandardMaterial({ color: def.bodyColor, roughness: 0.98 }))
@@ -465,6 +471,25 @@ export function updateAnimalState (animal, dtMs) {
   animal.bobPhase += dtMs * (animal.walking ? 0.008 : 0.002)
   const bobY = Math.sin(animal.bobPhase) * (animal.walking ? 0.04 : 0.02)
   animal.mesh.position.y = bobY
+
+  // ── Head nod ──────────────────────────────────────────────────────────────
+  const headPivot = animal.mesh.userData.headGroup
+  if (headPivot) {
+    if (animal.walkAmount === undefined) animal.walkAmount = 0
+    const walkTarget = animal.walking ? 1 : 0
+    const k = Math.min(1, 6 * dt)
+    animal.walkAmount += (walkTarget - animal.walkAmount) * k
+
+    const baseY = animal.mesh.userData.headGroupBaseY ?? headPivot.position.y
+    const baseRotX = animal.mesh.userData.headGroupBaseRotX ?? headPivot.rotation.x
+    const walkRot = Math.sin(animal.walkPhase) * 0.08
+    const walkY = Math.sin(animal.walkPhase + Math.PI / 2) * 0.015
+    const idleRot = Math.sin(animal.bobPhase * 0.5) * 0.025
+    const idleY = Math.sin(animal.bobPhase * 0.5) * 0.005
+    const w = animal.walkAmount
+    headPivot.rotation.x = baseRotX + walkRot * w + idleRot * (1 - w)
+    headPivot.position.y = baseY + walkY * w + idleY * (1 - w)
+  }
 
   return changed
 }
