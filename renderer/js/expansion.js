@@ -28,6 +28,36 @@ const COLORS = {
   expansion_preview: 0x2a5c1e
 }
 
+const previewGeometryCache = new Map()
+const previewMaterialCache = new Map()
+
+function _markSharedAsset (asset) {
+  if (!asset) return asset
+  asset.userData = asset.userData || {}
+  asset.userData.sharedAsset = true
+  return asset
+}
+
+function _getSharedGeometry (cacheKey, factory) {
+  if (!previewGeometryCache.has(cacheKey)) {
+    previewGeometryCache.set(cacheKey, _markSharedAsset(factory()))
+  }
+  return previewGeometryCache.get(cacheKey)
+}
+
+function _getSharedMaterial (cacheKey, factory) {
+  if (!previewMaterialCache.has(cacheKey)) {
+    previewMaterialCache.set(cacheKey, _markSharedAsset(factory()))
+  }
+  return previewMaterialCache.get(cacheKey)
+}
+
+function _disposePreviewMesh (mesh) {
+  if (!mesh) return
+  if (mesh.geometry && !mesh.geometry.userData?.sharedAsset) mesh.geometry.dispose()
+  if (mesh.material && !mesh.material.userData?.sharedAsset) mesh.material.dispose()
+}
+
 let currentTier = 0
 let scene = null
 let previewMeshes = []
@@ -90,62 +120,67 @@ export function showExpansionPreview () {
   const newSize = next.gridSize
   const currentHalf = (currentSize * PLOT_SIZE) / 2
   const newHalf = (newSize * PLOT_SIZE) / 2
+  const rightWidth = newHalf - currentHalf
+  if (rightWidth <= 0) return
 
-  const previewMat = new THREE.MeshStandardMaterial({
+  const stripHeight = 0.05
+  const sideStripDepth = newSize * PLOT_SIZE
+  const topBottomWidth = currentSize * PLOT_SIZE
+  const previewMat = _getSharedMaterial('expansion-preview-strip', () => new THREE.MeshStandardMaterial({
     color: COLORS.expansion_preview,
     transparent: true,
     opacity: 0.3
-  })
+  }))
+
+  const sideStripGeo = _getSharedGeometry(
+    `strip:${rightWidth}:${stripHeight}:${sideStripDepth}`,
+    () => new THREE.BoxGeometry(rightWidth, stripHeight, sideStripDepth)
+  )
+  const topBottomStripGeo = _getSharedGeometry(
+    `strip:${topBottomWidth}:${stripHeight}:${rightWidth}`,
+    () => new THREE.BoxGeometry(topBottomWidth, stripHeight, rightWidth)
+  )
 
   // Right expansion strip
-  const rightWidth = newHalf - currentHalf
-  if (rightWidth > 0) {
-    const rightGeo = new THREE.BoxGeometry(rightWidth, 0.05, newSize * PLOT_SIZE)
-    const right = new THREE.Mesh(rightGeo, previewMat)
-    right.position.set(currentHalf + rightWidth / 2, 0.02, 0)
-    right.receiveShadow = true
-    scene.add(right)
-    previewMeshes.push(right)
-  }
+  const right = new THREE.Mesh(sideStripGeo, previewMat)
+  right.position.set(currentHalf + rightWidth / 2, 0.02, 0)
+  right.receiveShadow = true
+  scene.add(right)
+  previewMeshes.push(right)
 
   // Left expansion strip
-  if (rightWidth > 0) {
-    const leftGeo = new THREE.BoxGeometry(rightWidth, 0.05, newSize * PLOT_SIZE)
-    const left = new THREE.Mesh(leftGeo, previewMat)
-    left.position.set(-(currentHalf + rightWidth / 2), 0.02, 0)
-    left.receiveShadow = true
-    scene.add(left)
-    previewMeshes.push(left)
-  }
+  const left = new THREE.Mesh(sideStripGeo, previewMat)
+  left.position.set(-(currentHalf + rightWidth / 2), 0.02, 0)
+  left.receiveShadow = true
+  scene.add(left)
+  previewMeshes.push(left)
 
   // Top expansion strip
-  const topGeo = new THREE.BoxGeometry(currentSize * PLOT_SIZE, 0.05, rightWidth)
-  const top = new THREE.Mesh(topGeo, previewMat)
+  const top = new THREE.Mesh(topBottomStripGeo, previewMat)
   top.position.set(0, 0.02, -(currentHalf + rightWidth / 2))
   top.receiveShadow = true
   scene.add(top)
   previewMeshes.push(top)
 
   // Bottom expansion strip
-  const bottomGeo = new THREE.BoxGeometry(currentSize * PLOT_SIZE, 0.05, rightWidth)
-  const bottom = new THREE.Mesh(bottomGeo, previewMat)
+  const bottom = new THREE.Mesh(topBottomStripGeo, previewMat)
   bottom.position.set(0, 0.02, currentHalf + rightWidth / 2)
   bottom.receiveShadow = true
   scene.add(bottom)
   previewMeshes.push(bottom)
 
   // Border markers (glowing posts at new corners)
-  const markerMat = new THREE.MeshStandardMaterial({
+  const markerMat = _getSharedMaterial('expansion-preview-marker', () => new THREE.MeshStandardMaterial({
     color: 0x00ff88,
     emissive: 0x00ff88,
     emissiveIntensity: 0.5,
     transparent: true,
     opacity: 0.7
-  })
+  }))
+  const markerGeo = _getSharedGeometry('marker:0.2:2:8', () => new THREE.CylinderGeometry(0.2, 0.2, 2, 8))
 
   for (const xSign of [-1, 1]) {
     for (const zSign of [-1, 1]) {
-      const markerGeo = new THREE.CylinderGeometry(0.2, 0.2, 2, 8)
       const marker = new THREE.Mesh(markerGeo, markerMat)
       marker.position.set(xSign * newHalf, 1, zSign * newHalf)
       scene.add(marker)
@@ -157,8 +192,7 @@ export function showExpansionPreview () {
 export function clearPreview () {
   for (const mesh of previewMeshes) {
     if (scene) scene.remove(mesh)
-    if (mesh.geometry) mesh.geometry.dispose()
-    if (mesh.material) mesh.material.dispose()
+    _disposePreviewMesh(mesh)
   }
   previewMeshes = []
 }
