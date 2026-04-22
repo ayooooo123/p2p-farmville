@@ -290,8 +290,18 @@ function _buildFlowerBox (g, def, rng) {
 }
 
 function _buildFlower (g, def, rng) {
-  const stemMat = new THREE.MeshStandardMaterial({ color: def.stemColor, roughness: 0.9 })
-  const petalMat = new THREE.MeshStandardMaterial({ color: def.color })
+  const stemMat = _getSharedMaterial(`flower:stem:mat:${def.stemColor}`,
+    () => new THREE.MeshStandardMaterial({ color: def.stemColor, roughness: 0.9 }))
+  const petalMat = _getSharedMaterial(`flower:petal:mat:${def.color}`,
+    () => new THREE.MeshStandardMaterial({ color: def.color }))
+  // Unit-height cylinder shared across all flower stalks; per-stalk height
+  // is applied via stem.scale.y so radius stays constant (matching the pre-shared values).
+  const stemGeo = _getSharedGeometry('flower:stem:cyl',
+    () => new THREE.CylinderGeometry(0.02, 0.025, 1, 4))
+  const petalGeo = def.tall
+    ? _getSharedGeometry('flower:petal:tall', () => new THREE.SphereGeometry(0.15, 8, 6))
+    : _getSharedGeometry('flower:petal:short', () => new THREE.SphereGeometry(0.08, 6, 4))
+
   const count = 3 + Math.floor(rng() * 3)
   for (let i = 0; i < count; i++) {
     const h = def.tall ? 1.0 + rng() * 0.4 : 0.4 + rng() * 0.3
@@ -301,13 +311,12 @@ function _buildFlower (g, def, rng) {
     const stalk = new THREE.Group()
     stalk.position.set(ox, 0, oz)
 
-    const stemGeo = new THREE.CylinderGeometry(0.02, 0.025, h, 4)
     const stem = new THREE.Mesh(stemGeo, stemMat)
+    stem.scale.y = h
     stem.position.y = h / 2
     stem.castShadow = true
     stalk.add(stem)
 
-    const petalGeo = def.tall ? new THREE.SphereGeometry(0.15, 8, 6) : new THREE.SphereGeometry(0.08, 6, 4)
     const petal = new THREE.Mesh(petalGeo, petalMat)
     petal.position.y = h + 0.05
     petal.castShadow = true

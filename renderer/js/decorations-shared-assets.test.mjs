@@ -94,3 +94,97 @@ test('createDecoMesh reuses flower_box submesh assets while keeping stalk groups
     assert.strictEqual(firstFlower.material, secondFlower.material)
   }
 })
+
+function getFlowerStalks (group) {
+  return group.children.filter(child => child.isGroup)
+}
+
+test('createDecoMesh reuses shared assets across repeated flower decorations of the same type', () => {
+  const firstTulips = createDecoMesh('tulips', 101)
+  const secondTulips = createDecoMesh('tulips', 202)
+
+  const firstStalks = getFlowerStalks(firstTulips)
+  const secondStalks = getFlowerStalks(secondTulips)
+  assert.ok(firstStalks.length >= 3, 'expected at least 3 tulip stalks')
+  assert.ok(secondStalks.length >= 3, 'expected at least 3 tulip stalks')
+
+  const firstStem = firstStalks[0].children[0]
+  const firstPetal = firstStalks[0].children[1]
+  const secondStem = secondStalks[0].children[0]
+  const secondPetal = secondStalks[0].children[1]
+
+  assert.strictEqual(firstStem.geometry, secondStem.geometry)
+  assert.strictEqual(firstStem.material, secondStem.material)
+  assert.strictEqual(firstPetal.geometry, secondPetal.geometry)
+  assert.strictEqual(firstPetal.material, secondPetal.material)
+  assert.equal(firstStem.geometry.userData?.sharedAsset, true)
+  assert.equal(firstStem.material.userData?.sharedAsset, true)
+  assert.equal(firstPetal.geometry.userData?.sharedAsset, true)
+  assert.equal(firstPetal.material.userData?.sharedAsset, true)
+
+  // Every stalk in both tulip decorations should reference the same shared assets.
+  for (const stalk of [...firstStalks, ...secondStalks]) {
+    assert.strictEqual(stalk.children[0].geometry, firstStem.geometry)
+    assert.strictEqual(stalk.children[0].material, firstStem.material)
+    assert.strictEqual(stalk.children[1].geometry, firstPetal.geometry)
+    assert.strictEqual(stalk.children[1].material, firstPetal.material)
+  }
+})
+
+test('flower decorations share stem geometry across types but keep per-color materials distinct', () => {
+  const tulips = createDecoMesh('tulips', 303)
+  const roses = createDecoMesh('roses', 404)
+
+  const tulipStalk = getFlowerStalks(tulips)[0]
+  const roseStalk = getFlowerStalks(roses)[0]
+
+  const tulipStem = tulipStalk.children[0]
+  const roseStem = roseStalk.children[0]
+  const tulipPetal = tulipStalk.children[1]
+  const rosePetal = roseStalk.children[1]
+
+  // Stem geometry is shared (same shape), but colors diverge so materials differ.
+  assert.strictEqual(tulipStem.geometry, roseStem.geometry)
+  assert.notStrictEqual(tulipStem.material, roseStem.material)
+  assert.notStrictEqual(tulipPetal.material, rosePetal.material)
+  // Both tulips and roses are short flowers, so petal geometry is shared.
+  assert.strictEqual(tulipPetal.geometry, rosePetal.geometry)
+})
+
+test('tall vs short flowers use different shared petal geometries', () => {
+  const sunflowers = createDecoMesh('sunflowers', 505)
+  const tulips = createDecoMesh('tulips', 606)
+
+  const sunflowerPetal = getFlowerStalks(sunflowers)[0].children[1]
+  const tulipPetal = getFlowerStalks(tulips)[0].children[1]
+
+  // Tall (sunflowers) and short (tulips) use distinct shared petal geometries.
+  assert.notStrictEqual(sunflowerPetal.geometry, tulipPetal.geometry)
+  assert.equal(sunflowerPetal.geometry.userData?.sharedAsset, true)
+  assert.equal(tulipPetal.geometry.userData?.sharedAsset, true)
+})
+
+test('flower stalk heights still vary across seeds despite shared unit-height stem geometry', () => {
+  // Two different seeds must still produce meaningfully different per-stalk
+  // heights; catches regressions where the shared geometry accidentally
+  // collapses all stalks to the same fixed height.
+  const first = createDecoMesh('tulips', 12345)
+  const second = createDecoMesh('tulips', 67890)
+
+  const firstHeights = getFlowerStalks(first).map(stalk => stalk.children[0].scale.y)
+  const secondHeights = getFlowerStalks(second).map(stalk => stalk.children[0].scale.y)
+
+  // Within a single decoration, stalks should not all collapse to one height.
+  const firstUnique = new Set(firstHeights.map(h => h.toFixed(4)))
+  assert.ok(firstUnique.size > 1, 'expected varied stalk heights within one flower decoration')
+
+  // Two different seeds should not produce the exact same height sequence.
+  const firstKey = firstHeights.map(h => h.toFixed(4)).join('|')
+  const secondKey = secondHeights.map(h => h.toFixed(4)).join('|')
+  assert.notStrictEqual(firstKey, secondKey)
+
+  // Petal y-positions track stem height, so variance must flow through there too.
+  const firstPetalYs = getFlowerStalks(first).map(stalk => stalk.children[1].position.y)
+  const firstPetalUnique = new Set(firstPetalYs.map(y => y.toFixed(4)))
+  assert.ok(firstPetalUnique.size > 1, 'expected varied petal heights within one flower decoration')
+})
