@@ -291,13 +291,19 @@ export function createAnimalMesh (animalType) {
     mane.position.set(0, bodyH * 0.95, headFwdZ * 0.45)
     mane.castShadow = true
     group.add(mane)
-    // Tail: small tuft at rear
+    // Tail: small tuft at rear, wrapped in a pivot Group so it swishes
+    // sideways around the rump attachment point (rotation.y on the pivot).
     const tailGeo = _getSharedGeometry(`tail:${animalType}:${def.headSize}`, () => new THREE.SphereGeometry(def.headSize * 0.35, 6, 5))
     const tail = new THREE.Mesh(tailGeo, maneMat)
     _trackInteractiveMesh(group, tail)
     tail.scale.set(0.5, 0.9, 1.4)
-    tail.position.set(0, bodyH * 0.7, def.bodyD / 2 + 0.12)
-    group.add(tail)
+    tail.position.set(0, 0, 0.12)          // local offset from pivot (attached at rump)
+    tail.castShadow = true
+    const tailPivot = new THREE.Group()
+    tailPivot.position.set(0, bodyH * 0.7, def.bodyD / 2)
+    tailPivot.add(tail)
+    group.add(tailPivot)
+    group.userData.tailPivot = tailPivot
   }
 
   if (animalType === 'cow' || animalType === 'goat') {
@@ -485,23 +491,37 @@ export function updateAnimalState (animal, dtMs) {
   const bobY = Math.sin(animal.bobPhase) * (animal.walking ? 0.04 : 0.02)
   animal.mesh.position.y = bobY
 
+  // ── Walk/idle blend (shared by head nod + tail swish) ─────────────────────
+  if (animal.walkAmount === undefined) animal.walkAmount = 0
+  const walkTarget = animal.walking ? 1 : 0
+  const blendK = Math.min(1, 6 * dt)
+  animal.walkAmount += (walkTarget - animal.walkAmount) * blendK
+  const w = animal.walkAmount
+
   // ── Head nod ──────────────────────────────────────────────────────────────
   const headPivot = animal.mesh.userData.headGroup
   if (headPivot) {
-    if (animal.walkAmount === undefined) animal.walkAmount = 0
-    const walkTarget = animal.walking ? 1 : 0
-    const k = Math.min(1, 6 * dt)
-    animal.walkAmount += (walkTarget - animal.walkAmount) * k
-
     const baseY = animal.mesh.userData.headGroupBaseY ?? headPivot.position.y
     const baseRotX = animal.mesh.userData.headGroupBaseRotX ?? headPivot.rotation.x
     const walkRot = Math.sin(animal.walkPhase) * 0.08
     const walkY = Math.sin(animal.walkPhase + Math.PI / 2) * 0.015
     const idleRot = Math.sin(animal.bobPhase * 0.5) * 0.025
     const idleY = Math.sin(animal.bobPhase * 0.5) * 0.005
-    const w = animal.walkAmount
     headPivot.rotation.x = baseRotX + walkRot * w + idleRot * (1 - w)
     headPivot.position.y = baseY + walkY * w + idleY * (1 - w)
+  }
+
+  // ── Tail swish (horse / donkey) ───────────────────────────────────────────
+  // Pivot rotates around Y so the tail sweeps side to side behind the rump.
+  // Amplitude eases between idle (~5.7°) and walking (~14°) using walkAmount.
+  const tailPivot = animal.mesh.userData.tailPivot
+  if (tailPivot) {
+    if (animal.tailPhase === undefined) animal.tailPhase = Math.random() * Math.PI * 2
+    // Frequency: 6 rad/s walking, 1.5 rad/s idle — blended by walkAmount
+    const tailFreq = 1.5 + w * 4.5
+    animal.tailPhase += tailFreq * dt
+    const tailAmp = 0.10 + w * 0.15     // 0.10 idle → 0.25 walking
+    tailPivot.rotation.y = Math.sin(animal.tailPhase) * tailAmp
   }
 
   return changed

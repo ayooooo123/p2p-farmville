@@ -125,3 +125,90 @@ test('updateAnimalState animates the stored head pivot for walking animals', () 
   assert.notEqual(headGroup.rotation.x, baseRotX, 'walking update should rotate the head pivot')
   assert.notEqual(headGroup.position.y, baseY, 'walking update should bob the head pivot')
 })
+
+test('createAnimalMesh wraps horse and donkey tails in a pivot group', () => {
+  for (const type of ['horse', 'donkey']) {
+    const animal = createAnimalMesh(type)
+    const tailPivot = animal.userData.tailPivot
+    assert.ok(tailPivot?.isGroup, `${type} should expose a tailPivot group`)
+    assert.equal(tailPivot.children.length, 1, `${type} tailPivot should hold exactly the tail mesh`)
+    const tail = tailPivot.children[0]
+    assert.ok(tail?.isMesh, `${type} tail should be a Mesh inside the pivot`)
+    assert.equal(tail.castShadow, true, `${type} tail should cast shadows`)
+    assert.ok(animal.userData.interactiveMeshes.includes(tail),
+      `${type} tail should remain tracked as an interactive mesh even inside the pivot`)
+  }
+})
+
+test('repeated horses share tail geometry and material across instances', () => {
+  const horseA = createAnimalMesh('horse')
+  const horseB = createAnimalMesh('horse')
+  const tailA = horseA.userData.tailPivot.children[0]
+  const tailB = horseB.userData.tailPivot.children[0]
+  assert.notStrictEqual(tailA, tailB, 'each horse should get its own tail mesh')
+  assert.strictEqual(tailA.geometry, tailB.geometry, 'tail geometry should be shared across horses')
+  assert.strictEqual(tailA.material, tailB.material, 'tail material should be shared across horses')
+})
+
+test('updateAnimalState swishes the tail pivot for tailed animals', () => {
+  const horse = createAnimalMesh('horse')
+  const animal = {
+    type: 'horse',
+    mesh: horse,
+    x: 0,
+    z: 0,
+    homeX: 0,
+    homeZ: 0,
+    wanderTimer: 1000,
+    walking: true,
+    walkSpeed: 1,
+    wanderAngle: 0,
+    walkPhase: 0,
+    bobPhase: 0,
+    tailPhase: 0,
+    fed: false,
+    productReady: false,
+    lastFed: 0
+  }
+
+  const tailPivot = horse.userData.tailPivot
+  assert.ok(tailPivot?.isGroup, 'expected tailPivot to exist before animation update')
+  const baseRotY = tailPivot.rotation.y
+
+  updateAnimalState(animal, 100)
+
+  assert.notEqual(tailPivot.rotation.y, baseRotY, 'walking update should swish the tail pivot')
+  assert.ok(animal.tailPhase > 0, 'tailPhase should advance during update')
+})
+
+test('updateAnimalState still swishes the tail while idle (w≈0)', () => {
+  const donkey = createAnimalMesh('donkey')
+  const animal = {
+    type: 'donkey',
+    mesh: donkey,
+    x: 0,
+    z: 0,
+    homeX: 0,
+    homeZ: 0,
+    wanderTimer: 10000,
+    walking: false,
+    walkSpeed: 1,
+    wanderAngle: 0,
+    walkPhase: 0,
+    bobPhase: 0,
+    tailPhase: 0,
+    walkAmount: 0,  // already fully idle
+    fed: false,
+    productReady: false,
+    lastFed: 0
+  }
+
+  const tailPivot = donkey.userData.tailPivot
+  const baseRotY = tailPivot.rotation.y
+  const baseTailPhase = animal.tailPhase
+
+  updateAnimalState(animal, 100)
+
+  assert.ok(animal.tailPhase > baseTailPhase, 'idle tail should still accumulate phase')
+  assert.notEqual(tailPivot.rotation.y, baseRotY, 'idle tail should still swish (lower amplitude)')
+})
