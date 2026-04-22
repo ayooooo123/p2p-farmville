@@ -236,6 +236,10 @@ let raycaster = null
 let scene = null
 let gridLinesMesh = null
 let terrainSceneObjects = []
+let sharedPlotGeometry = null
+let sharedFurrowGeometry = null
+const sharedPlotMaterials = new Map()
+const sharedFurrowMaterials = new Map()
 
 // ── Hover highlight mesh ─────────────────────────────────────────────────────
 let hoverHighlightMesh = null
@@ -253,8 +257,96 @@ function _trackTerrainObject (object3d) {
   return object3d
 }
 
+function _markSharedAsset (asset) {
+  if (asset) asset.userData.sharedAsset = true
+  return asset
+}
+
+function _getSharedPlotGeometry () {
+  if (!sharedPlotGeometry) {
+    sharedPlotGeometry = _markSharedAsset(new THREE.PlaneGeometry(PLOT_SIZE - 0.08, PLOT_SIZE - 0.08))
+  }
+  return sharedPlotGeometry
+}
+
+function _getSharedFurrowGeometry () {
+  if (!sharedFurrowGeometry) {
+    sharedFurrowGeometry = _markSharedAsset(new THREE.PlaneGeometry(PLOT_SIZE - 0.3, 0.06))
+  }
+  return sharedFurrowGeometry
+}
+
+function _getSharedPlotMaterialKey (state, parityEven, watered = false) {
+  if (state === PLOT_STATES.GRASS) {
+    return parityEven ? 'grass-even' : 'grass-odd'
+  }
+  return watered ? 'soil-wet' : 'soil-dry'
+}
+
+function _getSharedPlotMaterial (state, parityEven, watered = false) {
+  const key = _getSharedPlotMaterialKey(state, parityEven, watered)
+  const map = key === 'grass-even'
+    ? grassTexEven
+    : key === 'grass-odd'
+      ? grassTexOdd
+      : watered
+        ? soilTexWet
+        : soilTexDry
+
+  let material = sharedPlotMaterials.get(key)
+  if (!material) {
+    material = _markSharedAsset(new THREE.MeshStandardMaterial({
+      map,
+      roughness: 0.9,
+      metalness: 0.0
+    }))
+    sharedPlotMaterials.set(key, material)
+  }
+
+  if (material.map !== map) {
+    material.map = map
+    material.needsUpdate = true
+  }
+  material.color.setHex(0xffffff)
+  return material
+}
+
+function _syncSharedPlotMaterials () {
+  _getSharedPlotMaterial(PLOT_STATES.GRASS, true)
+  _getSharedPlotMaterial(PLOT_STATES.GRASS, false)
+  _getSharedPlotMaterial(PLOT_STATES.PLOWED, true, false)
+  _getSharedPlotMaterial(PLOT_STATES.PLOWED, true, true)
+}
+
+function _getSharedFurrowMaterial (watered = false) {
+  const key = watered ? 'wet' : 'dry'
+  let material = sharedFurrowMaterials.get(key)
+  if (!material) {
+    material = _markSharedAsset(new THREE.MeshStandardMaterial({
+      color: watered ? COLORS.plowedWateredDark : COLORS.plowedDark
+    }))
+    sharedFurrowMaterials.set(key, material)
+  }
+  material.color.setHex(watered ? COLORS.plowedWateredDark : COLORS.plowedDark)
+  return material
+}
+
+function _applyPlotMaterial (plot, state, watered = false) {
+  if (!plot?.mesh) return
+  plot.mesh.material = _getSharedPlotMaterial(state, plot.parityEven, watered)
+}
+
+function _setFurrowMaterial (plot, watered = false) {
+  if (!plot?._furrows) return
+  const material = _getSharedFurrowMaterial(watered)
+  plot._furrows.children.forEach(furrow => {
+    furrow.material = material
+  })
+}
+
 function _disposeObjectMaterial (material, disposedMaterials) {
   if (!material || disposedMaterials.has(material)) return
+  if (material.userData?.sharedAsset) return
   disposedMaterials.add(material)
   const ownedTextures = material.userData?.ownedTextures
   if (Array.isArray(ownedTextures)) {
@@ -366,6 +458,9 @@ function createPlotGrid (sceneRef) {
   _rebuildGrassTextures(COLORS.grass, COLORS.grassAlt)
   soilTexDry = _makeSoilTexture(0x6b4226, 0x4a2a14)
   soilTexWet = _makeSoilTexture(0x3d2510, 0x251508)
+  _syncSharedPlotMaterials()
+  _getSharedFurrowMaterial(false)
+  _getSharedFurrowMaterial(true)
 
   // Base terrain (larger than grid) — canvas grass texture for rich background
   const terrainGeo = new THREE.PlaneGeometry(90, 90)
@@ -394,21 +489,18 @@ function createPlotGrid (sceneRef) {
     for (let col = 0; col < GRID_COLS; col++) {
       const x = GRID_OFFSET_X + col * PLOT_SIZE
       const z = GRID_OFFSET_Z + row * PLOT_SIZE
+      const parityEven = (row + col) % 2 === 0
 
       // Flat plane with slight gap for grid lines (0.08 gap = ~1px grid line at normal zoom)
-      const plotGeo = new THREE.PlaneGeometry(PLOT_SIZE - 0.08, PLOT_SIZE - 0.08)
-      const grassTex = (row + col) % 2 === 0 ? grassTexEven : grassTexOdd
-      const plotMat = new THREE.MeshStandardMaterial({
-        map: grassTex,
-        roughness: 0.9,
-        metalness: 0.0
-      })
+      const plotGeo = _getSharedPlotGeometry()
+      const plotMat = _getSharedPlotMaterial(PLOT_STATES.GRASS, parityEven)
       const plotMesh = new THREE.Mesh(plotGeo, plotMat)
       plotMesh.rotation.x = -Math.PI / 2
       plotMesh.position.set(x, 0.01, z)
       plotMesh.userData.row = row
       plotMesh.userData.col = col
       plotMesh.userData.isPlot = true
+      plotMesh.userData.parityEven = parityEven
       plotMesh.receiveShadow = true
       scene.add(_trackTerrainObject(plotMesh))
       plotMeshes.push(plotMesh)
@@ -421,7 +513,8 @@ function createPlotGrid (sceneRef) {
         crop: null,     // { type, plantedAt, watered, stage, withered, mesh, growthAccum }
         cropMesh: null,
         x,
-        z
+        z,
+        parityEven
       }
       plotGrid[row][col] = plot
       allPlots.push(plot)
@@ -611,21 +704,16 @@ function setPlotState (row, col, state) {
   if (!plot) return
 
   plot.state = state
-  const mat = plot.mesh.material
 
   switch (state) {
     case PLOT_STATES.GRASS:
-      mat.map = (row + col) % 2 === 0 ? grassTexEven : grassTexOdd
-      mat.color.setHex(0xffffff)
-      mat.needsUpdate = true
+      _applyPlotMaterial(plot, state)
       _removeFurrows(plot)
       break
 
     case PLOT_STATES.PLOWED:
     case PLOT_STATES.PLANTED:
-      mat.map = soilTexDry
-      mat.color.setHex(0xffffff)
-      mat.needsUpdate = true
+      _applyPlotMaterial(plot, state, false)
       _addFurrows(plot)
       break
   }
@@ -634,12 +722,12 @@ function setPlotState (row, col, state) {
 function _addFurrows (plot) {
   if (plot._furrows) return
   const furrows = new THREE.Group()
-  const furrowMat = new THREE.MeshStandardMaterial({ color: COLORS.plowedDark })
+  const furrowGeo = _getSharedFurrowGeometry()
+  const furrowMat = _getSharedFurrowMaterial(false)
 
   // Horizontal furrow lines (flat planes from top-down)
   for (let i = 0; i < 4; i++) {
-    const fGeo = new THREE.PlaneGeometry(PLOT_SIZE - 0.3, 0.06)
-    const f = new THREE.Mesh(fGeo, furrowMat)
+    const f = new THREE.Mesh(furrowGeo, furrowMat)
     f.rotation.x = -Math.PI / 2
     f.position.set(plot.x, 0.02, plot.z - 0.6 + i * 0.4)
     scene.add(f)
@@ -650,13 +738,9 @@ function _addFurrows (plot) {
 
 function _removeFurrows (plot) {
   if (!plot._furrows) return
-  const materials = new Set()
   plot._furrows.children.forEach(f => {
     scene.remove(f)
-    if (f.material) materials.add(f.material)
-    f.geometry?.dispose?.()
   })
-  materials.forEach(material => material.dispose())
   plot._furrows = null
 }
 
@@ -671,28 +755,12 @@ function setPlotWatered (row, col, watered) {
   const plot = getPlotAt(row, col)
   if (!plot) return
 
-  const mat = plot.mesh.material
   if (watered) {
-    // Darker wet soil canvas texture
-    mat.map = soilTexWet
-    mat.color.setHex(0xffffff)
-    mat.needsUpdate = true
-    // Darken furrow overlay lines too
-    if (plot._furrows) {
-      plot._furrows.children.forEach(f => {
-        f.material.color.setHex(COLORS.plowedWateredDark)
-      })
-    }
+    _applyPlotMaterial(plot, plot.state, true)
+    _setFurrowMaterial(plot, true)
   } else {
-    // Dry soil canvas texture
-    mat.map = soilTexDry
-    mat.color.setHex(0xffffff)
-    mat.needsUpdate = true
-    if (plot._furrows) {
-      plot._furrows.children.forEach(f => {
-        f.material.color.setHex(COLORS.plowedDark)
-      })
-    }
+    _applyPlotMaterial(plot, plot.state, false)
+    _setFurrowMaterial(plot, false)
   }
 }
 
@@ -728,6 +796,7 @@ function setSeasonColors (season) {
 
   // Rebuild shared grass canvas textures for new season palette
   _rebuildGrassTextures(primary, alt)
+  _syncSharedPlotMaterials()
 
   // Update the large background terrain plane
   if (baseTerrainMesh) {
@@ -748,9 +817,7 @@ function setSeasonColors (season) {
     for (let col = 0; col < GRID_COLS; col++) {
       const plot = plotGrid[row][col]
       if (plot && plot.state === PLOT_STATES.GRASS) {
-        plot.mesh.material.map = (row + col) % 2 === 0 ? grassTexEven : grassTexOdd
-        plot.mesh.material.color.setHex(0xffffff)
-        plot.mesh.material.needsUpdate = true
+        _applyPlotMaterial(plot, PLOT_STATES.GRASS)
       }
     }
   }
