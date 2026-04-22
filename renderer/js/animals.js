@@ -267,6 +267,8 @@ export function createAnimalMesh (animalType) {
       wingPivots.push(pivot)
     }
     group.userData.wingPivots = wingPivots
+    group.userData.peckable = true
+    group.userData.peckHeadSize = def.headSize
   }
 
   if (animalType === 'pig') {
@@ -518,6 +520,15 @@ const WALK_CYCLE_SPEED = 7.0  // rad/s at full walk
 const WANDER_RADIUS = 0.8     // max distance from home tile center
 const WING_BASE_SPREAD = 0.12 // radians — resting wing angle away from body
 
+// Peck (chicken / duck) — quick down, brief hold, slower return.
+const PECK_INTERVAL_MIN_MS = 1800
+const PECK_INTERVAL_MAX_MS = 5200
+const PECK_DURATION_MS = 480
+const PECK_DOWN_END = 0.28        // fraction of cycle: end of downswing
+const PECK_HOLD_END = 0.45        // fraction of cycle: end of hold
+const PECK_DIP_RAD = 0.85         // peak head dip (rad)
+const PECK_DROP_FACTOR = 0.30     // peak head drop as fraction of headSize
+
 /**
  * Update animal state — wander movement + leg swing + body bob.
  * @param {object} animal
@@ -638,6 +649,64 @@ export function updateAnimalState (animal, dtMs) {
     const idleY = Math.sin(animal.bobPhase * 0.5) * 0.005
     headPivot.rotation.x = baseRotX + walkRot * w + idleRot * (1 - w)
     headPivot.position.y = baseY + walkY * w + idleY * (1 - w)
+  }
+
+  // ── Peck (chicken / duck) ─────────────────────────────────────────────────
+  // Idle-only behaviour: dip the head sharply (≈ 49°) toward the ground,
+  // hold briefly, then ease back. Three-phase curve (down / hold / up).
+  // Walking aborts the peck and reseeds the timer so the animal doesn't
+  // peck instantly the moment it stops.
+  if (headPivot && animal.mesh.userData.peckable) {
+    if (!animal.peckState) {
+      animal.peckState = {
+        timer: PECK_INTERVAL_MIN_MS + Math.random() * (PECK_INTERVAL_MAX_MS - PECK_INTERVAL_MIN_MS),
+        phase: 0,
+        pecking: false
+      }
+    }
+    const ps = animal.peckState
+    const idleEnough = w < 0.1
+    if (!idleEnough) {
+      // Walking (or fading out of a walk) suppresses pecks AND keeps the
+      // timer at a fresh random interval, so a pent-up timer can't fire the
+      // instant the animal stops.
+      ps.pecking = false
+      ps.phase = 0
+      ps.timer = PECK_INTERVAL_MIN_MS + Math.random() * (PECK_INTERVAL_MAX_MS - PECK_INTERVAL_MIN_MS)
+    } else if (ps.pecking) {
+      ps.phase += dtMs / PECK_DURATION_MS
+      if (ps.phase >= 1) {
+        ps.pecking = false
+        ps.phase = 0
+        ps.timer = PECK_INTERVAL_MIN_MS + Math.random() * (PECK_INTERVAL_MAX_MS - PECK_INTERVAL_MIN_MS)
+      }
+    } else {
+      ps.timer -= dtMs
+      if (ps.timer <= 0) {
+        ps.pecking = true
+        ps.phase = 0
+      }
+    }
+
+    if (ps.pecking) {
+      // Three phases mapped over [0, 1]:
+      //   [0, DOWN_END)            — down (smoothstep ramp)
+      //   [DOWN_END, HOLD_END)     — hold at peak
+      //   [HOLD_END, 1]            — up (smoothstep return)
+      let dip
+      if (ps.phase < PECK_DOWN_END) {
+        const t = ps.phase / PECK_DOWN_END
+        dip = t * t * (3 - 2 * t)
+      } else if (ps.phase < PECK_HOLD_END) {
+        dip = 1
+      } else {
+        const t = (ps.phase - PECK_HOLD_END) / (1 - PECK_HOLD_END)
+        dip = 1 - t * t * (3 - 2 * t)
+      }
+      const headSize = animal.mesh.userData.peckHeadSize || 0.2
+      headPivot.rotation.x += dip * PECK_DIP_RAD
+      headPivot.position.y -= dip * headSize * PECK_DROP_FACTOR
+    }
   }
 
   // ── Tail swish (horse / donkey) ───────────────────────────────────────────
