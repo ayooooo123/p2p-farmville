@@ -288,6 +288,32 @@ export function createAnimalMesh (animalType) {
       n.position.set(nx, -bodyH * 0.07, -def.headSize * 0.85 - 0.03)
       headGroup.add(n)
     }
+    // Curly tail: partial torus laid flat in the XZ plane so the 3/4 curl is
+    // visible from the top-down orthographic camera. A tiny stem cylinder
+    // connects the rump to the curl so it doesn't read as floating. Pivot
+    // rotates around Y to wiggle side-to-side.
+    const tailMat = _getSharedMaterial('tail:pig', () => new THREE.MeshStandardMaterial({ color: 0xffaaaa, roughness: 0.9 }))
+    const tailCurlGeo = _getSharedGeometry('tail:pig:curl', () => new THREE.TorusGeometry(0.05, 0.015, 6, 10, Math.PI * 1.5))
+    const tailStemGeo = _getSharedGeometry('tail:pig:stem', () => new THREE.CylinderGeometry(0.015, 0.018, 0.06, 5))
+
+    const tailPivot = new THREE.Group()
+    tailPivot.position.set(0, bodyH * 0.75, def.bodyD / 2 + 0.02)
+
+    const tailStem = new THREE.Mesh(tailStemGeo, tailMat)
+    tailStem.rotation.x = Math.PI / 2                // lay cylinder along Z (rearward)
+    tailStem.position.set(0, 0, 0.03)                // bridge from rump to curl
+    tailStem.castShadow = true
+    tailPivot.add(tailStem)
+
+    const tailCurl = new THREE.Mesh(tailCurlGeo, tailMat)
+    tailCurl.rotation.x = Math.PI / 2                // ring flat in XZ plane → readable from above
+    tailCurl.rotation.z = 0.25                       // slight cant so curl opens up visually
+    tailCurl.position.set(0, 0.02, 0.08)             // sit just behind stem end
+    tailCurl.castShadow = true
+    tailPivot.add(tailCurl)
+
+    group.add(tailPivot)
+    group.userData.pigTailPivot = tailPivot
   }
 
   if (animalType === 'rabbit') {
@@ -569,6 +595,20 @@ export function updateAnimalState (animal, dtMs) {
     animal.tailPhase += tailFreq * dt
     const tailAmp = 0.10 + w * 0.15     // 0.10 idle → 0.25 walking
     tailPivot.rotation.y = Math.sin(animal.tailPhase) * tailAmp
+  }
+
+  // ── Pig tail wiggle ───────────────────────────────────────────────────────
+  // Curly tail rotates around Y (yaw) so the opening of the 3/4-torus sweeps
+  // side-to-side behind the rump — reads from top-down. Frequency and
+  // amplitude both scale with walkAmount so idle is a slow shimmy and walking
+  // is a faster, wider wag.
+  const pigTailPivot = animal.mesh.userData.pigTailPivot
+  if (pigTailPivot) {
+    if (animal.pigTailPhase === undefined) animal.pigTailPhase = Math.random() * Math.PI * 2
+    const freq = 3 + w * 5         // 3 rad/s idle → 8 rad/s walking
+    animal.pigTailPhase += freq * dt
+    const amp = 0.25 + w * 0.15    // 0.25 idle → 0.40 walking (smaller wag avoids body clip)
+    pigTailPivot.rotation.y = Math.sin(animal.pigTailPhase) * amp
   }
 
   // ── Wing flap (chicken / duck) ────────────────────────────────────────────
