@@ -393,6 +393,36 @@ export function createAnimalMesh (animalType) {
     }
   }
 
+  if (animalType === 'cow') {
+    // Thin whip-tail: shaft extending backward from the rump with a dark tuft
+    // at the tip. Shaft uses the body material (no extra cache entry). Pivot
+    // yaw is driven by the existing tailPivot swish animation in updateAnimalState
+    // so rotation.y sweeps the tuft side-to-side from top-down.
+    const shaftLen = 0.3
+    const shaftGeo = _getSharedGeometry('tail:cow:shaft', () => new THREE.CylinderGeometry(0.012, 0.018, shaftLen, 5))
+    const tuftGeo = _getSharedGeometry('tail:cow:tuft', () => new THREE.SphereGeometry(0.045, 6, 5))
+    const tuftMat = _getSharedMaterial('tail:cow:tuft', () => new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.95 }))
+
+    const tailPivot = new THREE.Group()
+    tailPivot.position.set(0, bodyH * 0.68, def.bodyD / 2 + 0.01)
+
+    const shaft = new THREE.Mesh(shaftGeo, bodyMat)
+    _trackInteractiveMesh(group, shaft)
+    shaft.rotation.x = Math.PI / 2            // lay cylinder along local +Z (rearward)
+    shaft.position.set(0, -0.04, shaftLen / 2) // slight droop, extend backward
+    shaft.castShadow = true
+    tailPivot.add(shaft)
+
+    const tuft = new THREE.Mesh(tuftGeo, tuftMat)
+    _trackInteractiveMesh(group, tuft)
+    tuft.position.set(0, -0.04, shaftLen + 0.02)
+    tuft.castShadow = true
+    tailPivot.add(tuft)
+
+    group.add(tailPivot)
+    group.userData.tailPivot = tailPivot
+  }
+
   if (animalType === 'sheep') {
     // Small dark snout protrusion visible through wool
     const snoutMat = _getSharedMaterial('snout:sheep', () => new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }))

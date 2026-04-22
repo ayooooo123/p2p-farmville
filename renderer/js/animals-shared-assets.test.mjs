@@ -16,8 +16,8 @@ test('createAnimalMesh reuses shared geometry and materials across repeated cows
   const cowB = createAnimalMesh('cow')
 
   assert.notStrictEqual(cowA, cowB)
-  assert.equal(cowA.userData.interactiveMeshes.length, 11)
-  assert.equal(cowB.userData.interactiveMeshes.length, 11)
+  assert.equal(cowA.userData.interactiveMeshes.length, 13)
+  assert.equal(cowB.userData.interactiveMeshes.length, 13)
 
   const cowABody = getInteractiveMesh(cowA, 0)
   const cowBBody = getInteractiveMesh(cowB, 0)
@@ -138,6 +138,31 @@ test('createAnimalMesh wraps horse and donkey tails in a pivot group', () => {
     assert.ok(animal.userData.interactiveMeshes.includes(tail),
       `${type} tail should remain tracked as an interactive mesh even inside the pivot`)
   }
+})
+
+test('createAnimalMesh wraps the cow tail in a pivot group with shaft + tuft', () => {
+  const cow = createAnimalMesh('cow')
+  const tailPivot = cow.userData.tailPivot
+  assert.ok(tailPivot?.isGroup, 'cow should expose a tailPivot group')
+  assert.equal(tailPivot.children.length, 2, 'cow tailPivot should hold shaft and tuft meshes')
+  for (const part of tailPivot.children) {
+    assert.ok(part?.isMesh, 'cow tail parts should be meshes')
+    assert.equal(part.castShadow, true, 'cow tail parts should cast shadows')
+    assert.ok(cow.userData.interactiveMeshes.includes(part),
+      'cow tail parts should be tracked as interactive meshes')
+  }
+})
+
+test('repeated cows share tail shaft and tuft assets across instances', () => {
+  const cowA = createAnimalMesh('cow')
+  const cowB = createAnimalMesh('cow')
+  const [shaftA, tuftA] = cowA.userData.tailPivot.children
+  const [shaftB, tuftB] = cowB.userData.tailPivot.children
+  assert.notStrictEqual(shaftA, shaftB, 'each cow should get its own shaft mesh')
+  assert.strictEqual(shaftA.geometry, shaftB.geometry, 'cow tail shaft geometry should be shared')
+  assert.strictEqual(shaftA.material, shaftB.material, 'cow tail shaft reuses body material')
+  assert.strictEqual(tuftA.geometry, tuftB.geometry, 'cow tail tuft geometry should be shared')
+  assert.strictEqual(tuftA.material, tuftB.material, 'cow tail tuft material should be shared')
 })
 
 test('repeated horses share tail geometry and material across instances', () => {
