@@ -52,3 +52,45 @@ test('same-shape fence decorations share geometry while keeping color-specific m
   assert.notStrictEqual(whitePost.material, woodenPost.material)
   assert.notStrictEqual(whiteRail.material, woodenRail.material)
 })
+
+test('createDecoMesh reuses flower_box submesh assets while keeping stalk groups instance-local', () => {
+  const firstFlowerBox = createDecoMesh('flower_box')
+  const secondFlowerBox = createDecoMesh('flower_box')
+
+  assert.equal(firstFlowerBox.children.length, 6)
+  assert.equal(secondFlowerBox.children.length, 6)
+
+  const firstBox = getMesh(firstFlowerBox, 0, 'first flower box planter')
+  const secondBox = getMesh(secondFlowerBox, 0, 'second flower box planter')
+  assert.notStrictEqual(firstBox, secondBox)
+  assert.strictEqual(firstBox.geometry, secondBox.geometry)
+  assert.strictEqual(firstBox.material, secondBox.material)
+
+  for (let i = 1; i <= 5; i++) {
+    const firstStalk = firstFlowerBox.children[i]
+    const secondStalk = secondFlowerBox.children[i]
+
+    assert.ok(firstStalk?.isGroup, `expected first stalk group at child index ${i}`)
+    assert.ok(secondStalk?.isGroup, `expected second stalk group at child index ${i}`)
+    assert.notStrictEqual(firstStalk, secondStalk)
+    assert.equal(firstStalk.children.length, 2)
+    assert.equal(secondStalk.children.length, 2)
+
+    const firstStem = firstStalk.children[0]
+    const secondStem = secondStalk.children[0]
+    const firstFlower = firstStalk.children[1]
+    const secondFlower = secondStalk.children[1]
+
+    assert.ok(firstStem?.isMesh, `expected first stem mesh at child index ${i}`)
+    assert.ok(secondStem?.isMesh, `expected second stem mesh at child index ${i}`)
+    assert.ok(firstFlower?.isMesh, `expected first blossom mesh at child index ${i}`)
+    assert.ok(secondFlower?.isMesh, `expected second blossom mesh at child index ${i}`)
+
+    assert.notStrictEqual(firstStem, secondStem)
+    assert.notStrictEqual(firstFlower, secondFlower)
+    assert.strictEqual(firstStem.geometry, secondStem.geometry)
+    assert.strictEqual(firstStem.material, secondStem.material)
+    assert.strictEqual(firstFlower.geometry, secondFlower.geometry)
+    assert.strictEqual(firstFlower.material, secondFlower.material)
+  }
+})

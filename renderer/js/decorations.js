@@ -256,10 +256,11 @@ function _buildHayBale (g, def) {
 }
 
 function _buildFlowerBox (g, def, rng) {
-  const boxMat = new THREE.MeshStandardMaterial({ color: def.color })
-  const stemMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 })
-  const flMat = new THREE.MeshStandardMaterial({ color: def.flowerColor })
-  const boxGeo = new THREE.BoxGeometry(1.2, 0.4, 0.5)
+  const boxMat = _getSharedMaterial(`flowerbox:box:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
+  const stemMat = _getSharedMaterial('flowerbox:stem', () => new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 }))
+  const flMat = _getSharedMaterial(`flowerbox:flower:${def.flowerColor}`, () => new THREE.MeshStandardMaterial({ color: def.flowerColor }))
+  const boxGeo = _getSharedGeometry('flowerbox:box', () => new THREE.BoxGeometry(1.2, 0.4, 0.5))
+  const flowerGeo = _getSharedGeometry('flowerbox:flower', () => new THREE.SphereGeometry(0.08, 6, 4))
   const box = new THREE.Mesh(boxGeo, boxMat)
   box.position.y = 0.2
   box.castShadow = true
@@ -272,14 +273,13 @@ function _buildFlowerBox (g, def, rng) {
     const zOffset = i % 2 === 0 ? -0.03 : 0.03
     stalk.position.set(-0.4 + i * 0.2, 0.4, zOffset)
 
-    const stemGeo = new THREE.CylinderGeometry(0.012, 0.014, h, 5)
+    const stemGeo = _getSharedGeometry(`flowerbox:stem:${h.toFixed(2)}`, () => new THREE.CylinderGeometry(0.012, 0.014, h, 5))
     const stem = new THREE.Mesh(stemGeo, stemMat)
     stem.position.y = h / 2
     stem.castShadow = true
     stalk.add(stem)
 
-    const flGeo = new THREE.SphereGeometry(0.08, 6, 4)
-    const fl = new THREE.Mesh(flGeo, flMat)
+    const fl = new THREE.Mesh(flowerGeo, flMat)
     fl.position.y = h + 0.04
     fl.castShadow = true
     stalk.add(fl)
