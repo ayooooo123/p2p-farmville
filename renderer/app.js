@@ -2664,6 +2664,7 @@ function animateFarmTreeWind (time, frameEnv) {
 
     const trunks = tree.mesh.userData.trunkMeshes
     const canopies = tree.mesh.userData.canopyMeshes
+    const fruits = tree.mesh.userData.fruitMeshes
     if (Array.isArray(trunks) || Array.isArray(canopies)) {
       if (Array.isArray(trunks)) {
         for (const child of trunks) {
@@ -2677,6 +2678,27 @@ function animateFarmTreeWind (time, frameEnv) {
           const amp = CANOPY_STR + r * CANOPY_SCL
           child.rotation.z = swayZ * amp
           child.rotation.x = swayX * amp * 0.55
+          // Fruit pivot shares the canopy rotation so fruits stay attached to the leaf volume.
+          const pivot = child.userData.fruitPivot
+          if (pivot) {
+            pivot.rotation.z = child.rotation.z
+            pivot.rotation.x = child.rotation.x
+          }
+        }
+      }
+      if (Array.isArray(fruits) && fruits.length) {
+        // Per-fruit jitter in pivot-local space — adds organic dangle on top of the
+        // pivot's canopy-synced rotation. Frequency is close to canopy sway to avoid buzzing.
+        const fruitFreq = WIND_FREQ * 1.35
+        for (const fruit of fruits) {
+          const fp = fruit.userData.fruitPhase || 0
+          const r = fruit.userData.canopyRadius || 1.0
+          const jitterAmp = (0.02 + r * 0.015) * (0.8 + wp.treeStr * 0.4)
+          const jSin = Math.sin(time * fruitFreq + fp)
+          const jCos = Math.cos(time * fruitFreq + fp)
+          fruit.position.x = fruit.userData.baseX + jSin * jitterAmp
+          fruit.position.z = fruit.userData.baseZ + jCos * jitterAmp
+          fruit.position.y = fruit.userData.baseY + jSin * jitterAmp * 0.25
         }
       }
       continue

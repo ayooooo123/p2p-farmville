@@ -18,10 +18,8 @@ function getTrunk (tree, index = 0) {
 }
 
 function getFruitMeshes (tree) {
-  // Fruits are children that are not in trunk/canopy mesh lists.
-  const trunkSet = new Set(tree.userData.trunkMeshes)
-  const canopySet = new Set(tree.userData.canopyMeshes)
-  return tree.children.filter(c => c.isMesh && !trunkSet.has(c) && !canopySet.has(c))
+  // Fruits live under a per-canopy fruitPivot; the canonical list is userData.fruitMeshes.
+  return Array.isArray(tree.userData.fruitMeshes) ? tree.userData.fruitMeshes : []
 }
 
 test('createTreeMesh reuses shared trunk + canopy assets across repeated same-type trees', () => {
@@ -106,6 +104,16 @@ test('createTreeMesh shares fruit geometry + material across mature trees of the
   }
   assert.strictEqual(firstFruitA.geometry, firstFruitB.geometry, 'fruit geometry shared between apple instances')
   assert.strictEqual(firstFruitA.material, firstFruitB.material, 'fruit material shared between apple instances')
+
+  // Scene-graph invariant: fruits must be parented under the canopy's fruitPivot,
+  // and that pivot must live under the tree group — otherwise wind animation breaks.
+  const canopyA = getCanopy(matureA)
+  const pivotA = canopyA.userData.fruitPivot
+  assert.ok(pivotA, 'broadleaf canopy should expose a fruitPivot')
+  assert.ok(matureA.children.includes(pivotA), 'fruitPivot should be a child of the tree group')
+  for (const f of fruitsA) {
+    assert.strictEqual(f.parent, pivotA, 'each fruit should be parented to the fruitPivot')
+  }
 })
 
 test('setFarmTreeSeasonColors propagates through shared canopy material to all same-type trees', () => {

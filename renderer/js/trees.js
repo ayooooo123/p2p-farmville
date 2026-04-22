@@ -196,6 +196,7 @@ export function createTreeMesh (treeType, mature, growthScale) {
   group.userData.treeType = treeType
   group.userData.trunkMeshes = []
   group.userData.canopyMeshes = []
+  group.userData.fruitMeshes = []
   group.userData.interactiveMeshes = []
   // Per-tree random phase offset so placed trees sway independently in the wind
   group.userData.windPhase = Math.random() * Math.PI * 2
@@ -254,24 +255,39 @@ export function createTreeMesh (treeType, mature, growthScale) {
     group.userData.canopyMeshes.push(canopy)
 
     // Fruit dots as small spheres embedded in the canopy (only on mature trees).
-    // Shared fruit geometry (fixed 0.13 radius) + per-type material.
+    // Shared fruit geometry (fixed 0.13 radius) + per-type material. Fruits ride a
+    // pivot anchored at the canopy center so they rotate with the canopy — staying
+    // mechanically attached to the leaf volume — plus a per-fruit jitter in local
+    // space for organic wiggle.
     if (mature && scale >= 0.9) {
       const fruitCount = 4 + Math.floor(Math.random() * 3)
       const r = canopyR * 0.85
       const fruitGeo = _getFruitGeometry()
       const fruitMat = _getFruitMaterial(treeType, def)
+      const fruitPivot = new THREE.Group()
+      fruitPivot.position.copy(canopy.position)
+      group.add(fruitPivot)
+      canopy.userData.fruitPivot = fruitPivot
       for (let i = 0; i < fruitCount; i++) {
         const angle = (i / fruitCount) * Math.PI * 2 + Math.random() * 0.5
         const elevAngle = Math.random() * Math.PI * 0.4 // upper hemisphere
         const fruit = new THREE.Mesh(fruitGeo, fruitMat)
         _trackInteractiveMesh(group, fruit)
+        // Local to fruitPivot (which sits at canopy center).
         fruit.position.set(
           Math.cos(angle) * Math.cos(elevAngle) * r,
-          canopy.position.y + Math.sin(elevAngle) * r * 0.5,
+          Math.sin(elevAngle) * r * 0.5,
           Math.sin(angle) * Math.cos(elevAngle) * r
         )
         fruit.castShadow = false
-        group.add(fruit)
+        fruit.userData.isFarmFruit = true
+        fruit.userData.baseX = fruit.position.x
+        fruit.userData.baseY = fruit.position.y
+        fruit.userData.baseZ = fruit.position.z
+        fruit.userData.fruitPhase = Math.random() * Math.PI * 2
+        fruit.userData.canopyRadius = canopyR
+        fruitPivot.add(fruit)
+        group.userData.fruitMeshes.push(fruit)
       }
     }
   }
