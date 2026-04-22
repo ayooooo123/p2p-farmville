@@ -423,6 +423,32 @@ export function createAnimalMesh (animalType) {
     group.userData.tailPivot = tailPivot
   }
 
+  if (animalType === 'goat') {
+    // Short upright goat tail: stumpy tapered cylinder angled up-and-back from
+    // the rump. Geometry is pre-translated so the base sits at the pivot origin
+    // (cylinders are centered by default); rotating the mesh then pivots from
+    // the base instead of the middle. Existing tailPivot swish code drives
+    // rotation.y so the tail wags side-to-side like cow/horse.
+    const shaftLen = 0.16
+    const shaftGeo = _getSharedGeometry('tail:goat:shaft', () => {
+      const g = new THREE.CylinderGeometry(0.008, 0.015, shaftLen, 5)
+      g.translate(0, shaftLen / 2, 0)   // base at y=0, tip at y=+shaftLen
+      return g
+    })
+
+    const tailPivot = new THREE.Group()
+    tailPivot.position.set(0, bodyH * 0.7, def.bodyD / 2 + 0.01)
+
+    const shaft = new THREE.Mesh(shaftGeo, bodyMat)
+    _trackInteractiveMesh(group, shaft)
+    shaft.rotation.x = Math.PI / 4            // 45° up-and-back from vertical
+    shaft.castShadow = true
+    tailPivot.add(shaft)
+
+    group.add(tailPivot)
+    group.userData.tailPivot = tailPivot
+  }
+
   if (animalType === 'sheep') {
     // Small dark snout protrusion visible through wool
     const snoutMat = _getSharedMaterial('snout:sheep', () => new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 }))
