@@ -238,6 +238,35 @@ export function createAnimalMesh (animalType) {
         headGroup.add(comb)
       }
     }
+
+    // Wings: thin slab on each flank, in pivot groups so they can flap.
+    // Pivot sits on the body surface at a shoulder-like attach point; the wing
+    // hangs down from the pivot so rotation.z pivots the tip outward/inward
+    // in the XZ top-down projection. Cosmetic only — not tracked as interactive
+    // to keep the raycast set small. Initialized to the resting spread so there
+    // is no visible snap on the first animation tick.
+    const wingW = 0.04
+    const wingH = def.bodyH * 0.55
+    const wingD = def.bodyD * 0.65
+    const wingGeo = _getSharedGeometry(
+      `wing:${animalType}:${wingW}:${wingH}:${wingD}`,
+      () => new THREE.BoxGeometry(wingW, wingH, wingD)
+    )
+    const wingPivots = []
+    for (const sx of [-1, 1]) {
+      const pivot = new THREE.Group()
+      pivot.position.set(sx * (def.bodyW / 2 + wingW / 2), bodyH * 0.65, 0)
+      pivot.rotation.z = sx * WING_BASE_SPREAD
+      const wing = new THREE.Mesh(wingGeo, bodyMat)
+      wing.position.set(0, -wingH * 0.4, 0)
+      wing.castShadow = true
+      pivot.add(wing)
+      pivot.userData.isWingPivot = true
+      pivot.userData.sign = sx
+      group.add(pivot)
+      wingPivots.push(pivot)
+    }
+    group.userData.wingPivots = wingPivots
   }
 
   if (animalType === 'pig') {
@@ -388,6 +417,7 @@ export function createAnimalData (animalType, x, z) {
 const LEG_SWING = 0.45  // radians peak swing
 const WALK_CYCLE_SPEED = 7.0  // rad/s at full walk
 const WANDER_RADIUS = 0.8     // max distance from home tile center
+const WING_BASE_SPREAD = 0.12 // radians — resting wing angle away from body
 
 /**
  * Update animal state — wander movement + leg swing + body bob.
@@ -522,6 +552,26 @@ export function updateAnimalState (animal, dtMs) {
     animal.tailPhase += tailFreq * dt
     const tailAmp = 0.10 + w * 0.15     // 0.10 idle → 0.25 walking
     tailPivot.rotation.y = Math.sin(animal.tailPhase) * tailAmp
+  }
+
+  // ── Wing flap (chicken / duck) ────────────────────────────────────────────
+  // pivot.rotation.z = sign * amp → symmetric flap: both wing tips swing
+  // away from and back toward the body together, centered on the resting
+  // spread. Sin is centered at 0 so the flap crosses neutral rather than only
+  // opening — reads as an actual flap, not just a spread-wiggle.
+  const wingPivots = animal.mesh.userData.wingPivots
+  if (wingPivots && wingPivots.length > 0) {
+    if (animal.wingPhase === undefined) animal.wingPhase = Math.random() * Math.PI * 2
+    // Single phase drives both idle ruffle and walk flap; frequency and
+    // amplitude both scale with walkAmount so idle state uses tiny slow
+    // motion and walking snaps into a quick beat.
+    const wingFreq = 3 + w * 15       // 3 rad/s idle → 18 rad/s walking
+    animal.wingPhase += wingFreq * dt
+    const flapAmp = 0.04 + w * 0.18   // 0.04 idle → 0.22 walking
+    const amp = WING_BASE_SPREAD + Math.sin(animal.wingPhase) * flapAmp
+    for (const pivot of wingPivots) {
+      pivot.rotation.z = pivot.userData.sign * amp
+    }
   }
 
   return changed

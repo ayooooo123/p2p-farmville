@@ -181,6 +181,99 @@ test('updateAnimalState swishes the tail pivot for tailed animals', () => {
   assert.ok(animal.tailPhase > 0, 'tailPhase should advance during update')
 })
 
+test('createAnimalMesh gives chickens and ducks a pair of shared wing pivots', () => {
+  for (const type of ['chicken', 'duck']) {
+    const bird = createAnimalMesh(type)
+    const wingPivots = bird.userData.wingPivots
+    assert.ok(Array.isArray(wingPivots), `${type} should expose wingPivots array`)
+    assert.equal(wingPivots.length, 2, `${type} should have two wing pivots`)
+    assert.equal(wingPivots[0].userData.sign, -1, `${type} first wing sign should be -1`)
+    assert.equal(wingPivots[1].userData.sign, 1, `${type} second wing sign should be +1`)
+    const wingA = wingPivots[0].children[0]
+    const wingB = wingPivots[1].children[0]
+    assert.ok(wingA?.isMesh && wingB?.isMesh, `${type} wings should be meshes`)
+    assert.strictEqual(wingA.geometry, wingB.geometry, `${type} left and right wing should share geometry`)
+    assert.equal(wingA.castShadow, true, `${type} wing should cast shadow`)
+    assert.ok(!bird.userData.interactiveMeshes.includes(wingA),
+      `${type} wing should not be tracked as interactive`)
+  }
+
+  const chickenA = createAnimalMesh('chicken')
+  const chickenB = createAnimalMesh('chicken')
+  assert.strictEqual(
+    chickenA.userData.wingPivots[0].children[0].geometry,
+    chickenB.userData.wingPivots[0].children[0].geometry,
+    'wing geometry should be shared across same-type birds'
+  )
+})
+
+test('updateAnimalState flaps wing pivots for walking birds', () => {
+  const chicken = createAnimalMesh('chicken')
+  const animal = {
+    type: 'chicken',
+    mesh: chicken,
+    x: 0,
+    z: 0,
+    homeX: 0,
+    homeZ: 0,
+    wanderTimer: 1000,
+    walking: true,
+    walkSpeed: 1,
+    wanderAngle: 0,
+    walkPhase: 0,
+    bobPhase: 0,
+    fed: false,
+    productReady: false,
+    lastFed: 0
+  }
+
+  const [leftPivot, rightPivot] = chicken.userData.wingPivots
+  const baseLeft = leftPivot.rotation.z
+  const baseRight = rightPivot.rotation.z
+
+  updateAnimalState(animal, 100)
+
+  assert.notEqual(leftPivot.rotation.z, baseLeft, 'walking update should rotate left wing')
+  assert.notEqual(rightPivot.rotation.z, baseRight, 'walking update should rotate right wing')
+  // Symmetric spread: left wing rotates negative, right wing rotates positive (or both zero)
+  assert.ok(Math.sign(leftPivot.rotation.z) !== Math.sign(rightPivot.rotation.z) ||
+            leftPivot.rotation.z === 0,
+    'wing flap should be mirrored: left and right rotate in opposite directions')
+  assert.ok(animal.wingPhase > 0, 'wingPhase should advance during walking update')
+})
+
+test('updateAnimalState still ruffles wings while idle (w≈0)', () => {
+  const duck = createAnimalMesh('duck')
+  const animal = {
+    type: 'duck',
+    mesh: duck,
+    x: 0,
+    z: 0,
+    homeX: 0,
+    homeZ: 0,
+    wanderTimer: 10000,
+    walking: false,
+    walkSpeed: 1,
+    wanderAngle: 0,
+    walkPhase: 0,
+    bobPhase: 0,
+    wingPhase: 0,
+    walkAmount: 0,
+    fed: false,
+    productReady: false,
+    lastFed: 0
+  }
+
+  const [leftPivot] = duck.userData.wingPivots
+  const baseLeft = leftPivot.rotation.z
+  const baseWingPhase = animal.wingPhase
+
+  updateAnimalState(animal, 100)
+
+  assert.ok(animal.wingPhase > baseWingPhase, 'wingPhase should advance even when idle')
+  assert.notEqual(leftPivot.rotation.z, baseLeft, 'idle wings should still settle to baseline spread')
+})
+
 test('updateAnimalState still swishes the tail while idle (w≈0)', () => {
   const donkey = createAnimalMesh('donkey')
   const animal = {
