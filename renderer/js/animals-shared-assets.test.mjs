@@ -274,6 +274,60 @@ test('updateAnimalState still ruffles wings while idle (w≈0)', () => {
   assert.notEqual(leftPivot.rotation.z, baseLeft, 'idle wings should still settle to baseline spread')
 })
 
+test('createAnimalMesh wraps rabbit ears in pivot groups while keeping ear meshes interactive', () => {
+  const rabbit = createAnimalMesh('rabbit')
+  const earPivots = rabbit.userData.earPivots
+  assert.ok(Array.isArray(earPivots), 'rabbit should expose earPivots array')
+  assert.equal(earPivots.length, 2, 'rabbit should have two ear pivots')
+
+  for (const pivot of earPivots) {
+    assert.ok(pivot.isGroup, 'each ear pivot should be a Group')
+    assert.equal(pivot.children.length, 2, 'each ear pivot should hold the outer ear and inner ear meshes')
+    assert.equal(pivot.userData.baseRotX, 0, 'baseRotX should be stored for animation reference')
+  }
+
+  // Ear meshes (outer + inner) must remain at indices 6 and 7 of interactiveMeshes
+  // so existing raycasting assumptions and the shared-asset test continue to hold.
+  const ear = getInteractiveMesh(rabbit, 6)
+  const innerEar = getInteractiveMesh(rabbit, 7)
+  assert.ok(ear.parent === earPivots[0], 'ear mesh at index 6 should live under the first ear pivot')
+  assert.ok(innerEar.parent === earPivots[0], 'inner ear mesh at index 7 should live under the first ear pivot')
+})
+
+test('updateAnimalState twitches rabbit ears off the base rotation', () => {
+  const rabbit = createAnimalMesh('rabbit')
+  const animal = {
+    type: 'rabbit',
+    mesh: rabbit,
+    x: 0,
+    z: 0,
+    homeX: 0,
+    homeZ: 0,
+    wanderTimer: 10000,
+    walking: false,
+    walkSpeed: 1,
+    wanderAngle: 0,
+    walkPhase: 0,
+    bobPhase: 0,
+    walkAmount: 0,
+    fed: false,
+    productReady: false,
+    lastFed: 0
+  }
+
+  const [leftPivot] = rabbit.userData.earPivots
+  const baseRotX = leftPivot.userData.baseRotX
+
+  // Force a twitch on the very next tick by zeroing the timer.
+  // First call seeds earState (timers > 0) — overwrite then call again.
+  updateAnimalState(animal, 16)
+  animal.earState.timers[0] = 0
+  updateAnimalState(animal, 16)
+
+  assert.notEqual(leftPivot.rotation.x, baseRotX, 'forced twitch should rotate the ear pivot off baseRotX')
+  assert.ok(animal.earState.timers[0] > 0, 'timer should be reset to a positive interval after a twitch')
+})
+
 test('updateAnimalState still swishes the tail while idle (w≈0)', () => {
   const donkey = createAnimalMesh('donkey')
   const animal = {

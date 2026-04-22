@@ -291,22 +291,39 @@ export function createAnimalMesh (animalType) {
   }
 
   if (animalType === 'rabbit') {
-    // Long upright ears: two tall thin cylinders with pink inner ear
+    // Long upright ears wrapped in pivot Groups so they can twitch from the base.
+    // Pivot sits at the top of the head; ear meshes are offset upward inside the
+    // pivot so the cylinder extends from the pivot point upward — rotating the
+    // pivot tilts the ear from its base, like a real rabbit ear.
     const earGeo = _getSharedGeometry('ear:rabbit', () => new THREE.CylinderGeometry(0.025, 0.03, 0.38, 5))
     const earMat = _getSharedMaterial(`ear:rabbit:${def.headColor}`, () => new THREE.MeshStandardMaterial({ color: def.headColor, roughness: 0.9 }))
     const innerGeo = _getSharedGeometry('ear-inner:rabbit', () => new THREE.CylinderGeometry(0.012, 0.016, 0.28, 5))
     const innerEarMat = _getSharedMaterial('ear-inner:rabbit', () => new THREE.MeshStandardMaterial({ color: 0xffb6c1, roughness: 0.95 }))
+    const earPivots = []
     for (const ex of [-0.07, 0.07]) {
+      const pivot = new THREE.Group()
+      pivot.position.set(ex, def.headSize, 0)
+      // Slight outward cant so ears silhouette better from top-down.
+      pivot.rotation.z = ex < 0 ? 0.10 : -0.10
+      pivot.userData.baseRotX = pivot.rotation.x
+      pivot.userData.baseRotZ = pivot.rotation.z
+      pivot.userData.sign = ex < 0 ? -1 : 1
+
       const ear = new THREE.Mesh(earGeo, earMat)
       _trackInteractiveMesh(group, ear)
-      ear.position.set(ex, def.headSize + 0.19, 0)
+      ear.position.set(0, 0.19, 0)
       ear.castShadow = true
-      headGroup.add(ear)
+      pivot.add(ear)
+
       const inner = new THREE.Mesh(innerGeo, innerEarMat)
       _trackInteractiveMesh(group, inner)
-      inner.position.set(ex, def.headSize + 0.19, -0.018)
-      headGroup.add(inner)
+      inner.position.set(0, 0.19, -0.018)
+      pivot.add(inner)
+
+      headGroup.add(pivot)
+      earPivots.push(pivot)
     }
+    group.userData.earPivots = earPivots
   }
 
   if (animalType === 'horse' || animalType === 'donkey') {
@@ -571,6 +588,49 @@ export function updateAnimalState (animal, dtMs) {
     const amp = WING_BASE_SPREAD + Math.sin(animal.wingPhase) * flapAmp
     for (const pivot of wingPivots) {
       pivot.rotation.z = pivot.userData.sign * amp
+    }
+  }
+
+  // ── Ear twitch (rabbit) ───────────────────────────────────────────────────
+  // Two independent ears: each carries an idle sway plus an occasional sharp
+  // twitch toward a random forward/back tilt that eases back to neutral.
+  // Smoother is dt-correct (1 - exp(-k*dt)) so behaviour is frame-rate stable.
+  // Walking slightly suppresses twitch amplitude (rabbit ears flatten while
+  // running) — the existing walkAmount blend `w` reuses the same easing.
+  const earPivots = animal.mesh.userData.earPivots
+  if (earPivots && earPivots.length > 0) {
+    if (!animal.earState) {
+      animal.earState = {
+        timers: [600 + Math.random() * 1800, 900 + Math.random() * 1800], // ms until next twitch
+        targets: [0, 0],     // current twitch target offset (rad)
+        offsets: [0, 0],     // current smoothed twitch offset (rad)
+        idlePhase: Math.random() * Math.PI * 2
+      }
+    }
+    const es = animal.earState
+    es.idlePhase += dt * 0.55
+    const idleSway = Math.sin(es.idlePhase) * 0.022
+    const twitchScale = 1 - 0.5 * w   // running: ears settle a bit
+    const decayK = 6.0                // ease-back rate (per second)
+    const decayFactor = 1 - Math.exp(-decayK * dt)
+
+    for (let i = 0; i < earPivots.length; i++) {
+      es.timers[i] -= dtMs
+      if (es.timers[i] <= 0) {
+        // Pick a fresh twitch direction; mostly back, occasionally forward.
+        const dir = Math.random() < 0.7 ? -1 : 1
+        const mag = 0.25 + Math.random() * 0.20
+        es.targets[i] = dir * mag
+        es.offsets[i] = es.targets[i]   // snap to peak, then ease back
+        // Carry overshoot into the next interval so long frames don't skew cadence.
+        es.timers[i] += 1200 + Math.random() * 2000
+      }
+      // Ease the offset back toward zero (target naturally decays to 0 too).
+      es.offsets[i] += (0 - es.offsets[i]) * decayFactor
+
+      const pivot = earPivots[i]
+      const baseX = pivot.userData.baseRotX || 0
+      pivot.rotation.x = baseX + (es.offsets[i] + idleSway) * twitchScale
     }
   }
 
