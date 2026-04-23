@@ -28,6 +28,25 @@ function withFakeNow (start, fn) {
   }
 }
 
+function withFixedRandom (value, fn) {
+  const originalRandom = Math.random
+  Math.random = () => value
+  try {
+    return fn()
+  } finally {
+    Math.random = originalRandom
+  }
+}
+
+function getInstanceTranslation (scene, index = 0) {
+  const mesh = scene.children[0]
+  const matrix = new THREE.Matrix4()
+  const position = new THREE.Vector3()
+  mesh.getMatrixAt(index, matrix)
+  position.setFromMatrixPosition(matrix)
+  return position
+}
+
 test('particle pool tracks active slots and reuses freed capacity after expiry', () => {
   withFakeNow(1_000, ({ advance }) => {
     initParticles(new THREE.Scene())
@@ -102,4 +121,75 @@ test('prepareEffectConfigs precomputes reusable RGB color data', () => {
     [paletteA.r, paletteA.g, paletteA.b],
     [paletteB.r, paletteB.g, paletteB.b]
   ])
+})
+
+test('smoke particles drift farther in the configured ambient wind direction', async () => {
+  const {
+    setParticleWind,
+    initParticles,
+    createParticleEffect,
+    updateParticles,
+    dispose
+  } = await import('./particles.js')
+
+  withFakeNow(10_000, ({ advance }) => {
+    withFixedRandom(0.5, () => {
+      const calmScene = new THREE.Scene()
+      initParticles(calmScene)
+      setParticleWind(0, 0)
+      createParticleEffect('smoke', POSITION)
+      advance(1_000)
+      updateParticles(1_000)
+      const calmX = getInstanceTranslation(calmScene, 0).x
+      dispose()
+
+      const windyScene = new THREE.Scene()
+      initParticles(windyScene)
+      setParticleWind(2, 0)
+      createParticleEffect('smoke', POSITION)
+      advance(1_000)
+      updateParticles(1_000)
+      const windyX = getInstanceTranslation(windyScene, 0).x
+      dispose()
+
+      assert.ok(windyX > calmX + 0.5, `expected wind drift to push smoke farther along +X (calm=${calmX}, windy=${windyX})`)
+    })
+  })
+})
+
+test('reused particle slots clear smoke wind drag before spawning non-wind effects', async () => {
+  const {
+    setParticleWind,
+    initParticles,
+    createParticleEffect,
+    updateParticles,
+    dispose
+  } = await import('./particles.js')
+
+  withFakeNow(20_000, ({ advance }) => {
+    withFixedRandom(0.5, () => {
+      const reusedScene = new THREE.Scene()
+      initParticles(reusedScene)
+      setParticleWind(2, 0)
+      createParticleEffect('smoke', POSITION)
+      advance(2_000)
+      updateParticles(2_000)
+      createParticleEffect('harvest', POSITION)
+      advance(100)
+      updateParticles(100)
+      const reusedHarvestX = getInstanceTranslation(reusedScene, 4).x
+      dispose()
+
+      const cleanScene = new THREE.Scene()
+      initParticles(cleanScene)
+      setParticleWind(2, 0)
+      createParticleEffect('harvest', POSITION)
+      advance(100)
+      updateParticles(100)
+      const cleanHarvestX = getInstanceTranslation(cleanScene, 0).x
+      dispose()
+
+      assert.equal(reusedHarvestX, cleanHarvestX)
+    })
+  })
 })

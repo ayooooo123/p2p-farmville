@@ -142,7 +142,8 @@ const EFFECT_CONFIGS = {
     lifetime: 1800,
     gravity: -0.4,           // negative = rises upward
     direction: { x: 0, y: 1, z: 0 },
-    fadeOut: true
+    fadeOut: true,
+    windDrift: 1.4
   },
   footstep: {
     // Tiny dust puff spawned at player feet while walking.
@@ -221,6 +222,10 @@ const slotB       = new Float32Array(MAX_INSTANCES)
 const slotStart   = new Float64Array(MAX_INSTANCES) // ms timestamp
 const slotLife    = new Float32Array(MAX_INSTANCES) // ms lifetime
 const slotFade    = new Uint8Array(MAX_INSTANCES)
+const slotWindDrag = new Float32Array(MAX_INSTANCES)
+
+let _windX = 0
+let _windZ = 0
 
 // Reusable scratch objects — avoid per-frame allocations
 const _dummy  = new THREE.Object3D()
@@ -230,8 +235,11 @@ const _color  = new THREE.Color()
 
 function _resetPoolState () {
   slotInUse.fill(0)
+  slotWindDrag.fill(0)
   activeSlotCount = 0
   nextAcquireSlot = 0
+  _windX = 0
+  _windZ = 0
 }
 
 function _acquireSlot () {
@@ -245,11 +253,17 @@ function _acquireSlot () {
 }
 
 function _hideSlot (i) {
+  slotWindDrag[i] = 0
   _dummy.position.set(0, -1000, 0)
   _dummy.scale.set(0, 0, 0)
   _dummy.updateMatrix()
   instancedMesh.setMatrixAt(i, _dummy.matrix)
   instancedMesh.setColorAt(i, _color.setRGB(0, 0, 0))
+}
+
+function setParticleWind (vx = 0, vz = 0) {
+  _windX = vx
+  _windZ = vz
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -341,6 +355,7 @@ function createParticleEffect (type, position) {
     slotStart[slot]   = now
     slotLife[slot]    = config.lifetime
     slotFade[slot]    = config.fadeOut ? 1 : 0
+    slotWindDrag[slot] = config.windDrift || 0
   }
 }
 
@@ -366,6 +381,12 @@ function updateParticles (dtMs) {
     anyActive = true
 
     // Physics
+    const windDrag = slotWindDrag[i]
+    if (windDrag > 0) {
+      const windLerp = Math.min(1, windDrag * dt)
+      slotVX[i] += (_windX - slotVX[i]) * windLerp
+      slotVZ[i] += (_windZ - slotVZ[i]) * windLerp
+    }
     slotPX[i] += slotVX[i] * dt
     slotPY[i] += slotVY[i] * dt
     slotPZ[i] += slotVZ[i] * dt
@@ -431,6 +452,7 @@ export {
   initParticles,
   createParticleEffect,
   createFootstepDust,
+  setParticleWind,
   updateParticles,
   getActiveEffectCount,
   prepareEffectConfigs,

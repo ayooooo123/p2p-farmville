@@ -13,7 +13,7 @@ import { initMastery, recordHarvest, getMasteryData, getMasteryStars, getMastery
 import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel, isSetComplete, getCompletedSetsCount, getTotalItemsFound, COLLECTION_DEFINITIONS } from './js/collections.js'
 import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
-import { initParticles, createParticleEffect, createFootstepDust, updateParticles, getActiveEffectCount } from './js/particles.js'
+import { initParticles, createParticleEffect, createFootstepDust, setParticleWind, updateParticles, getActiveEffectCount } from './js/particles.js'
 import { FarmActions } from './js/farm-actions.js'
 import { showToast } from './js/toasts.js'
 import { QuestSystem } from './js/quests.js'
@@ -3468,6 +3468,10 @@ function gameLoop (time) {
   updateBuildings(dtMs)
   updateWindowGlow(dtMs, frameEnv)
   updateDecorations(time, frameEnv)
+  setParticleWind(
+    frameEnv.windSinDrift * frameEnv.windParams.str * 1.6,
+    frameEnv.windCosDrift * frameEnv.windParams.str * 1.6
+  )
   animateChimneySmoke(time, frameEnv)
   animateFountainSpray(time)
   updateParticles(dtMs)
