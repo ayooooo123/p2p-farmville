@@ -487,16 +487,29 @@ export function createAnimalMesh (animalType) {
   }
 
   if (animalType === 'llama') {
-    // Pointed ears
+    // Pointed ears wrapped in pivot Groups so each ear can twitch from its base
+    // (top of head). Animation reuses the shared earPivots loop in updateAnimalState.
     const earGeo = _getSharedGeometry('ear:llama', () => new THREE.CylinderGeometry(0.02, 0.035, 0.2, 5))
     const earMat = _getSharedMaterial(`ear:llama:${def.headColor}`, () => new THREE.MeshStandardMaterial({ color: def.headColor, roughness: 0.9 }))
+    const earPivots = []
     for (const ex of [-0.1, 0.1]) {
+      const pivot = new THREE.Group()
+      pivot.position.set(ex, def.headSize, 0)
+      pivot.rotation.z = ex < 0 ? 0.2 : -0.2
+      pivot.userData.baseRotX = pivot.rotation.x
+      pivot.userData.baseRotZ = pivot.rotation.z
+      pivot.userData.sign = ex < 0 ? -1 : 1
+
       const ear = new THREE.Mesh(earGeo, earMat)
       _trackInteractiveMesh(group, ear)
-      ear.position.set(ex, def.headSize + 0.1, 0)
-      ear.rotation.z = ex < 0 ? 0.2 : -0.2
-      headGroup.add(ear)
+      ear.position.set(0, 0.1, 0)
+      ear.castShadow = true
+      pivot.add(ear)
+
+      headGroup.add(pivot)
+      earPivots.push(pivot)
     }
+    group.userData.earPivots = earPivots
     // Fluffy elongated neck
     const neckMat = _getSharedMaterial(`neck:${animalType}:${def.bodyColor}`, () => new THREE.MeshStandardMaterial({ color: def.bodyColor, roughness: 0.98 }))
     const neckGeo = _getSharedGeometry(`neck:${animalType}:${def.headSize}`, () => new THREE.SphereGeometry(def.headSize * 0.7, 8, 6))
@@ -807,12 +820,12 @@ export function updateAnimalState (animal, dtMs) {
     }
   }
 
-  // ── Ear twitch (rabbit) ───────────────────────────────────────────────────
+  // ── Ear twitch (rabbit, llama) ────────────────────────────────────────────
   // Two independent ears: each carries an idle sway plus an occasional sharp
   // twitch toward a random forward/back tilt that eases back to neutral.
   // Smoother is dt-correct (1 - exp(-k*dt)) so behaviour is frame-rate stable.
-  // Walking slightly suppresses twitch amplitude (rabbit ears flatten while
-  // running) — the existing walkAmount blend `w` reuses the same easing.
+  // Walking slightly suppresses twitch amplitude (ears flatten while running)
+  // — the existing walkAmount blend `w` reuses the same easing.
   const earPivots = animal.mesh.userData.earPivots
   if (earPivots && earPivots.length > 0) {
     if (!animal.earState) {

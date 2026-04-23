@@ -353,6 +353,53 @@ test('updateAnimalState twitches rabbit ears off the base rotation', () => {
   assert.ok(animal.earState.timers[0] > 0, 'timer should be reset to a positive interval after a twitch')
 })
 
+test('createAnimalMesh wraps llama ears in pivot groups while keeping ear meshes interactive', () => {
+  const llama = createAnimalMesh('llama')
+  const earPivots = llama.userData.earPivots
+  assert.ok(Array.isArray(earPivots), 'llama should expose earPivots array')
+  assert.equal(earPivots.length, 2, 'llama should have two ear pivots')
+
+  for (const pivot of earPivots) {
+    assert.ok(pivot.isGroup, 'each ear pivot should be a Group')
+    assert.equal(pivot.children.length, 1, 'each llama ear pivot should hold the single ear mesh')
+    assert.equal(pivot.userData.baseRotX, 0, 'baseRotX should be stored for animation reference')
+    const [ear] = pivot.children
+    assert.ok(ear.isMesh, 'ear child should be a Mesh')
+  }
+})
+
+test('updateAnimalState twitches llama ears off the base rotation', () => {
+  const llama = createAnimalMesh('llama')
+  const animal = {
+    type: 'llama',
+    mesh: llama,
+    x: 0,
+    z: 0,
+    homeX: 0,
+    homeZ: 0,
+    wanderTimer: 10000,
+    walking: false,
+    walkSpeed: 1,
+    wanderAngle: 0,
+    walkPhase: 0,
+    bobPhase: 0,
+    walkAmount: 0,
+    fed: false,
+    productReady: false,
+    lastFed: 0
+  }
+
+  const [leftPivot] = llama.userData.earPivots
+  const baseRotX = leftPivot.userData.baseRotX
+
+  updateAnimalState(animal, 16)
+  animal.earState.timers[0] = 0
+  updateAnimalState(animal, 16)
+
+  assert.notEqual(leftPivot.rotation.x, baseRotX, 'forced twitch should rotate the llama ear pivot off baseRotX')
+  assert.ok(animal.earState.timers[0] > 0, 'timer should be reset to a positive interval after a twitch')
+})
+
 test('updateAnimalState still swishes the tail while idle (w≈0)', () => {
   const donkey = createAnimalMesh('donkey')
   const animal = {
