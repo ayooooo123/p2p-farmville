@@ -13,31 +13,31 @@ export const ANIMAL_DEFINITIONS = {
     product: 'Milk', sellPrice: 65, xp: 6,
     bodyColor: 0xf5f5f5, headColor: 0xf0f0f0, legColor: 0x333333,
     bodyW: 0.9, bodyH: 0.7, bodyD: 1.2, headSize: 0.35, legs: 4,
-    spots: true, spotColor: 0x222222
+    spots: true, spotColor: 0x222222, grazeable: true
   },
   horse: {
     name: 'Horse', level: 5, cost: 800, feedCost: 30, harvestTime: 180000,
     product: 'Horseshoe', sellPrice: 100, xp: 10,
     bodyColor: 0x8b4513, headColor: 0x7a3b10, legColor: 0x5c3a1e,
-    bodyW: 0.7, bodyH: 0.8, bodyD: 1.4, headSize: 0.4, legs: 4
+    bodyW: 0.7, bodyH: 0.8, bodyD: 1.4, headSize: 0.4, legs: 4, grazeable: true
   },
   sheep: {
     name: 'Sheep', level: 4, cost: 400, feedCost: 20, harvestTime: 100000,
     product: 'Wool', sellPrice: 55, xp: 5,
     bodyColor: 0xfafafa, headColor: 0x333333, legColor: 0x333333,
-    bodyW: 0.7, bodyH: 0.6, bodyD: 0.9, headSize: 0.25, legs: 4, woolly: true
+    bodyW: 0.7, bodyH: 0.6, bodyD: 0.9, headSize: 0.25, legs: 4, woolly: true, grazeable: true
   },
   pig: {
     name: 'Pig', level: 6, cost: 600, feedCost: 25, harvestTime: 150000,
     product: 'Truffles', sellPrice: 85, xp: 8,
     bodyColor: 0xffb6c1, headColor: 0xffaaaa, legColor: 0xffaaaa,
-    bodyW: 0.7, bodyH: 0.5, bodyD: 0.9, headSize: 0.3, legs: 4
+    bodyW: 0.7, bodyH: 0.5, bodyD: 0.9, headSize: 0.3, legs: 4, grazeable: true
   },
   goat: {
     name: 'Goat', level: 7, cost: 550, feedCost: 22, harvestTime: 130000,
     product: 'Goat Milk', sellPrice: 75, xp: 7,
     bodyColor: 0xd2b48c, headColor: 0xc4a882, legColor: 0x8b6914,
-    bodyW: 0.6, bodyH: 0.6, bodyD: 1.0, headSize: 0.25, legs: 4
+    bodyW: 0.6, bodyH: 0.6, bodyD: 1.0, headSize: 0.25, legs: 4, grazeable: true
   },
   duck: {
     name: 'Duck', level: 2, cost: 200, feedCost: 12, harvestTime: 70000,
@@ -55,13 +55,13 @@ export const ANIMAL_DEFINITIONS = {
     name: 'Donkey', level: 8, cost: 700, feedCost: 28, harvestTime: 160000,
     product: 'Donkey Milk', sellPrice: 90, xp: 9,
     bodyColor: 0x808080, headColor: 0x696969, legColor: 0x555555,
-    bodyW: 0.7, bodyH: 0.75, bodyD: 1.3, headSize: 0.35, legs: 4
+    bodyW: 0.7, bodyH: 0.75, bodyD: 1.3, headSize: 0.35, legs: 4, grazeable: true
   },
   llama: {
     name: 'Llama', level: 10, cost: 900, feedCost: 30, harvestTime: 200000,
     product: 'Llama Wool', sellPrice: 120, xp: 12,
     bodyColor: 0xf5deb3, headColor: 0xf0d8a8, legColor: 0xdeb887,
-    bodyW: 0.6, bodyH: 0.9, bodyD: 1.1, headSize: 0.3, legs: 4
+    bodyW: 0.6, bodyH: 0.9, bodyD: 1.1, headSize: 0.3, legs: 4, grazeable: true
   }
 }
 
@@ -144,7 +144,10 @@ export function createAnimalMesh (animalType) {
   group.add(headGroup)
   group.userData.headGroup = headGroup
   group.userData.headGroupBaseRotX = headGroup.rotation.x
+  group.userData.headGroupBaseRotY = headGroup.rotation.y
   group.userData.headGroupBaseY = headGroup.position.y
+  group.userData.grazeable = !!def.grazeable
+  group.userData.grazeHeadSize = def.headSize
 
   const headGeo = _getSharedGeometry(`head:${animalType}:${def.headSize}`, () => new THREE.SphereGeometry(def.headSize, 10, 8))
   const headMat = _getSharedMaterial(`head:${animalType}:${def.headColor}`, () => new THREE.MeshStandardMaterial({ color: def.headColor, roughness: 0.8, metalness: 0.0 }))
@@ -574,6 +577,19 @@ const BLINK_CLOSED_SCALE = 0.05   // eyelid-closed Y scale, as fraction of base
 const BLINK_CLOSE_END = 0.4       // fraction of cycle: lid fully closed
 const BLINK_HOLD_END = 0.55       // fraction of cycle: end of hold
 
+// Graze (large mammals) — slow head dip to ground, long chewing hold, ease back.
+const GRAZE_INTERVAL_MIN_MS = 4500
+const GRAZE_INTERVAL_MAX_MS = 12000
+const GRAZE_DURATION_MIN_MS = 1800
+const GRAZE_DURATION_MAX_MS = 2600
+const GRAZE_DOWN_END = 0.18       // fraction of cycle: head reaches the ground
+const GRAZE_HOLD_END = 0.85       // fraction of cycle: end of chew hold
+const GRAZE_DIP_RAD = 0.42        // peak head dip (rad) — gentler than peck
+const GRAZE_DROP_FACTOR = 0.30    // peak head drop as fraction of headSize
+const GRAZE_CHEW_FREQ = 11        // rad/s lateral jaw sway during hold
+const GRAZE_CHEW_AMP_Y = 0.04     // rad — small lateral chew (rotation.y)
+const GRAZE_CHEW_AMP_X = 0.02     // rad — micro vertical jaw bob
+
 /**
  * Update animal state — wander movement + leg swing + body bob.
  * @param {object} animal
@@ -707,11 +723,13 @@ export function updateAnimalState (animal, dtMs) {
   if (headPivot) {
     const baseY = animal.mesh.userData.headGroupBaseY ?? headPivot.position.y
     const baseRotX = animal.mesh.userData.headGroupBaseRotX ?? headPivot.rotation.x
+    const baseRotY = animal.mesh.userData.headGroupBaseRotY ?? 0
     const walkRot = Math.sin(animal.walkPhase) * 0.08
     const walkY = Math.sin(animal.walkPhase + Math.PI / 2) * 0.015
     const idleRot = Math.sin(animal.bobPhase * 0.5) * 0.025
     const idleY = Math.sin(animal.bobPhase * 0.5) * 0.005
     headPivot.rotation.x = baseRotX + walkRot * w + idleRot * (1 - w)
+    headPivot.rotation.y = baseRotY
     headPivot.position.y = baseY + walkY * w + idleY * (1 - w)
   }
 
@@ -770,6 +788,81 @@ export function updateAnimalState (animal, dtMs) {
       const headSize = animal.mesh.userData.peckHeadSize || 0.2
       headPivot.rotation.x += dip * PECK_DIP_RAD
       headPivot.position.y -= dip * headSize * PECK_DROP_FACTOR
+    }
+  }
+
+  // ── Graze (cow / horse / sheep / goat / pig / donkey / llama) ─────────────
+  // Idle-only behaviour: lower the head toward the ground, hold while
+  // chewing (small lateral jaw sway), then ease back up. Walking aborts
+  // and reseeds the timer so the animal doesn't graze the moment it stops.
+  // Mutually exclusive with peck (peckable vs grazeable on disjoint sets).
+  if (headPivot && animal.mesh.userData.grazeable) {
+    if (!animal.grazeState) {
+      animal.grazeState = {
+        timer: GRAZE_INTERVAL_MIN_MS + Math.random() * (GRAZE_INTERVAL_MAX_MS - GRAZE_INTERVAL_MIN_MS),
+        phase: 0,
+        grazing: false,
+        duration: GRAZE_DURATION_MIN_MS,
+        chewT: 0
+      }
+    }
+    const gs = animal.grazeState
+    const idleEnough = w < 0.1
+    if (!idleEnough) {
+      gs.grazing = false
+      gs.phase = 0
+      gs.chewT = 0
+      gs.timer = GRAZE_INTERVAL_MIN_MS + Math.random() * (GRAZE_INTERVAL_MAX_MS - GRAZE_INTERVAL_MIN_MS)
+    } else if (gs.grazing) {
+      gs.phase += dtMs / gs.duration
+      if (gs.phase >= 1) {
+        const overshootMs = (gs.phase - 1) * gs.duration
+        gs.grazing = false
+        gs.phase = 0
+        gs.chewT = 0
+        const nextIntervalMs = GRAZE_INTERVAL_MIN_MS + Math.random() * (GRAZE_INTERVAL_MAX_MS - GRAZE_INTERVAL_MIN_MS)
+        gs.timer = Math.max(0, nextIntervalMs - overshootMs)
+      }
+    } else {
+      gs.timer -= dtMs
+      if (gs.timer <= 0) {
+        gs.duration = GRAZE_DURATION_MIN_MS + Math.random() * (GRAZE_DURATION_MAX_MS - GRAZE_DURATION_MIN_MS)
+        const carryPhase = Math.min(1, Math.max(0, -gs.timer / gs.duration))
+        if (carryPhase >= 1) {
+          // Overshoot already consumed the whole graze — finish immediately.
+          gs.grazing = false
+          gs.phase = 0
+          gs.chewT = 0
+          gs.timer = GRAZE_INTERVAL_MIN_MS + Math.random() * (GRAZE_INTERVAL_MAX_MS - GRAZE_INTERVAL_MIN_MS)
+        } else {
+          gs.grazing = true
+          gs.phase = carryPhase
+          gs.chewT = 0
+        }
+      }
+    }
+
+    if (gs.grazing) {
+      let dip
+      if (gs.phase < GRAZE_DOWN_END) {
+        const t = gs.phase / GRAZE_DOWN_END
+        dip = t * t * (3 - 2 * t)
+      } else if (gs.phase < GRAZE_HOLD_END) {
+        dip = 1
+      } else {
+        const t = (gs.phase - GRAZE_HOLD_END) / (1 - GRAZE_HOLD_END)
+        dip = 1 - t * t * (3 - 2 * t)
+      }
+      const headSize = animal.mesh.userData.grazeHeadSize || 0.3
+      headPivot.rotation.x += dip * GRAZE_DIP_RAD
+      headPivot.position.y -= dip * headSize * GRAZE_DROP_FACTOR
+
+      // Chewing — lateral jaw sway, only meaningful during the hold phase.
+      // Envelope by `dip` so the chew fades in/out smoothly with the dip.
+      gs.chewT += dt
+      const chew = Math.sin(gs.chewT * GRAZE_CHEW_FREQ)
+      headPivot.rotation.y += chew * GRAZE_CHEW_AMP_Y * dip
+      headPivot.rotation.x += Math.abs(chew) * GRAZE_CHEW_AMP_X * dip
     }
   }
 
