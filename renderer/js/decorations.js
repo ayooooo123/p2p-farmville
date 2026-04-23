@@ -386,18 +386,26 @@ function _buildScarecrow (g, def, rng) {
   arm.position.y = 1.5
   arm.castShadow = true
   g.add(arm)
+  // Head + hat group — pivot sits at neck base (just below the head sphere) so
+  // the wind-driven sway hinges from the neck rather than the shoulders, giving
+  // a straw-stuffed-dummy wobble instead of an upper-body hinge.
+  const HEAD_PIVOT_Y = 1.9
+  const headPivot = new THREE.Group()
+  headPivot.position.y = HEAD_PIVOT_Y
   // Head
   const head = new THREE.Mesh(headGeo, headMat)
-  head.position.y = 2.15
+  head.position.y = 2.15 - HEAD_PIVOT_Y
   head.castShadow = true
-  g.add(head)
+  headPivot.add(head)
   // Hat
   const hat = new THREE.Mesh(hatGeo, hatMat)
-  hat.position.y = 2.45
-  g.add(hat)
+  hat.position.y = 2.45 - HEAD_PIVOT_Y
+  headPivot.add(hat)
   const brim = new THREE.Mesh(brimGeo, hatMat)
-  brim.position.y = 2.32
-  g.add(brim)
+  brim.position.y = 2.32 - HEAD_PIVOT_Y
+  headPivot.add(brim)
+  _trackWindDecoration(g, headPivot, 'scarecrowHead', 1, rng)
+  g.add(headPivot)
   // Cloth on arms — tagged so app.js can sway it with the weather-driven wind system
   const cloth = new THREE.Mesh(clothGeo, clothMat)
   cloth.position.set(0, 1.2, 0)

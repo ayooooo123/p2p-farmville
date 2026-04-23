@@ -2949,6 +2949,12 @@ function updateDecorations (time, frameEnv) {
         const nod = Math.sin(time * decoWindFreq * 0.71 + phase * 2.3) * 0.018 * bend * gustEnvelope
         child.rotation.z = baseRotZ + swayZ * (0.085 * wp.str * bend) + nod
         child.rotation.x = baseRotX + swayX * (0.032 * wp.str * bend)
+      } else if (child.userData.windKind === 'scarecrowHead') {
+        // Subtle neck wobble — straw-stuffed head loosely seated on top of the
+        // pole. Smaller amplitude than cloth flutter so the head reads as
+        // "bobbing on a loose neck" rather than mechanically flapping.
+        child.rotation.z = baseRotZ + swayZ * (0.035 * wp.str)
+        child.rotation.x = baseRotX + swayX * (0.020 * wp.str)
       } else {
         child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
         child.rotation.x = baseRotX + swayX * (0.04 * wp.str)
