@@ -49,7 +49,7 @@ export const ANIMAL_DEFINITIONS = {
     name: 'Rabbit', level: 3, cost: 250, feedCost: 10, harvestTime: 80000,
     product: 'Angora Wool', sellPrice: 45, xp: 4,
     bodyColor: 0xddd5cc, headColor: 0xddd5cc, legColor: 0xccbbaa,
-    bodyW: 0.35, bodyH: 0.35, bodyD: 0.5, headSize: 0.2, legs: 4
+    bodyW: 0.35, bodyH: 0.35, bodyD: 0.5, headSize: 0.2, legs: 4, hopGait: true
   },
   donkey: {
     name: 'Donkey', level: 8, cost: 700, feedCost: 28, harvestTime: 160000,
@@ -202,6 +202,7 @@ export function createAnimalMesh (animalType) {
   }
   group.userData.legPivots = legPivots
   group.userData.legCount = legCount
+  group.userData.hopGait = !!def.hopGait
 
   // ── Spots for cow ─────────────────────────────────────────────────────────
   if (def.spots) {
@@ -641,9 +642,25 @@ export function updateAnimalState (animal, dtMs) {
     animal.walkPhase *= 0.9
   }
 
+  // ── Walk/idle blend (shared by bob, head nod, tail swish) ─────────────────
+  if (animal.walkAmount === undefined) animal.walkAmount = 0
+  const walkTarget = animal.walking ? 1 : 0
+  const blendK = Math.min(1, 6 * dt)
+  animal.walkAmount += (walkTarget - animal.walkAmount) * blendK
+  const w = animal.walkAmount
+
   if (legPivots && legPivots.length > 0) {
     const phase = animal.walkPhase
-    if (legCount === 4) {
+    if (animal.mesh.userData.hopGait && legCount === 4) {
+      // Bound gait: fronts together, backs together in anti-phase — hind legs
+      // swing wider than fronts so the hop reads rabbit-shaped from above.
+      // Scaled by walkAmount so legs fade to neutral when stopping mid-stride.
+      const s = Math.sin(phase) * LEG_SWING * w
+      legPivots[0].rotation.x =  s * 1.2   // FL
+      legPivots[1].rotation.x =  s * 1.2   // FR
+      legPivots[2].rotation.x = -s * 1.6   // BL
+      legPivots[3].rotation.x = -s * 1.6   // BR
+    } else if (legCount === 4) {
       // Diagonal trot gait: FL+BR swing together, FR+BL counter-swing
       // [0]=FL, [1]=FR, [2]=BL, [3]=BR
       legPivots[0].rotation.x =  Math.sin(phase) * LEG_SWING  // FL
@@ -659,15 +676,18 @@ export function updateAnimalState (animal, dtMs) {
 
   // ── Body bob ──────────────────────────────────────────────────────────────
   animal.bobPhase += dtMs * (animal.walking ? 0.008 : 0.002)
-  const bobY = Math.sin(animal.bobPhase) * (animal.walking ? 0.04 : 0.02)
+  const idleBob = Math.sin(animal.bobPhase) * 0.02
+  let bobY
+  if (animal.mesh.userData.hopGait) {
+    // Full-cycle springy arc aligned with the leg bound cycle so body lift
+    // stays in sync with leg motion (no grounded-pedaling). walkAmount `w`
+    // fades the hop in/out so stopping mid-air settles gently.
+    const hopArc = 0.5 * (1 - Math.cos(animal.walkPhase))
+    bobY = hopArc * 0.07 * w + idleBob * (1 - w)
+  } else {
+    bobY = Math.sin(animal.bobPhase) * (animal.walking ? 0.04 : 0.02)
+  }
   animal.mesh.position.y = bobY
-
-  // ── Walk/idle blend (shared by head nod + tail swish) ─────────────────────
-  if (animal.walkAmount === undefined) animal.walkAmount = 0
-  const walkTarget = animal.walking ? 1 : 0
-  const blendK = Math.min(1, 6 * dt)
-  animal.walkAmount += (walkTarget - animal.walkAmount) * blendK
-  const w = animal.walkAmount
 
   // ── Head nod ──────────────────────────────────────────────────────────────
   const headPivot = animal.mesh.userData.headGroup
