@@ -460,6 +460,25 @@ export function createAnimalMesh (animalType) {
     snout.scale.set(1, 0.7, 0.8)
     snout.position.set(0, -bodyH * 0.07, -def.headSize * 0.5)
     headGroup.add(snout)
+
+    // Short wool-puff tail at the rump. Reuses the sheep wool material so it
+    // matches the fleece overlay. Positioned far enough behind the wool sphere
+    // (bodyD/2 + 0.04 with extra +0.07 local Z) that it clears the overlay
+    // volume and stays visible from the top-down camera. Attached via
+    // tailPivot → existing updateAnimalState tailPivot.rotation.y swish drives
+    // the sideways wag at idle/walk amplitude like cow/goat/horse.
+    const woolMat = _getSharedMaterial('wool:sheep', () => new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.98, metalness: 0.0 }))
+    const puffGeo = _getSharedGeometry('tail:sheep:puff', () => new THREE.SphereGeometry(0.09, 6, 5))
+    const tailPivot = new THREE.Group()
+    tailPivot.position.set(0, bodyH * 0.68, def.bodyD / 2 + 0.04)
+    const puff = new THREE.Mesh(puffGeo, woolMat)
+    _trackInteractiveMesh(group, puff)
+    puff.scale.set(1.0, 0.85, 1.1)
+    puff.position.set(0, -0.03, 0.07)
+    puff.castShadow = true
+    tailPivot.add(puff)
+    group.add(tailPivot)
+    group.userData.tailPivot = tailPivot
   }
 
   if (animalType === 'llama') {
@@ -709,7 +728,7 @@ export function updateAnimalState (animal, dtMs) {
     }
   }
 
-  // ── Tail swish (horse / donkey) ───────────────────────────────────────────
+  // ── Tail swish (horse / donkey / cow / goat / sheep) ──────────────────────
   // Pivot rotates around Y so the tail sweeps side to side behind the rump.
   // Amplitude eases between idle (~5.7°) and walking (~14°) using walkAmount.
   const tailPivot = animal.mesh.userData.tailPivot
