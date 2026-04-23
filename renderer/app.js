@@ -19,7 +19,7 @@ import { showToast } from './js/toasts.js'
 import { QuestSystem } from './js/quests.js'
 import { openAlmanac, closeAlmanac, isAlmanacOpen } from './js/almanac.js'
 import { SoundSystem } from './js/sounds.js'
-import { initWeather, updateWeather, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
+import { initWeather, updateWeather, applyLightningFlash, getCurrentWeather, getWeatherIcon, getWeatherName, onWeatherChange } from './js/weather.js'
 import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon, getTimeOfDay, setSeason as setDayNightSeason } from './js/daynight.js'
 import { createOverlayEpochTracker, markOverlaySeen, sweepStaleOverlays } from './js/overlay-epochs.js'
 import { formatTimeRemaining, getTimedProgress } from './js/time-progress.js'
@@ -3400,6 +3400,8 @@ function gameLoop (time) {
   // Update systems
   updateWeather(dtMs, sceneData.sunLight)
   updateDayNight(dtMs)
+  // Apply storm lightning AFTER day/night so its additive boost isn't overwritten.
+  applyLightningFlash(sceneData.sunLight, sceneData.ambientLight, sceneData.hemiLight)
   _updateTimeHUD()
 
   const frameEnv = buildEnvironmentFrame({

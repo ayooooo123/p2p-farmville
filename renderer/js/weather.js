@@ -62,6 +62,15 @@ let lastCloudVisualColor = null
 // Lightning
 let lastLightningTime = 0
 
+// Flash schedule — applyLightningFlash() reads this AFTER updateDayNight() so the
+// flash isn't immediately overwritten by the day/night intensity update each frame.
+// _flashStartMs = -Infinity means no active flash. Using Date.now() to stay
+// consistent with lastLightningTime above; flash is short enough that any clock
+// jump will simply end it early/late, never produce a stuck flash.
+const FLASH_DURATION_MS = 360
+let _flashStartMs = -Infinity
+const _flashTintColor = new THREE.Color(0xeef0ff)
+
 // Puddle system
 const MAX_PUDDLES = 12
 let puddleGroup  = null
@@ -127,6 +136,7 @@ function _resetWeatherSystems () {
   lastCloudVisualOpacity = -1
   lastCloudVisualColor = null
   lastLightningTime = 0
+  _flashStartMs = -Infinity
 }
 
 function initWeather (sceneRef, options) {
@@ -438,24 +448,62 @@ function _updateClouds (dtMs) {
 
 // ── Lightning (storms) ──────────────────────────────────────────────────────
 
-function _updateLightning (dtMs, sunLight) {
-  if (currentWeather !== 'stormy' || !sunLight) return
+// Schedule a flash by stamping _flashStartMs. The actual light mutation happens
+// in applyLightningFlash() AFTER the day/night cycle runs each frame, so the
+// boost isn't immediately overwritten by daynight's intensity write.
+function _updateLightning () {
+  if (currentWeather !== 'stormy') return
 
   const now = Date.now()
   if (now - lastLightningTime > 4000 + Math.random() * 8000) {
-    // Flash!
     lastLightningTime = now
-    const origIntensity = sunLight.intensity
-    sunLight.intensity = 3
-    sunLight.color.setHex(0xffffff)
-    setTimeout(() => {
-      sunLight.intensity = origIntensity
-    }, 100)
-    setTimeout(() => {
-      sunLight.intensity = 2
-      setTimeout(() => { sunLight.intensity = origIntensity }, 80)
-    }, 200)
+    _flashStartMs = now
   }
+}
+
+// Smooth attack + ease-out decay shape, [0,1] over [0,end]. Returns 0 outside.
+function _flashPulse (t, peak, end) {
+  if (t <= 0 || t >= end) return 0
+  if (t <= peak) return t / peak
+  const u = (t - peak) / (end - peak)
+  return 1 - u * u
+}
+
+/**
+ * Apply the active lightning flash to scene lights. Must be called AFTER
+ * updateDayNight() so the additive boost overrides the per-frame intensity
+ * write from the day/night cycle. On the next frame daynight resets the
+ * lights, so no manual restore is needed — the flash is naturally one-frame-clean.
+ *
+ * Idle-frame cost: one comparison + early return. Zero allocations.
+ */
+function applyLightningFlash (sunLight, ambientLight, hemiLight) {
+  if (_flashStartMs === -Infinity) return
+  // Bail (and clear) if the storm ended mid-flash — otherwise we'd flash on a
+  // freshly-clear/rainy/snowy frame for up to FLASH_DURATION_MS after the change.
+  if (currentWeather !== 'stormy') {
+    _flashStartMs = -Infinity
+    return
+  }
+  const elapsed = Date.now() - _flashStartMs
+  if (elapsed < 0 || elapsed >= FLASH_DURATION_MS) {
+    _flashStartMs = -Infinity
+    return
+  }
+  const t = elapsed / FLASH_DURATION_MS
+
+  // Dual-pulse: a big primary strike then a smaller secondary flicker.
+  const primary   = _flashPulse(t, 0.10, 0.45)
+  const secondary = _flashPulse(t, 0.65, 1.00) * 0.5
+  const boost = primary > secondary ? primary : secondary
+  if (boost <= 0) return
+
+  if (sunLight) {
+    sunLight.intensity += boost * 1.6
+    sunLight.color.lerp(_flashTintColor, Math.min(boost * 0.7, 1))
+  }
+  if (hemiLight)    hemiLight.intensity    += boost * 0.6
+  if (ambientLight) ambientLight.intensity += boost * 0.45
 }
 
 // ── Snow — InstancedMesh flat disc flakes ────────────────────────────────────
@@ -514,7 +562,7 @@ function updateWeather (dtMs, sunLight) {
   _updateClouds(dtMs)
   _updatePuddles(dtMs)
   if (currentWeather !== 'snowy') {
-    _updateLightning(dtMs, sunLight)
+    _updateLightning()
   }
 
   // Auto-water crops when raining (once per rain cycle)
@@ -563,6 +611,7 @@ function onWeatherChange (callback) {
 export {
   initWeather,
   updateWeather,
+  applyLightningFlash,
   getCurrentWeather,
   getWeatherIcon,
   getWeatherName,
