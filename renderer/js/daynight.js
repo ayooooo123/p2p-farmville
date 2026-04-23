@@ -140,8 +140,11 @@ const _tmpFog    = new THREE.Color()
 
 // Stars
 let starsGroup = null
+let starTwinkleElapsed = 0  // sim-time accumulator driving twinkle sine
 const STAR_COUNT = 200
 const STAR_BRIGHTNESS_BUCKETS = 8
+// Average bucket-swap flickers per star per second (time-based, FPS-independent)
+const STAR_BUCKET_SWAP_RATE = 0.6
 const starMaterialCache = new Map()
 
 // Fireflies
@@ -191,6 +194,7 @@ function _resetDayNightEffects () {
   starsGroup = null
   firefliesGroup = null
   fireflyData.length = 0
+  starTwinkleElapsed = 0
 }
 
 function initDayNight (sceneRef, sunRef, ambientRef, hemiRef, options) {
@@ -254,6 +258,8 @@ function _createStars () {
     const brightnessBucket = _getStarBrightnessBucket(brightness)
     const star = new THREE.Mesh(starGeo, _getStarMaterialForBucket(brightnessBucket))
     star.userData.starBrightnessBucket = brightnessBucket
+    star.userData.twinklePhase = Math.random() * Math.PI * 2
+    star.userData.twinkleSpeed = 0.6 + Math.random() * 1.2
     star.position.set(
       r * Math.sin(phi) * Math.cos(theta),
       r * Math.cos(phi),
@@ -461,14 +467,24 @@ function updateDayNight (dtMs) {
     starsGroup.visible = isNightish
 
     if (isNightish) {
-      // Twinkle effect — occasionally swap a star to another shared brightness bucket.
+      // Continuous per-star scale twinkle driven by a sim-time accumulator so
+      // pauses/tab-switches don't cause jumps and pattern doesn't hard-wrap
+      // at day-cycle boundaries.
+      const dtSec = (dtMs || 16) / 1000
+      starTwinkleElapsed += dtSec
+      const swapProb = STAR_BUCKET_SWAP_RATE * dtSec
       const children = starsGroup.children
       for (let i = 0; i < children.length; i++) {
-        if (Math.random() < 0.02) {
+        const child = children[i]
+        const ud = child.userData
+        child.scale.setScalar(1 + Math.sin(starTwinkleElapsed * ud.twinkleSpeed + ud.twinklePhase) * 0.12)
+        // Occasional bucket swap adds a secondary colour flicker on top of the
+        // continuous scale pulse.
+        if (Math.random() < swapProb) {
           const brightness = 0.3 + Math.random() * 0.7
           const bucket = _getStarBrightnessBucket(brightness)
-          children[i].userData.starBrightnessBucket = bucket
-          children[i].material = _getStarMaterialForBucket(bucket)
+          ud.starBrightnessBucket = bucket
+          child.material = _getStarMaterialForBucket(bucket)
         }
       }
       // Fade stars based on how "night" it is.
