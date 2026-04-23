@@ -13,7 +13,7 @@ import { initMastery, recordHarvest, getMasteryData, getMasteryStars, getMastery
 import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel, isSetComplete, getCompletedSetsCount, getTotalItemsFound, COLLECTION_DEFINITIONS } from './js/collections.js'
 import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
-import { initParticles, createParticleEffect, createFootstepDust, updateParticles } from './js/particles.js'
+import { initParticles, createParticleEffect, createFootstepDust, updateParticles, getActiveEffectCount } from './js/particles.js'
 import { FarmActions } from './js/farm-actions.js'
 import { showToast } from './js/toasts.js'
 import { QuestSystem } from './js/quests.js'
@@ -3020,6 +3020,46 @@ function animateChimneySmoke (time, frameEnv) {
   }
 }
 
+// ── Fountain spray particles ─────────────────────────────────────────────────
+// Emit a small water-droplet plume from each fountain's top basin every ~500 ms.
+// Uses the InstancedMesh particle pool — no GC overhead. WeakMap keyed by the
+// top mesh so emitter state is collected automatically when decorations are
+// rebuilt or removed.
+const _fountainLastEmit = new WeakMap()
+const _fountainWorldPos = new THREE.Vector3()
+const FOUNTAIN_SPRAY_INTERVAL_MS = 500
+// Skip ambient spray when the shared 300-slot particle pool is already busy,
+// so gameplay VFX (harvest/coin/levelup) never get crowded out.
+const FOUNTAIN_SPRAY_POOL_LIMIT = 220
+
+function animateFountainSpray (time) {
+  if (!farmState.decorations || !farmState.decorations.length) return
+  if (getActiveEffectCount() > FOUNTAIN_SPRAY_POOL_LIMIT) return
+
+  for (const deco of farmState.decorations) {
+    if (!deco.mesh) continue
+    const tops = deco.mesh.userData.fountainSprayTops
+    if (!Array.isArray(tops) || tops.length === 0) continue
+
+    for (const top of tops) {
+      const last = _fountainLastEmit.get(top)
+      if (last === undefined) {
+        // Stagger first emit so all fountains don't burst in unison
+        const phase = top.userData.fountainSprayPhase || 0
+        _fountainLastEmit.set(top, time - (FOUNTAIN_SPRAY_INTERVAL_MS - phase % FOUNTAIN_SPRAY_INTERVAL_MS))
+        continue
+      }
+      if (time - last < FOUNTAIN_SPRAY_INTERVAL_MS) continue
+      _fountainLastEmit.set(top, time)
+      top.getWorldPosition(_fountainWorldPos)
+      // top basin lip sits a few cm above the mesh center; +0.05 starts droplets
+      // just above the rim. The particle system adds its own small Y jitter.
+      _fountainWorldPos.y += 0.05
+      createParticleEffect('fountainSpray', _fountainWorldPos)
+    }
+  }
+}
+
 // ── Tree growth update ───────────────────────────────────────────────────────
 function updateTrees (dtMs) {
   const effects = getBuildingEffects(farmState.buildings)
@@ -3429,6 +3469,7 @@ function gameLoop (time) {
   updateWindowGlow(dtMs, frameEnv)
   updateDecorations(time, frameEnv)
   animateChimneySmoke(time, frameEnv)
+  animateFountainSpray(time)
   updateParticles(dtMs)
 
   // Energy regen

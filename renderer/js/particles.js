@@ -158,6 +158,20 @@ const EFFECT_CONFIGS = {
     direction: { x: 0, y: 0.5, z: 0 },
     fadeOut: true,
     radialBurst: true        // spread outward in XZ — reads cleanly top-down
+  },
+  fountainSpray: {
+    // Tiny water droplets that arc up from a fountain top basin and fall back.
+    // Positive gravity + short lifetime keeps the plume tight (~0.2 m above start).
+    count: 2,
+    color: 0x9bd6ff,
+    colorPalette: [0x9bd6ff, 0xc4e6ff, 0x6fb5e8, 0xb6dffc],
+    size: 0.07,
+    speed: 1.4,
+    spread: 0.2,
+    lifetime: 700,
+    gravity: 4.5,            // positive = falls back down (droplets arc)
+    direction: { x: 0, y: 1, z: 0 },
+    fadeOut: true
   }
 }
 

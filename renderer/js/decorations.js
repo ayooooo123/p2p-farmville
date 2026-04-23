@@ -158,6 +158,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
   group.userData.windmillRotors = []
   group.userData.windDecorations = []
   group.userData.waterMeshes = []
+  group.userData.fountainSprayTops = []
 
   switch (def.type) {
     case 'fence': _buildFence(group, def); break
@@ -203,6 +204,12 @@ function _trackWaterMesh (group, mesh, waterType, rng = Math.random) {
 function _trackWindmillRotor (group, rotor) {
   rotor.userData.isWindmillRotor = true
   group.userData.windmillRotors.push(rotor)
+}
+
+function _trackFountainSprayTop (group, mesh, rng = Math.random) {
+  // Stagger first emission so multiple fountains don't burst in lockstep
+  mesh.userData.fountainSprayPhase = rng() * 1000
+  group.userData.fountainSprayTops.push(mesh)
 }
 
 function _buildFence (g, def) {
@@ -349,9 +356,10 @@ function _buildFountain (g, def, rng) {
   pillar.position.y = 0.9
   pillar.castShadow = true
   g.add(pillar)
-  // Top basin
+  // Top basin — tagged so app.js can emit a periodic spray plume from above it
   const top = new THREE.Mesh(topGeo, mat)
   top.position.y = 1.55
+  _trackFountainSprayTop(g, top, rng)
   g.add(top)
 }
 
