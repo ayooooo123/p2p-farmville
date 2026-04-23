@@ -160,12 +160,16 @@ export function createAnimalMesh (animalType) {
   const eyeGeo = _getSharedGeometry('eye:unit', () => new THREE.SphereGeometry(1, 6, 5))
   const eyeMat = _getSharedMaterial('eye:dark', () => new THREE.MeshBasicMaterial({ color: 0x111111 }))
   const eyeR = def.headSize * 0.16
+  const eyeMeshes = []
   for (const ex of [-def.headSize * 0.55, def.headSize * 0.55]) {
     const eye = new THREE.Mesh(eyeGeo, eyeMat)
     eye.position.set(ex, def.headSize * 0.18, -def.headSize * 0.78)
     eye.scale.setScalar(eyeR)
+    eye.userData.baseScaleY = eye.scale.y
     headGroup.add(eye)
+    eyeMeshes.push(eye)
   }
+  group.userData.eyeMeshes = eyeMeshes
 
   // ── Legs: each wrapped in a pivot Group for rotation ─────────────────────
   // Pivot is placed at the body-bottom attachment point.
@@ -548,6 +552,14 @@ const PECK_HOLD_END = 0.45        // fraction of cycle: end of hold
 const PECK_DIP_RAD = 0.85         // peak head dip (rad)
 const PECK_DROP_FACTOR = 0.30     // peak head drop as fraction of headSize
 
+// Eye blink (all animals) — close, brief hold, slightly slower open.
+const BLINK_DURATION_MS = 180
+const BLINK_INTERVAL_MIN_MS = 2500
+const BLINK_INTERVAL_MAX_MS = 6000
+const BLINK_CLOSED_SCALE = 0.05   // eyelid-closed Y scale, as fraction of base
+const BLINK_CLOSE_END = 0.4       // fraction of cycle: lid fully closed
+const BLINK_HOLD_END = 0.55       // fraction of cycle: end of hold
+
 /**
  * Update animal state — wander movement + leg swing + body bob.
  * @param {object} animal
@@ -815,6 +827,56 @@ export function updateAnimalState (animal, dtMs) {
       const pivot = earPivots[i]
       const baseX = pivot.userData.baseRotX || 0
       pivot.rotation.x = baseX + (es.offsets[i] + idleSway) * twitchScale
+    }
+  }
+
+  // ── Eye blink (all animals) ───────────────────────────────────────────────
+  // Lazy state: random initial timer so the herd doesn't blink in lockstep.
+  // While idle we only tick the timer; while blinking we mutate eye.scale.y
+  // through close → hold → open with smoothstep easing.
+  const eyes = animal.mesh.userData.eyeMeshes
+  if (eyes && eyes.length > 0) {
+    if (!animal.blinkState) {
+      animal.blinkState = {
+        timer: BLINK_INTERVAL_MIN_MS + Math.random() * (BLINK_INTERVAL_MAX_MS - BLINK_INTERVAL_MIN_MS),
+        blinking: false,
+        phase: 0
+      }
+    }
+    const bs = animal.blinkState
+    if (bs.blinking) {
+      bs.phase += dtMs / BLINK_DURATION_MS
+      let scaleFrac
+      if (bs.phase < BLINK_CLOSE_END) {
+        const t = bs.phase / BLINK_CLOSE_END
+        const e = t * t * (3 - 2 * t)
+        scaleFrac = 1 + (BLINK_CLOSED_SCALE - 1) * e
+      } else if (bs.phase < BLINK_HOLD_END) {
+        scaleFrac = BLINK_CLOSED_SCALE
+      } else if (bs.phase < 1) {
+        const t = (bs.phase - BLINK_HOLD_END) / (1 - BLINK_HOLD_END)
+        const e = t * t * (3 - 2 * t)
+        scaleFrac = BLINK_CLOSED_SCALE + (1 - BLINK_CLOSED_SCALE) * e
+      } else {
+        scaleFrac = 1
+        bs.blinking = false
+        // Subtract any overshoot from the next interval so a long frame
+        // doesn't stretch cadence; clamp lower bound so we never schedule the
+        // next blink in the past.
+        const overshootMs = (bs.phase - 1) * BLINK_DURATION_MS
+        const nextIntervalMs = BLINK_INTERVAL_MIN_MS + Math.random() * (BLINK_INTERVAL_MAX_MS - BLINK_INTERVAL_MIN_MS)
+        bs.timer = Math.max(0, nextIntervalMs - overshootMs)
+        bs.phase = 0
+      }
+      for (const eye of eyes) {
+        eye.scale.y = eye.userData.baseScaleY * scaleFrac
+      }
+    } else {
+      bs.timer -= dtMs
+      if (bs.timer <= 0) {
+        bs.blinking = true
+        bs.phase = -bs.timer / BLINK_DURATION_MS  // carry overshoot in
+      }
     }
   }
 
