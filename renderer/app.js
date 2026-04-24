@@ -2961,6 +2961,20 @@ function updateDecorations (time, frameEnv) {
         // being perfectly 1-D without turning into a cartoony wobble.
         child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
         child.rotation.x = baseRotX + swayX * (0.04 * wp.str)
+      } else if (child.userData.windKind === 'pondLily') {
+        // Lily pad floater — tiny tilt from ripple surface, tiny vertical bob.
+        // Coefficients tuned against the geometry in _buildPond: pad radius
+        // 0.22, pivot baseY 0.115, water top y=0.08. Worst case (stormy
+        // wp.str=2.6, gustEnvelope=1.35, sway magnitude ≈ √2) drops the edge
+        // by 0.22·sin(0.015·2.6·√2·1.35) ≈ 0.016 plus bob 0.002·1.35 ≈ 0.003,
+        // leaving ~0.008 margin above the water surface.
+        child.rotation.z = baseRotZ + swayZ * (0.015 * wp.str)
+        child.rotation.x = baseRotX + swayX * (0.015 * wp.str)
+        // Snapshot the rest height on first animation frame so the bob below
+        // always offsets from the unbobbed Y, never from the already-bobbed
+        // position. Avoids slow drift if callers forget to seed userData.baseY.
+        if (child.userData.baseY === undefined) child.userData.baseY = child.position.y
+        child.position.y = child.userData.baseY + Math.sin(time * decoWindFreq * 0.5 + phase) * 0.002 * gustEnvelope
       } else {
         child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
         child.rotation.x = baseRotX + swayX * (0.04 * wp.str)

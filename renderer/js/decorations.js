@@ -643,6 +643,42 @@ function _buildPond (g, def, rng) {
     rock.scale.y = 0.5
     g.add(rock)
   }
+  // Floating lily pads — small discs drifting on the water surface.
+  // One gets a bloom so the pond reads as alive rather than empty blue.
+  // Sizing/height chosen so the pad never clips through the water during the
+  // stormy-wind tilt cycle. Water top sits at y=0.08 (cylinder centered y=0.04,
+  // height 0.08). Pad pivot y=0.115 → pad bottom y=0.1075 at rest (gap 0.0275).
+  // Worst-case tilt in stormy wind (wp.str=2.6, gustEnvelope≈1.35) on the
+  // 0.015 coefficient in app.js is ~0.074 rad, dropping a 0.22-radius edge by
+  // 0.22·sin(0.074)≈0.016; bob adds 0.002·1.35≈0.003. Pad edge worst-case y
+  // ≈ 0.1075 − 0.016 − 0.003 = 0.0885, leaving ~0.008 margin above water.
+  const padGeo = _getSharedGeometry('pond:lilypad', () => new THREE.CylinderGeometry(0.22, 0.22, 0.015, 8))
+  const padMat = _getSharedMaterial('pond:lilypad', () => new THREE.MeshStandardMaterial({ color: 0x3a7d3a, roughness: 0.85 }))
+  const bloomGeo = _getSharedGeometry('pond:lilypad-bloom', () => new THREE.SphereGeometry(0.07, 6, 5))
+  const bloomMat = _getSharedMaterial('pond:lilypad-bloom', () => new THREE.MeshStandardMaterial({ color: 0xffc0cb, roughness: 0.7 }))
+  const padCount = 3
+  const bloomIndex = Math.floor(rng() * padCount)
+  for (let i = 0; i < padCount; i++) {
+    // Pivot group so pad + optional bloom tilt/bob together as one floater
+    const pivot = new THREE.Group()
+    const angle = rng() * Math.PI * 2
+    const radius = 0.4 + rng() * 0.6
+    pivot.position.set(Math.cos(angle) * radius, 0.115, Math.sin(angle) * radius)
+    pivot.rotation.y = rng() * Math.PI * 2
+
+    const pad = new THREE.Mesh(padGeo, padMat)
+    pivot.add(pad)
+
+    if (i === bloomIndex) {
+      const bloom = new THREE.Mesh(bloomGeo, bloomMat)
+      bloom.position.y = 0.05
+      pivot.add(bloom)
+    }
+
+    pivot.userData.baseY = pivot.position.y
+    _trackWindDecoration(g, pivot, 'pondLily', 1, rng)
+    g.add(pivot)
+  }
 }
 
 function _buildBridge (g, def) {
