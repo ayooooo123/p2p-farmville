@@ -231,6 +231,7 @@ export function createBuildingMesh (buildingType) {
   group.userData.windowPanes = []
   group.userData.windowGlowMaterials = []
   group.userData.chimneyTopMeshes = []
+  group.userData.weathervanes = []
   group.userData.interactiveMeshes = []
 
   const w = def.width
@@ -386,6 +387,53 @@ export function createBuildingMesh (buildingType) {
     group.userData.chimneyTopMeshes.push(cap)
     group.add(cap)
   }
+
+  // --- Weathervane on roof apex — tracks wind direction (animated by app.js).
+  // Added last so existing tests that assert child indices for slab/walls/roof/
+  // door/chimney keep working. Pole sits a small gap above the pyramid apex
+  // (wallTop + roofH) to avoid z-fighting with the transparent greenhouse roof.
+  // All geometry/materials go through the shared cache so repeated buildings
+  // don't each allocate fresh vane meshes.
+  const VANE_POLE_H = 0.45
+  const apexY = wallTop + roofH
+  const poleGeo = _getBuildingPartGeometry('vane-pole', [0.03, 0.03, VANE_POLE_H, 6], () => new THREE.CylinderGeometry(0.03, 0.03, VANE_POLE_H, 6))
+  const ironMat = _getBuildingPartMaterial('vane-iron', ['0x333333', '0.6', '0.4'], () => new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.6, metalness: 0.4 }))
+  const vanePole = new THREE.Mesh(poleGeo, ironMat)
+  vanePole.position.y = apexY + VANE_POLE_H / 2 + 0.04
+  vanePole.castShadow = true
+  group.add(vanePole)
+
+  const vaneBallGeo = _getBuildingPartGeometry('vane-ball', [0.06, 5, 4], () => new THREE.SphereGeometry(0.06, 5, 4))
+  const vaneBall = new THREE.Mesh(vaneBallGeo, ironMat)
+  vaneBall.position.y = apexY + 0.04
+  group.add(vaneBall)
+
+  // Compass cross — two perpendicular rods just below the vane pivot.
+  const compassY = apexY + VANE_POLE_H + 0.04
+  const compassGeo = _getBuildingPartGeometry('vane-compass-arm', [0.30, 0.014, 0.014], () => new THREE.BoxGeometry(0.30, 0.014, 0.014))
+  const compassArmX = new THREE.Mesh(compassGeo, ironMat)
+  compassArmX.position.y = compassY - 0.03
+  group.add(compassArmX)
+  const compassArmZ = new THREE.Mesh(compassGeo, ironMat)
+  compassArmZ.rotation.y = Math.PI / 2
+  compassArmZ.position.y = compassY - 0.03
+  group.add(compassArmZ)
+
+  // Rotating vane pivot — arrow points +X at rest; app.js sets rotation.y to
+  // the current wind drift angle (shortest-path lerped each frame).
+  const vanePivot = new THREE.Group()
+  vanePivot.position.y = compassY
+  const tipGeo = _getBuildingPartGeometry('vane-tip', [0.035, 0.14, 5], () => new THREE.ConeGeometry(0.035, 0.14, 5))
+  const tip = new THREE.Mesh(tipGeo, ironMat)
+  tip.rotation.z = -Math.PI / 2
+  tip.position.x = 0.16
+  vanePivot.add(tip)
+  const tailGeo = _getBuildingPartGeometry('vane-tail', [0.12, 0.07, 0.012], () => new THREE.BoxGeometry(0.12, 0.07, 0.012))
+  const tail = new THREE.Mesh(tailGeo, ironMat)
+  tail.position.x = -0.10
+  vanePivot.add(tail)
+  group.userData.weathervanes.push(vanePivot)
+  group.add(vanePivot)
 
   return group
 }

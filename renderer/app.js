@@ -3071,6 +3071,41 @@ function animateChimneySmoke (time, frameEnv) {
   }
 }
 
+// ── Building weathervanes ────────────────────────────────────────────────────
+// Smoothly rotate each building's rooftop weathervane toward the current wind
+// direction. Uses dt-scaled exponential smoothing so the settle rate is frame-
+// rate independent. Shortest-path delta prevents 360° whip-arounds.
+const _VANE_FOLLOW_RATE = 3.0  // ~95% of delta in ~1s
+const _VANE_MAX_DT = 0.1
+const _TWO_PI = Math.PI * 2
+
+function animateBuildingWeathervanes (frameEnv) {
+  if (!farmState.buildings || !farmState.buildings.length) return
+  // Real weathervanes point into the wind. windDriftAngle is the direction the
+  // wind pushes objects (downwind), so flip by PI so the arrow tip faces upwind.
+  const target = frameEnv.windDriftAngle + Math.PI
+  const dt = frameEnv.decorationDtMs * 0.001
+  const clampedDt = dt > _VANE_MAX_DT ? _VANE_MAX_DT : (dt > 0 ? dt : 0)
+  const k = 1 - Math.exp(-_VANE_FOLLOW_RATE * clampedDt)
+
+  for (const building of farmState.buildings) {
+    if (!building.mesh) continue
+    const vanes = building.mesh.userData.weathervanes
+    if (!Array.isArray(vanes) || vanes.length === 0) continue
+    for (const vane of vanes) {
+      if (!vane.userData.vaneInitialized) {
+        // Snap new buildings to current wind direction so they don't visibly
+        // rotate from a default heading on spawn or load.
+        vane.rotation.y = target
+        vane.userData.vaneInitialized = true
+        continue
+      }
+      const delta = ((target - vane.rotation.y + Math.PI) % _TWO_PI + _TWO_PI) % _TWO_PI - Math.PI
+      vane.rotation.y += delta * k
+    }
+  }
+}
+
 // ── Fountain spray particles ─────────────────────────────────────────────────
 // Emit a small water-droplet plume from each fountain's top basin every ~500 ms.
 // Uses the InstancedMesh particle pool — no GC overhead. WeakMap keyed by the
@@ -3524,6 +3559,7 @@ function gameLoop (time) {
     frameEnv.windCosDrift * frameEnv.windParams.str * 1.6
   )
   animateChimneySmoke(time, frameEnv)
+  animateBuildingWeathervanes(frameEnv)
   animateFountainSpray(time)
   updateParticles(dtMs)
 
