@@ -3046,6 +3046,76 @@ function updateDecorations (time, frameEnv) {
       const g = 0x82 / 255 + drift * 0.06 * colorBoost
       const b = 0xb4 / 255 + drift * 0.08 * colorBoost
       child.material.color.setRGB(Math.min(1, r), Math.min(1, g), Math.min(1, b))
+
+      // 4. Rain ripples — raindrops striking the water surface. Parented to the
+      //    decoration group (not the water mesh) so the water's ±1.8% scale
+      //    pulse doesn't deform them.
+      const pool = child.userData.ripplePool
+      if (pool && pool.length) {
+        const isRaining = weather === 'rainy' || weather === 'stormy'
+        if (isRaining) {
+          // Stormy doubles the spawn rate vs rainy.
+          const spawnInterval = weather === 'stormy' ? 330 : 670
+          // First spawn gets jittered so multiple ponds don't pop in lockstep
+          // when rain starts. Jitter seeded per water mesh in decorations.js.
+          if (child.userData.rippleNextSpawnMs == null) {
+            const jitter = child.userData.rippleSpawnJitter ?? 0
+            child.userData.rippleNextSpawnMs = time + spawnInterval * jitter
+          }
+
+          if (time >= child.userData.rippleNextSpawnMs) {
+            child.userData.rippleNextSpawnMs = time + spawnInterval * (0.8 + Math.random() * 0.4)
+            for (const ripple of pool) {
+              if (!ripple.visible) {
+                // Uniform disc sampling within the water surface, clamped by
+                // maxRatio so the ripple never expands past the water edge.
+                const a = Math.random() * Math.PI * 2
+                const rr = Math.sqrt(Math.random()) * child.userData.rippleRadius * child.userData.rippleMaxRatio
+                ripple.position.x = Math.cos(a) * rr
+                ripple.position.z = Math.sin(a) * rr
+                ripple.userData.ageMs = 0
+                ripple.visible = true
+                break
+              }
+            }
+          }
+
+          const lifetime = child.userData.rippleLifetimeMs
+          const maxRatio = child.userData.rippleMaxRatio
+          const waterRadius = child.userData.rippleRadius
+          for (const ripple of pool) {
+            if (!ripple.visible) continue
+            ripple.userData.ageMs += dtMs
+            const tRel = ripple.userData.ageMs / lifetime
+            if (tRel >= 1.0) {
+              ripple.visible = false
+              ripple.material.opacity = 0
+              continue
+            }
+            // Ease-out expansion: sqrt(t) grows fast, then slows.
+            const easeT = Math.sqrt(tRel)
+            const scale = (0.05 + easeT * (maxRatio - 0.05)) * waterRadius
+            ripple.scale.set(scale, scale, 1)
+            // Opacity: fade in first 15%, then fade out to zero.
+            const fadeIn = tRel < 0.15 ? (tRel / 0.15) : 1
+            const fadeOut = 1 - tRel
+            ripple.material.opacity = 0.55 * fadeIn * fadeOut
+          }
+        } else {
+          // Weather just shifted off rain — clear any in-flight ripples.
+          // Reset the next-spawn deadline so when rain resumes, the per-mesh
+          // jitter re-applies (otherwise every mesh's stale deadline has
+          // already expired and they all spawn together).
+          for (const ripple of pool) {
+            if (ripple.visible) {
+              ripple.visible = false
+              ripple.userData.ageMs = 0
+              ripple.material.opacity = 0
+            }
+          }
+          child.userData.rippleNextSpawnMs = null
+        }
+      }
     }
   }
 }

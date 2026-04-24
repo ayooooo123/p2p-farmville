@@ -163,6 +163,80 @@ export function getDoghouseEyeMaterial () {
   return _sharedDoghouseEyeMaterial
 }
 
+// ── Rain ripple pool ────────────────────────────────────────────────────────
+// Per-water-mesh pool of thin expanding ring meshes. During rainy/stormy
+// weather app.js re-uses slots to simulate raindrops striking the surface.
+// Shared ring geometry across all water types; each ripple needs its own
+// material (per-mesh opacity fade), so we clone from a prototype that is
+// deliberately NOT marked sharedAsset — clones should be disposable with the
+// decoration group they belong to.
+const RIPPLE_POOL_SIZE = 4
+const RIPPLE_SURFACE_EPSILON = 0.002
+const RIPPLE_CONFIG = {
+  pond:     { radius: 1.5, lifetimeMs: 1100, maxRatio: 0.90 },
+  fountain: { radius: 1.0, lifetimeMs:  900, maxRatio: 0.85 },
+  birdbath: { radius: 0.4, lifetimeMs:  800, maxRatio: 0.80 }
+  // 'well' intentionally skipped — water sits inside a narrow stone enclosure
+  // where ripples would be hidden from the top-down camera.
+}
+
+function _getRippleRingGeometry () {
+  // Thin unit ring (outer radius 1). 22 segments reads smooth at the zoom
+  // players use; still only ~45 vertices.
+  return _getSharedGeometry('water:ripple:ring',
+    () => new THREE.RingGeometry(0.92, 1.0, 22))
+}
+
+let _rippleBaseMaterial = null
+function _getRippleBaseMaterial () {
+  if (!_rippleBaseMaterial) {
+    _rippleBaseMaterial = new THREE.MeshBasicMaterial({
+      color: 0xaed6ff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.FrontSide
+    })
+  }
+  return _rippleBaseMaterial
+}
+
+function _allocateRipplePool (group, waterMesh, waterType, rng) {
+  const cfg = RIPPLE_CONFIG[waterType]
+  if (!cfg) return
+  const geo = _getRippleRingGeometry()
+  const proto = _getRippleBaseMaterial()
+  // Derive surface Y from the water mesh itself so the ripple stays aligned
+  // if the water mesh's geometry/position ever changes (no second source of truth).
+  const waterHeight = waterMesh.geometry?.parameters?.height ?? 0.08
+  const surfaceY = waterMesh.position.y + waterHeight / 2 + RIPPLE_SURFACE_EPSILON
+  const pool = []
+  for (let i = 0; i < RIPPLE_POOL_SIZE; i++) {
+    const mat = proto.clone()
+    // Clone.userData inherits from prototype (which we left empty of sharedAsset),
+    // so disposeMesh() in performance.js will release these cleanly with the group.
+    const ring = new THREE.Mesh(geo, mat)
+    ring.rotation.x = -Math.PI / 2         // lay flat on XZ plane
+    ring.position.y = surfaceY             // slight offset above water top
+    ring.scale.setScalar(0)
+    ring.visible = false
+    ring.renderOrder = 1                   // composite above water
+    ring.raycast = () => {}                // ripples are purely cosmetic
+    ring.userData.isRipple = true
+    ring.userData.ageMs = 0
+    pool.push(ring)
+    group.add(ring)
+  }
+  waterMesh.userData.ripplePool = pool
+  waterMesh.userData.rippleRadius = cfg.radius
+  waterMesh.userData.rippleLifetimeMs = cfg.lifetimeMs
+  waterMesh.userData.rippleMaxRatio = cfg.maxRatio
+  // Stagger the first spawn across water meshes using the same seeded rng so
+  // multiple ponds don't pop in lockstep when rain first starts.
+  waterMesh.userData.rippleSpawnJitter = rng()
+  waterMesh.userData.rippleNextSpawnMs = null
+}
+
 /**
  * Create procedural 3D decoration mesh
  * @param {string} decoType - key in DECO_DEFINITIONS
@@ -223,6 +297,7 @@ function _trackWaterMesh (group, mesh, waterType, rng = Math.random) {
   mesh.userData.waterType = waterType
   mesh.userData.waterPhase = rng() * Math.PI * 2
   if (mesh.material) group.userData.waterMeshes.push(mesh)
+  _allocateRipplePool(group, mesh, waterType, rng)
 }
 
 function _trackWindmillRotor (group, rotor) {
