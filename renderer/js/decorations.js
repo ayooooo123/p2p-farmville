@@ -140,6 +140,29 @@ function _getSharedMaterial (cacheKey, factory) {
   return material
 }
 
+// Shared across every doghouse — app.js mutates emissiveIntensity once per
+// frame based on nightFactor. Lazy-initialised the first time a doghouse is
+// built; the exported getter returns null until then so the frame loop can
+// early-out when no doghouses exist.
+let _sharedDoghouseEyeMaterial = null
+function _getDoghouseEyeMaterial () {
+  if (!_sharedDoghouseEyeMaterial) {
+    _sharedDoghouseEyeMaterial = _getSharedMaterial('doghouse:eye', () => new THREE.MeshStandardMaterial({
+      color: 0x1a0d04,
+      emissive: new THREE.Color(0xffaa33),
+      emissiveIntensity: 0.0,
+      roughness: 0.5,
+      metalness: 0.0
+    }))
+    _sharedDoghouseEyeMaterial.userData.baseEmissiveIntensity = 1.6
+  }
+  return _sharedDoghouseEyeMaterial
+}
+
+export function getDoghouseEyeMaterial () {
+  return _sharedDoghouseEyeMaterial
+}
+
 /**
  * Create procedural 3D decoration mesh
  * @param {string} decoType - key in DECO_DEFINITIONS
@@ -651,6 +674,21 @@ function _buildDoghouse (g, def) {
   door.rotation.x = Math.PI / 2
   door.position.set(0, 0.22, -0.42)
   g.add(door)
+
+  // Glowing eyes peeking from the door at night. Both eyes share a single
+  // cached material whose emissiveIntensity is driven by nightFactor from
+  // app.js (see updateDecorations). The eyes are .visible = false by default
+  // so they cost nothing until dusk lights them up.
+  const eyeGeo = _getSharedGeometry('doghouse:eye', () => new THREE.SphereGeometry(0.024, 6, 5))
+  const eyeMat = _getDoghouseEyeMaterial()
+  g.userData.doghouseEyes = []
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(eyeGeo, eyeMat)
+    eye.position.set(side * 0.055, 0.26, -0.448)
+    eye.visible = false
+    g.userData.doghouseEyes.push(eye)
+    g.add(eye)
+  }
 }
 
 function _buildPond (g, def, rng) {
@@ -874,4 +912,4 @@ export function createDecoData (decoType, x, z, variantSeed) {
   }
 }
 
-window.DecoSystem = { DECO_DEFINITIONS, createDecoMesh, createDecoData }
+window.DecoSystem = { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial }

@@ -5,7 +5,7 @@ import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed,
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
 import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildingEffects, updateCraftingQueue, startCrafting } from './js/buildings.js'
-import { DECO_DEFINITIONS, createDecoMesh, createDecoData } from './js/decorations.js'
+import { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial } from './js/decorations.js'
 import { VEHICLE_DEFINITIONS, createVehicleMesh, getVehicleSpeedMultiplier } from './js/vehicles.js'
 import { initInventory, addItem, removeItem, hasItem, getItemQty, sellItem, getInventory, renderInventoryPanel, setCapacityBonus, getItemCount, getMaxCapacity } from './js/inventory.js'
 import * as NeighborRenderer from './js/neighbor-renderer.js'
@@ -2895,8 +2895,27 @@ function updateDecorations (time, frameEnv) {
   const sinDrift = frameEnv.windSinDrift
   const cosDrift = frameEnv.windCosDrift
 
+  // Doghouse eye glow — single shared material mutated once per frame (null
+  // until the first doghouse is built). Per-decoration the eyes toggle
+  // .visible below the dusk threshold, skipping GPU work in daylight; the
+  // per-deco check itself still runs in the loop below.
+  const doghouseEyeMat = getDoghouseEyeMaterial()
+  const doghouseEyesVisible = nightFactor > 0.05
+  if (doghouseEyeMat) {
+    const baseI = doghouseEyeMat.userData.baseEmissiveIntensity || 1.6
+    const breath = 0.88 + 0.12 * Math.sin(t * 1.3)
+    doghouseEyeMat.emissiveIntensity = baseI * nightFactor * breath
+  }
+
   for (const deco of farmState.decorations) {
     if (!deco.mesh) continue
+
+    const doghouseEyes = deco.mesh.userData.doghouseEyes
+    if (doghouseEyes && doghouseEyes.length > 0) {
+      for (const eye of doghouseEyes) {
+        if (eye.visible !== doghouseEyesVisible) eye.visible = doghouseEyesVisible
+      }
+    }
 
     const lampGlow = deco.mesh.userData.lampGlowMesh
     const lampHalo = deco.mesh.userData.lampHaloMesh
