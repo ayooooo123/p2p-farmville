@@ -57,8 +57,11 @@ test('createDecoMesh reuses flower_box submesh assets while keeping stalk groups
   const firstFlowerBox = createDecoMesh('flower_box')
   const secondFlowerBox = createDecoMesh('flower_box')
 
-  assert.equal(firstFlowerBox.children.length, 6)
-  assert.equal(secondFlowerBox.children.length, 6)
+  // Flower boxes may spawn an optional butterfly companion (seeded, ~60% chance)
+  // as the final child — 6 children without, 7 with. Only the first 6 children
+  // (planter + 5 stalks) are asserted here.
+  assert.ok(firstFlowerBox.children.length === 6 || firstFlowerBox.children.length === 7)
+  assert.equal(firstFlowerBox.children.length, secondFlowerBox.children.length)
 
   const firstBox = getMesh(firstFlowerBox, 0, 'first flower box planter')
   const secondBox = getMesh(secondFlowerBox, 0, 'second flower box planter')
@@ -96,7 +99,8 @@ test('createDecoMesh reuses flower_box submesh assets while keeping stalk groups
 })
 
 function getFlowerStalks (group) {
-  return group.children.filter(child => child.isGroup)
+  // Skip butterfly companions (also THREE.Group) so callers only iterate real stalks.
+  return group.children.filter(child => child.isGroup && !child.userData?.isButterfly)
 }
 
 test('createDecoMesh reuses shared assets across repeated flower decorations of the same type', () => {

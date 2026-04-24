@@ -257,6 +257,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
   group.userData.waterMeshes = []
   group.userData.fountainSprayTops = []
   group.userData.gnomeBobs = []
+  group.userData.butterflies = []
 
   switch (def.type) {
     case 'fence': _buildFence(group, def); break
@@ -309,6 +310,98 @@ function _trackFountainSprayTop (group, mesh, rng = Math.random) {
   // Stagger first emission so multiple fountains don't burst in lockstep
   mesh.userData.fountainSprayPhase = rng() * 1000
   group.userData.fountainSprayTops.push(mesh)
+}
+
+function _trackButterfly (group, butterfly) {
+  butterfly.userData.isButterfly = true
+  group.userData.butterflies.push(butterfly)
+}
+
+// Palette of butterfly wing colors — each gets its own cached shared material.
+const _BUTTERFLY_COLORS = [0xff8c00, 0xffe564, 0xaed9ff, 0xe3a5f0]
+
+function _getButterflyWingGeometry (side) {
+  // PlaneGeometry baked into XZ plane (facing up, top-down friendly) with
+  // the inner edge sitting at local x=0 so the wing's mounting edge is the
+  // pivot origin. Rotating the wing's parent Group around the Z axis then
+  // flaps the wing up out of the XZ plane without spinning around its center.
+  return _getSharedGeometry(`butterfly:wing:${side}`, () => {
+    const geo = new THREE.PlaneGeometry(0.12, 0.09)
+    geo.rotateX(-Math.PI / 2)
+    geo.translate(side === 'right' ? 0.06 : -0.06, 0, 0)
+    return geo
+  })
+}
+
+function _getButterflyBodyGeometry () {
+  // Cylinder already baked along Z — avoids a per-mesh rotation at runtime.
+  return _getSharedGeometry('butterfly:body', () => {
+    const geo = new THREE.CylinderGeometry(0.012, 0.012, 0.08, 6)
+    geo.rotateX(Math.PI / 2)
+    return geo
+  })
+}
+
+function _getButterflyWingMaterial (color) {
+  return _getSharedMaterial(`butterfly:wing:${color}`,
+    () => new THREE.MeshStandardMaterial({
+      color,
+      side: THREE.DoubleSide,
+      roughness: 0.85,
+      metalness: 0
+    }))
+}
+
+function _getButterflyBodyMaterial () {
+  return _getSharedMaterial('butterfly:body',
+    () => new THREE.MeshStandardMaterial({ color: 0x2a1a0e, roughness: 0.9 }))
+}
+
+function _buildButterfly (g, orbitHeight, rng) {
+  const color = _BUTTERFLY_COLORS[Math.floor(rng() * _BUTTERFLY_COLORS.length)]
+  const wingMat = _getButterflyWingMaterial(color)
+  const bodyMat = _getButterflyBodyMaterial()
+
+  const butterfly = new THREE.Group()
+  butterfly.userData.wingPivots = []
+
+  const body = new THREE.Mesh(_getButterflyBodyGeometry(), bodyMat)
+  body.raycast = () => {} // cosmetic — never block clicks on underlying plot/decoration
+  butterfly.add(body)
+
+  for (const side of ['right', 'left']) {
+    const pivot = new THREE.Group()
+    const wing = new THREE.Mesh(_getButterflyWingGeometry(side), wingMat)
+    wing.raycast = () => {}
+    pivot.add(wing)
+    butterfly.add(pivot)
+    butterfly.userData.wingPivots.push(pivot)
+  }
+
+  butterfly.userData.flutterPhase = rng() * Math.PI * 2
+  butterfly.userData.orbitPhase = rng() * Math.PI * 2
+  butterfly.userData.orbitRadius = 0.35 + rng() * 0.2
+  butterfly.userData.orbitHeight = orbitHeight + (rng() - 0.5) * 0.15
+  butterfly.userData.baseSpeed = 0.7 + rng() * 0.5
+
+  // Seed a stable starting pose — position, yaw, and wing flap — so a render
+  // that occurs before the first updateDecorations() tick doesn't show the
+  // butterfly at (0,y,0) with default orientation and flat wings.
+  const p = butterfly.userData
+  const orbit = p.orbitPhase
+  butterfly.position.set(
+    Math.cos(orbit) * p.orbitRadius,
+    p.orbitHeight,
+    Math.sin(orbit * 1.3) * p.orbitRadius
+  )
+  butterfly.rotation.y = Math.atan2(-Math.sin(orbit), 1.3 * Math.cos(orbit * 1.3))
+  const seedFlap = Math.sin(p.flutterPhase) * 1.1
+  butterfly.userData.wingPivots[0].rotation.z = seedFlap
+  butterfly.userData.wingPivots[1].rotation.z = -seedFlap
+
+  _trackButterfly(g, butterfly)
+  g.add(butterfly)
+  return butterfly
 }
 
 function _buildFence (g, def) {
@@ -419,6 +512,9 @@ function _buildFlowerBox (g, def, rng) {
     _trackWindDecoration(g, stalk, 'flowerStalk', 0.55 + h * 0.8, rng)
     g.add(stalk)
   }
+
+  // Butterfly — ~60% chance of one fluttering above the flower box in daylight.
+  if (rng() < 0.6) _buildButterfly(g, 1.0, rng)
 }
 
 function _buildFlower (g, def, rng) {
@@ -457,6 +553,9 @@ function _buildFlower (g, def, rng) {
     _trackWindDecoration(g, stalk, 'flowerStalk', def.tall ? 1.35 : 0.9 + h * 0.3, rng)
     g.add(stalk)
   }
+
+  // Butterfly — ~60% chance of one fluttering above the flower cluster in daylight.
+  if (rng() < 0.6) _buildButterfly(g, def.tall ? 1.7 : 0.8, rng)
 }
 
 function _buildFountain (g, def, rng) {

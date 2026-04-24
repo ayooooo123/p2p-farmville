@@ -3025,6 +3025,41 @@ function updateDecorations (time, frameEnv) {
       }
     }
 
+    // Butterflies — daytime only. Orbit position and flap amplitude are scaled
+    // by dayFactor so the effect eases in/out across dusk/dawn instead of
+    // popping. At deep night we hide the group to skip per-wing work entirely.
+    const butterflies = deco.mesh.userData.butterflies
+    if (butterflies && butterflies.length) {
+      const dayFactor = 1 - nightFactor
+      const isDay = dayFactor > 0.05
+      for (const bf of butterflies) {
+        if (!isDay) {
+          if (bf.visible) bf.visible = false
+          continue
+        }
+        if (!bf.visible) bf.visible = true
+        const ud = bf.userData
+        const amp = dayFactor
+        const orbit = t * ud.baseSpeed + ud.orbitPhase
+        const sinO = Math.sin(orbit)
+        const cosO = Math.cos(orbit)
+        bf.position.x = cosO * ud.orbitRadius * amp
+        bf.position.z = Math.sin(orbit * 1.3) * ud.orbitRadius * amp
+        bf.position.y = ud.orbitHeight + Math.sin(t * 1.5 + ud.orbitPhase) * 0.08
+        // Yaw toward the actual motion tangent (path is a figure-8, not a
+        // circle, so a constant π/2 offset would mispoint through half the
+        // orbit). Scaling constants drop out under atan2.
+        const dx = -sinO
+        const dz = 1.3 * Math.cos(orbit * 1.3)
+        bf.rotation.y = Math.atan2(dx, dz)
+        const flap = Math.sin(t * 14 + ud.flutterPhase) * 1.1 * amp
+        const pivots = ud.wingPivots
+        // pivots[0] is the right wing (+X), pivots[1] is the left wing (-X).
+        pivots[0].rotation.z = flap
+        pivots[1].rotation.z = -flap
+      }
+    }
+
     const waterMeshes = deco.mesh.userData.waterMeshes || []
     for (const child of waterMeshes) {
       const wt = child.userData.waterType
