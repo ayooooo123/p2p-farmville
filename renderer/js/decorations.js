@@ -159,6 +159,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
   group.userData.windDecorations = []
   group.userData.waterMeshes = []
   group.userData.fountainSprayTops = []
+  group.userData.gnomeBobs = []
 
   switch (def.type) {
     case 'fence': _buildFence(group, def); break
@@ -171,7 +172,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
     case 'mailbox': _buildMailbox(group, def, rng); break
     case 'lamp': _buildLampPost(group, def); break
     case 'bench': _buildBench(group, def); break
-    case 'gnome': _buildGnome(group, def); break
+    case 'gnome': _buildGnome(group, def, rng); break
     case 'windmill': _buildWindmill(group, def); break
     case 'doghouse': _buildDoghouse(group, def); break
     case 'pond': _buildPond(group, def, rng); break
@@ -523,7 +524,7 @@ function _buildBench (g, def) {
   }
 }
 
-function _buildGnome (g, def) {
+function _buildGnome (g, def, rng = Math.random) {
   const bodyMat = _getSharedMaterial('gnome:body', () => new THREE.MeshStandardMaterial({ color: 0x4169e1 }))
   const bodyGeo = _getSharedGeometry('gnome:body', () => new THREE.CylinderGeometry(0.15, 0.2, 0.4, 8))
   const headMat = _getSharedMaterial('gnome:head', () => new THREE.MeshStandardMaterial({ color: 0xffcc99 }))
@@ -533,24 +534,34 @@ function _buildGnome (g, def) {
   const beardMat = _getSharedMaterial('gnome:beard', () => new THREE.MeshStandardMaterial({ color: 0xffffff }))
   const beardGeo = _getSharedGeometry('gnome:beard', () => new THREE.ConeGeometry(0.1, 0.2, 6))
 
+  // Bob pivot — body/head/hat/beard sit inside so idle bob animates all four together.
+  const bob = new THREE.Group()
+  bob.userData.bobPhase = rng() * Math.PI * 2
+  bob.userData.baseY = 0
+  bob.userData.baseRotationX = 0
+  if (!g.userData.gnomeBobs) g.userData.gnomeBobs = []
+  g.userData.gnomeBobs.push(bob)
+
   // Body
   const body = new THREE.Mesh(bodyGeo, bodyMat)
   body.position.y = 0.25
   body.castShadow = true
-  g.add(body)
+  bob.add(body)
   // Head
   const head = new THREE.Mesh(headGeo, headMat)
   head.position.y = 0.55
-  g.add(head)
+  bob.add(head)
   // Hat
   const hat = new THREE.Mesh(hatGeo, hatMat)
   hat.position.y = 0.82
   hat.castShadow = true
-  g.add(hat)
+  bob.add(hat)
   // Beard
   const beard = new THREE.Mesh(beardGeo, beardMat)
   beard.position.set(0, 0.4, -0.08)
-  g.add(beard)
+  bob.add(beard)
+
+  g.add(bob)
 }
 
 function _buildWindmill (g) {

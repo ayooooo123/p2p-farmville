@@ -2961,6 +2961,17 @@ function updateDecorations (time, frameEnv) {
       }
     }
 
+    const gnomeBobs = deco.mesh.userData.gnomeBobs
+    if (gnomeBobs && gnomeBobs.length) {
+      for (const bob of gnomeBobs) {
+        const phase = bob.userData.bobPhase ?? 0
+        const baseY = bob.userData.baseY ?? 0
+        const baseRotX = bob.userData.baseRotationX ?? 0
+        bob.position.y = baseY + Math.sin(t * 3.8 + phase) * 0.025
+        bob.rotation.x = baseRotX + Math.sin(t * 3.1 + phase * 1.3) * 0.022
+      }
+    }
+
     const waterMeshes = deco.mesh.userData.waterMeshes || []
     for (const child of waterMeshes) {
       const wt = child.userData.waterType
