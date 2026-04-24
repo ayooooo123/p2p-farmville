@@ -2955,6 +2955,14 @@ function updateDecorations (time, frameEnv) {
         // "bobbing on a loose neck" rather than mechanically flapping.
         child.rotation.z = baseRotZ + swayZ * (0.035 * wp.str)
         child.rotation.x = baseRotX + swayX * (0.020 * wp.str)
+      } else if (child.userData.windKind === 'scarecrowCloth') {
+        // Shirt-on-a-cross flutter — cloth hinges from the horizontal arm so
+        // the bottom edge swings most. Higher-frequency ripple layered on the
+        // base sway so storms read as proper fabric flapping instead of a
+        // rigid board tilting.
+        const flutter = Math.sin(time * decoWindFreq * 2.1 + phase * 2.8) * 0.05 * wp.str * gustEnvelope
+        child.rotation.z = baseRotZ + swayZ * (0.12 * wp.str) + flutter
+        child.rotation.x = baseRotX + swayX * (0.05 * wp.str) + flutter * 0.4
       } else if (child.userData.windKind === 'wellBucket') {
         // Rigid pendulum — rope+bucket swing together from the crossbar.
         // Z dominates so it reads as along-wind swing; small X keeps it from

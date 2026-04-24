@@ -433,15 +433,17 @@ function _buildScarecrow (g, def, rng) {
   headPivot.add(brim)
   _trackWindDecoration(g, headPivot, 'scarecrowHead', 1, rng)
   g.add(headPivot)
-  // Cloth on arms — tagged so app.js can sway it with the weather-driven wind system
+  // Cloth on arms — hinges from the horizontal arm (y=1.5) so wind flutter reads
+  // as fabric hanging from the shoulders rather than pivoting at its own center.
+  // Shared clothGeo is 0.6 tall, so offsetting the child by -0.3 pins its top edge at the pivot.
+  const clothPivot = new THREE.Group()
+  clothPivot.position.set(0, 1.5, 0)
   const cloth = new THREE.Mesh(clothGeo, clothMat)
-  cloth.position.set(0, 1.2, 0)
-  cloth.userData.isWindDecoration = true
-  cloth.userData.windKind = 'scarecrowCloth'
-  cloth.userData.baseRotationX = cloth.rotation.x
-  cloth.userData.baseRotationZ = cloth.rotation.z
-  cloth.userData.windPhase = rng() * Math.PI * 2
-  g.add(cloth)
+  cloth.position.y = -0.3
+  cloth.castShadow = true
+  clothPivot.add(cloth)
+  _trackWindDecoration(g, clothPivot, 'scarecrowCloth', 1, rng)
+  g.add(clothPivot)
 }
 
 function _buildMailbox (g, def, rng) {
