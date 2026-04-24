@@ -677,6 +677,13 @@ function _buildWell (g, def, rng) {
   const woodMat = _getSharedMaterial('well:wood', () => new THREE.MeshStandardMaterial({ color: 0x8b6914 }))
   const postGeo = _getSharedGeometry('well:post', () => new THREE.CylinderGeometry(0.05, 0.05, 1.2, 5))
   const roofGeo = _getSharedGeometry('well:roof', () => new THREE.ConeGeometry(0.6, 0.4, 4))
+  const crossbarGeo = _getSharedGeometry('well:crossbar', () => new THREE.CylinderGeometry(0.04, 0.04, 0.95, 5))
+  const ropeGeo = _getSharedGeometry('well:rope', () => new THREE.CylinderGeometry(0.018, 0.018, 0.70, 4))
+  const ropeMat = _getSharedMaterial('well:rope', () => new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.95 }))
+  const bucketGeo = _getSharedGeometry('well:bucket', () => new THREE.CylinderGeometry(0.12, 0.10, 0.18, 8))
+  const bucketMat = _getSharedMaterial('well:bucket', () => new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.85 }))
+  const bucketHandleGeo = _getSharedGeometry('well:bucket-handle', () => new THREE.TorusGeometry(0.11, 0.012, 4, 10, Math.PI))
+  const bucketHandleMat = _getSharedMaterial('well:bucket-handle', () => new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.6, metalness: 0.35 }))
 
   // Base cylinder
   const base = new THREE.Mesh(baseGeo, mat)
@@ -697,6 +704,34 @@ function _buildWell (g, def, rng) {
     post.castShadow = true
     g.add(post)
   }
+  // Horizontal crossbar connecting the two posts — rope hangs from its center.
+  // Y=1.75 keeps comfortable clearance below the cone roof base (y=1.9).
+  const crossbar = new THREE.Mesh(crossbarGeo, woodMat)
+  crossbar.rotation.z = Math.PI / 2
+  crossbar.position.y = 1.75
+  crossbar.castShadow = true
+  g.add(crossbar)
+  // Pendulum pivot: rope + bucket swing together from the crossbar attachment.
+  // Pivot sits at the underside of the bar (crossbar radius 0.04) so the rope
+  // hangs from the bar surface instead of clipping through the bar as it swings.
+  const bucketPivot = new THREE.Group()
+  bucketPivot.position.set(0, 1.71, 0)
+  const rope = new THREE.Mesh(ropeGeo, ropeMat)
+  rope.position.y = -0.35 // half the 0.70 rope height below the pivot
+  bucketPivot.add(rope)
+  const bucket = new THREE.Mesh(bucketGeo, bucketMat)
+  bucket.position.y = -0.82 // slight overlap with rope end so it reads as attached
+  bucket.castShadow = true
+  bucketPivot.add(bucket)
+  // Rotate the half-torus into the XZ plane so the handle reads as a half-ring
+  // across the bucket mouth from the top-down orthographic camera — the default
+  // XY-plane orientation would appear edge-on (nearly invisible) from above.
+  const bucketHandle = new THREE.Mesh(bucketHandleGeo, bucketHandleMat)
+  bucketHandle.rotation.x = Math.PI / 2
+  bucketHandle.position.y = -0.73
+  bucketPivot.add(bucketHandle)
+  _trackWindDecoration(g, bucketPivot, 'wellBucket', 1, rng)
+  g.add(bucketPivot)
   // Roof
   const roof = new THREE.Mesh(roofGeo, woodMat)
   roof.position.y = 2.1

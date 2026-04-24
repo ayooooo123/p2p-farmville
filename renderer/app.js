@@ -2955,6 +2955,12 @@ function updateDecorations (time, frameEnv) {
         // "bobbing on a loose neck" rather than mechanically flapping.
         child.rotation.z = baseRotZ + swayZ * (0.035 * wp.str)
         child.rotation.x = baseRotX + swayX * (0.020 * wp.str)
+      } else if (child.userData.windKind === 'wellBucket') {
+        // Rigid pendulum — rope+bucket swing together from the crossbar.
+        // Z dominates so it reads as along-wind swing; small X keeps it from
+        // being perfectly 1-D without turning into a cartoony wobble.
+        child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
+        child.rotation.x = baseRotX + swayX * (0.04 * wp.str)
       } else {
         child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
         child.rotation.x = baseRotX + swayX * (0.04 * wp.str)
