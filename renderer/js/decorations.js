@@ -164,7 +164,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
   switch (def.type) {
     case 'fence': _buildFence(group, def); break
     case 'path': _buildPath(group, def, rng); break
-    case 'bale': _buildHayBale(group, def); break
+    case 'bale': _buildHayBale(group, def, rng); break
     case 'flowerbox': _buildFlowerBox(group, def, rng); break
     case 'flower': _buildFlower(group, def, rng); break
     case 'fountain': _buildFountain(group, def, rng); break
@@ -253,7 +253,7 @@ function _buildPath (g, def, rng) {
   }
 }
 
-function _buildHayBale (g, def) {
+function _buildHayBale (g, def, rng = Math.random) {
   const mat = _getSharedMaterial(`hay-bale:mat:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
   const baleGeo = _getSharedGeometry('hay-bale:geo', () => new THREE.CylinderGeometry(0.5, 0.5, 0.7, 12))
   const bale = new THREE.Mesh(baleGeo, mat)
@@ -261,6 +261,32 @@ function _buildHayBale (g, def) {
   bale.position.y = 0.5
   bale.castShadow = true
   g.add(bale)
+
+  // Straw wisps poking up from the top of the bale. The cone geometry is
+  // translated so the base sits at local y=0 — rotating the mesh then pivots
+  // around the base (no extra Group per wisp needed).
+  const wispGeo = _getSharedGeometry('hay-bale:wisp', () => {
+    const geo = new THREE.ConeGeometry(0.012, 0.10, 6)
+    geo.translate(0, 0.05, 0)
+    return geo
+  })
+  const wispMat = _getSharedMaterial('hay-bale:wisp', () => new THREE.MeshStandardMaterial({
+    color: 0xeed76a, roughness: 0.95, flatShading: true
+  }))
+
+  const wispCount = 5
+  for (let i = 0; i < wispCount; i++) {
+    const wisp = new THREE.Mesh(wispGeo, wispMat)
+    const xPos = -0.3 + ((i + 0.5) / wispCount) * 0.6
+    const angleOffset = (rng() - 0.5) * 0.8
+    wisp.position.set(xPos, 0.5 + Math.cos(angleOffset) * 0.5, Math.sin(angleOffset) * 0.5)
+    wisp.rotation.z = (rng() - 0.5) * 0.35
+    wisp.rotation.x = (rng() - 0.5) * 0.25
+    wisp.scale.y = 0.8 + rng() * 0.6
+    wisp.raycast = () => {}
+    _trackWindDecoration(g, wisp, 'hayWisp', 1, rng)
+    g.add(wisp)
+  }
 }
 
 function _buildFlowerBox (g, def, rng) {

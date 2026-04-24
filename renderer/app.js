@@ -2961,6 +2961,12 @@ function updateDecorations (time, frameEnv) {
         // being perfectly 1-D without turning into a cartoony wobble.
         child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str)
         child.rotation.x = baseRotX + swayX * (0.04 * wp.str)
+      } else if (child.userData.windKind === 'hayWisp') {
+        // Light straw — fluttery high-freq jitter layered on the base wind
+        // sway. Flutter scales with wp.str so calm weather stays still.
+        const flutter = Math.sin(time * decoWindFreq * 1.9 + phase * 2.6) * 0.04 * wp.str * gustEnvelope
+        child.rotation.z = baseRotZ + swayZ * (0.10 * wp.str) + flutter
+        child.rotation.x = baseRotX + swayX * (0.05 * wp.str) + flutter * 0.5
       } else if (child.userData.windKind === 'pondLily') {
         // Lily pad floater — tiny tilt from ripple surface, tiny vertical bob.
         // Coefficients tuned against the geometry in _buildPond: pad radius
