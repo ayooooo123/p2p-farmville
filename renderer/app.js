@@ -24,6 +24,7 @@ import { initDayNight, updateDayNight, getGameClockString, getPhaseIcon, getTime
 import { createOverlayEpochTracker, markOverlaySeen, sweepStaleOverlays } from './js/overlay-epochs.js'
 import { formatTimeRemaining, getTimedProgress } from './js/time-progress.js'
 import { buildEnvironmentFrame, getNightFactor } from './js/environment-frame.js'
+import { createWorldCropBadgeManager } from './js/world-crop-badges.js'
 
 // ── Constants (mirrored from shared/constants.js for renderer) ───────────────
 const PLOW_COST = 15
@@ -149,6 +150,9 @@ const neighborCountEl = document.getElementById('neighbor-count')
 
 let sceneData = null
 let terrainData = null
+let cropBadgeManager = null
+let cropBadgeUpdateInFlight = false
+let cropBadgesDirty = true
 let lastTime = 0
 const mouse = { x: 0, y: 0 }
 const mousePx = { x: 0, y: 0 }
@@ -178,6 +182,7 @@ window.addEventListener('resize', _updateHudHeight)
 // ── Initialize Three.js scene ────────────────────────────────────────────────
 sceneData = initScene(canvas)
 terrainData = sceneData.terrainData
+cropBadgeManager = createWorldCropBadgeManager({ THREE, scene: sceneData.scene })
 initParticles(sceneData.scene)
 initCameraControls(canvas)
 
@@ -1674,6 +1679,7 @@ function handleHarvest (plot) {
     })
   }
   plot.crop = null
+  cropBadgesDirty = true
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
 
   // Particle burst + float-up text at harvest position
@@ -1709,6 +1715,7 @@ function handleRemove (plot) {
     plot.cropMesh = null
   }
   plot.crop = null
+  cropBadgesDirty = true
   terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
   SoundSystem.play('remove')
   showFeedback('Removed ' + name + ' (no refund)', '#ff6347')
@@ -1738,6 +1745,7 @@ function harvestAll () {
     QuestSystem.recordAction('harvest', 1, { cropType: harvestCropType })
     if (plot.cropMesh) { sceneData.scene.remove(plot.cropMesh); plot.cropMesh = null }
     plot.crop = null
+    cropBadgesDirty = true
     terrainData.setPlotState(plot.row, plot.col, terrainData.PLOT_STATES.PLOWED)
     createParticleEffect('harvest', { x: plot.x, y: 0.1, z: plot.z })
     createParticleEffect('coin', { x: plot.x, y: 0.3, z: plot.z })
@@ -2384,6 +2392,7 @@ function updateCrops (dtMs) {
     const stageChanged = updateCropGrowth(plot.crop, dtMs * growthMul)
 
     if (stageChanged) {
+      cropBadgesDirty = true
       if (plot.cropMesh) {
         sceneData.scene.remove(plot.cropMesh)
       }
@@ -2450,6 +2459,18 @@ function updateCrops (dtMs) {
       : justRipenedCount + ' crops are ready to harvest!'
     showToast(label, 'harvest', 'Click to harvest or press H for Harvest All')
   }
+}
+
+function syncReadyCropBadges () {
+  if (!cropBadgesDirty || cropBadgeUpdateInFlight || !cropBadgeManager || !terrainData) return
+  cropBadgesDirty = false
+  cropBadgeUpdateInFlight = true
+  cropBadgeManager.update(terrainData.getAllPlots(), CROP_DEFINITIONS)
+    .catch(err => {
+      cropBadgesDirty = true
+      console.warn('[app] ready crop badge update failed', err)
+    })
+    .finally(() => { cropBadgeUpdateInFlight = false })
 }
 
 // ── Ready-to-harvest pulse animation ────────────────────────────────────────
@@ -3667,6 +3688,7 @@ function gameLoop (time) {
   _lastDecorationAnimMs = time
 
   updateCrops(dtMs)
+  syncReadyCropBadges()
   animateReadyCrops(time)
   animateCropWind(time, frameEnv)
   animateBorderTreeWind(time, frameEnv)
