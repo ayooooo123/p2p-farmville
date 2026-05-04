@@ -59,6 +59,13 @@ let cloudPuffMaterial = null
 let lastCloudVisualOpacity = -1
 let lastCloudVisualColor = null
 
+// Drifting cloud shadows on the ground — one flat dark disc per cloud.
+// Shared material so a single opacity write per frame fades all shadows together.
+let cloudShadowGroup = null
+let cloudShadows = []
+let cloudShadowGeometry = null
+let cloudShadowMaterial = null
+
 // Lightning
 let lastLightningTime = 0
 
@@ -120,16 +127,23 @@ function _resetWeatherSystems () {
   rainMesh?.parent?.remove(rainMesh)
   snowMesh?.parent?.remove(snowMesh)
   cloudGroup?.parent?.remove(cloudGroup)
+  cloudShadowGroup?.parent?.remove(cloudShadowGroup)
   puddleGroup?.parent?.remove(puddleGroup)
 
   _disposeMeshResources(rainMesh)
   _disposeMeshResources(snowMesh)
   _disposeGroupResources(puddleGroup)
+  cloudShadowGeometry?.dispose?.()
+  cloudShadowMaterial?.dispose?.()
 
   rainMesh = null
   snowMesh = null
   cloudGroup = null
   clouds = []
+  cloudShadowGroup = null
+  cloudShadows = []
+  cloudShadowGeometry = null
+  cloudShadowMaterial = null
   puddleGroup = null
   puddleMeshes = []
   puddleMat = null
@@ -340,6 +354,7 @@ function _updatePuddles (dtMs) {
 
 function _createCloudSystem () {
   cloudGroup = new THREE.Group()
+  cloudGroup.name = 'cloudGroup'
   cloudGroup.visible = false
   clouds = []
   lastCloudVisualOpacity = -1
@@ -359,6 +374,20 @@ function _createCloudSystem () {
     })
   }
 
+  // Shared shadow disc geometry/material — one opacity write per frame fades all shadows.
+  cloudShadowGroup = new THREE.Group()
+  cloudShadowGroup.name = 'cloudShadowGroup'
+  cloudShadowGroup.visible = false
+  cloudShadows = []
+  cloudShadowGeometry = new THREE.CircleGeometry(1, 12)
+  cloudShadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    fog: false
+  })
+
   for (let i = 0; i < MAX_CLOUDS; i++) {
     const cloud = _makeCloud()
     cloud.position.set(
@@ -369,9 +398,27 @@ function _createCloudSystem () {
     cloud.userData.speed = 1 + Math.random() * 2
     cloudGroup.add(cloud)
     clouds.push(cloud)
+
+    // Sized to roughly match the cloud's puff cluster footprint (puffs are
+    // scattered ±3 around the cloud origin so the disc needs to be a bit larger
+    // than the largest single puff).
+    const shadowRadius = (cloud.userData.shadowRadius || 4) * 1.4
+    const shadow = new THREE.Mesh(cloudShadowGeometry, cloudShadowMaterial)
+    shadow.rotation.x = -Math.PI / 2
+    // Sits just above plot tops (0.01) but below puddles (0.025) so puddles
+    // still glint over the darkened ground when both are active.
+    shadow.position.set(cloud.position.x, 0.015, cloud.position.z)
+    shadow.scale.set(shadowRadius, 1, shadowRadius)
+    shadow.renderOrder = 0
+    shadow.raycast = () => {} // never block plot interaction
+    cloudShadowGroup.add(shadow)
+    cloudShadows.push(shadow)
   }
 
-  if (scene) scene.add(cloudGroup)
+  if (scene) {
+    scene.add(cloudGroup)
+    scene.add(cloudShadowGroup)
+  }
 }
 
 function _makeCloud () {
@@ -380,8 +427,10 @@ function _makeCloud () {
 
   // Cluster of spheres to form a cloud
   const puffCount = 4 + Math.floor(Math.random() * 4)
+  let maxPuffR = 0
   for (let j = 0; j < puffCount; j++) {
     const r = 2 + Math.random() * 3
+    if (r > maxPuffR) maxPuffR = r
     const puff = new THREE.Mesh(cloudPuffGeometry, cloudPuffMaterial)
     puff.scale.setScalar(r)
     puff.position.set(
@@ -391,32 +440,52 @@ function _makeCloud () {
     )
     group.add(puff)
   }
+  // Used by the cloud-shadow disc to scale to roughly this cloud's footprint.
+  group.userData.shadowRadius = maxPuffR
 
   return group
 }
 
-function _updateClouds (dtMs) {
+function _updateClouds (dtMs, sunLight) {
   if (!cloudGroup) return
 
   const hasClouds = currentWeather !== 'clear'
   cloudGroup.visible = hasClouds
-
-  if (!hasClouds) return
 
   const dt = dtMs / 1000
 
   // Set cloud darkness based on weather
   let cloudOpacity = 0.6
   let cloudColor = 0xcccccc
+  // Per-weather base shadow opacity; sun intensity fades them out at night.
+  let shadowBase = 0.18
   if (currentWeather === 'rainy') {
     cloudOpacity = 0.8
     cloudColor = 0x888888
+    shadowBase = 0.26
   } else if (currentWeather === 'stormy') {
     cloudOpacity = 0.9
     cloudColor = 0x555555
+    shadowBase = 0.32
   } else if (currentWeather === 'snowy') {
     cloudOpacity = 0.75
     cloudColor = 0xaaaaaa
+    shadowBase = 0.16
+  } else if (currentWeather === 'clear') {
+    shadowBase = 0
+  }
+
+  // Cloud shadows: ease toward target opacity (handles weather flips and sunset
+  // smoothly). Hide the group when fully transparent to skip render entirely.
+  if (cloudShadowMaterial && cloudShadowGroup) {
+    const sunFactor = sunLight
+      ? Math.max(0, Math.min(1, sunLight.intensity / 1.2))
+      : 1
+    const targetShadowOpacity = shadowBase * sunFactor
+    const k = 2.0
+    const factor = 1 - Math.exp(-k * dt)
+    cloudShadowMaterial.opacity += (targetShadowOpacity - cloudShadowMaterial.opacity) * factor
+    cloudShadowGroup.visible = cloudShadowMaterial.opacity > 0.005
   }
 
   if (cloudPuffMaterial && (cloudOpacity !== lastCloudVisualOpacity || cloudColor !== lastCloudVisualColor)) {
@@ -426,13 +495,23 @@ function _updateClouds (dtMs) {
     lastCloudVisualColor = cloudColor
   }
 
-  for (const cloud of clouds) {
+  if (!hasClouds) return
+
+  for (let i = 0; i < clouds.length; i++) {
+    const cloud = clouds[i]
     cloud.position.x += cloud.userData.speed * dt
 
     // Wrap around
     if (cloud.position.x > 100) {
       cloud.position.x = -100
       cloud.position.z = (Math.random() - 0.5) * 100
+    }
+
+    // Slide the matching ground shadow to track this cloud's XZ.
+    const shadow = cloudShadows[i]
+    if (shadow) {
+      shadow.position.x = cloud.position.x
+      shadow.position.z = cloud.position.z
     }
 
     // Fallback for any cloud variants that do not use the shared puff material/cache.
@@ -559,7 +638,7 @@ function updateWeather (dtMs, sunLight) {
   // Update precipitation — both meshes manage their own visibility
   _updateRain(dtMs)
   _updateSnow(dtMs)
-  _updateClouds(dtMs)
+  _updateClouds(dtMs, sunLight)
   _updatePuddles(dtMs)
   if (currentWeather !== 'snowy') {
     _updateLightning()
