@@ -3103,9 +3103,9 @@ function updateDecorations (time, frameEnv) {
       const b = 0xb4 / 255 + drift * 0.08 * colorBoost
       child.material.color.setRGB(Math.min(1, r), Math.min(1, g), Math.min(1, b))
 
-      // 4. Rain ripples — raindrops striking the water surface. Parented to the
-      //    decoration group (not the water mesh) so the water's ±1.8% scale
-      //    pulse doesn't deform them.
+      // 4. Ripples — raindrops striking the surface during rain, plus pond fish
+      //    splashes during clear weather. Parented to the decoration group (not
+      //    the water mesh) so the water's ±1.8% scale pulse doesn't deform them.
       const pool = child.userData.ripplePool
       if (pool && pool.length) {
         const isRaining = weather === 'rainy' || weather === 'stormy'
@@ -3135,43 +3135,116 @@ function updateDecorations (time, frameEnv) {
               }
             }
           }
-
-          const lifetime = child.userData.rippleLifetimeMs
-          const maxRatio = child.userData.rippleMaxRatio
-          const waterRadius = child.userData.rippleRadius
-          for (const ripple of pool) {
-            if (!ripple.visible) continue
-            ripple.userData.ageMs += dtMs
-            const tRel = ripple.userData.ageMs / lifetime
-            if (tRel >= 1.0) {
-              ripple.visible = false
-              ripple.material.opacity = 0
-              continue
-            }
-            // Ease-out expansion: sqrt(t) grows fast, then slows.
-            const easeT = Math.sqrt(tRel)
-            const scale = (0.05 + easeT * (maxRatio - 0.05)) * waterRadius
-            ripple.scale.set(scale, scale, 1)
-            // Opacity: fade in first 15%, then fade out to zero.
-            const fadeIn = tRel < 0.15 ? (tRel / 0.15) : 1
-            const fadeOut = 1 - tRel
-            ripple.material.opacity = 0.55 * fadeIn * fadeOut
-          }
         } else {
-          // Weather just shifted off rain — clear any in-flight ripples.
-          // Reset the next-spawn deadline so when rain resumes, the per-mesh
-          // jitter re-applies (otherwise every mesh's stale deadline has
-          // already expired and they all spawn together).
-          for (const ripple of pool) {
-            if (ripple.visible) {
-              ripple.visible = false
-              ripple.userData.ageMs = 0
-              ripple.material.opacity = 0
-            }
-          }
+          // Stop scheduling rain spawns; in-flight ripples (rain or fish splash)
+          // animate to completion in the unified update below. Reset the deadline
+          // so per-mesh jitter re-applies when rain resumes.
           child.userData.rippleNextSpawnMs = null
         }
+
+        // Update all visible ripples regardless of weather. Fish splashes can
+        // spawn ripples during clear weather (see pondFish pass below); they
+        // share the same pool and animate identically.
+        const lifetime = child.userData.rippleLifetimeMs
+        const maxRatio = child.userData.rippleMaxRatio
+        const waterRadius = child.userData.rippleRadius
+        for (const ripple of pool) {
+          if (!ripple.visible) continue
+          ripple.userData.ageMs += dtMs
+          const tRel = ripple.userData.ageMs / lifetime
+          if (tRel >= 1.0) {
+            ripple.visible = false
+            ripple.material.opacity = 0
+            continue
+          }
+          // Ease-out expansion: sqrt(t) grows fast, then slows.
+          const easeT = Math.sqrt(tRel)
+          const scale = (0.05 + easeT * (maxRatio - 0.05)) * waterRadius
+          ripple.scale.set(scale, scale, 1)
+          // Opacity: fade in first 15%, then fade out to zero.
+          const fadeIn = tRel < 0.15 ? (tRel / 0.15) : 1
+          const fadeOut = 1 - tRel
+          ripple.material.opacity = 0.55 * fadeIn * fadeOut
+        }
       }
+    }
+
+    // Pond fish — periodic leaps with splash ripples on takeoff and landing.
+    // Suppressed during rain/storm (rain ripples already keep the pond busy).
+    const pondFish = deco.mesh.userData.pondFish
+    if (pondFish && pondFish.length) {
+      const isRaining = weather === 'rainy' || weather === 'stormy'
+      for (const fish of pondFish) {
+        const ud = fish.userData
+        if (ud.state === 'jumping') {
+          const tRel = (time - ud.jumpStartMs) / ud.jumpDurationMs
+          if (tRel >= 1) {
+            // Land: splash at the forward-arc end.
+            const landX = ud.originX + Math.cos(ud.yaw) * ud.jumpForward
+            const landZ = ud.originZ - Math.sin(ud.yaw) * ud.jumpForward
+            _spawnFishSplash(ud.ripplePoolRef, landX, landZ)
+            ud.state = 'idle'
+            fish.visible = false
+            ud.nextJumpMs = time + 6000 + Math.random() * 9000
+          } else {
+            const fwd = ud.jumpForward * tRel
+            // World yaw → forward unit vector under Y-axis rotation:
+            // (cos(yaw), 0, -sin(yaw)). Decoration's own rotation is applied
+            // outside this group, so all positions stay in pond-local space.
+            fish.position.x = ud.originX + Math.cos(ud.yaw) * fwd
+            fish.position.z = ud.originZ - Math.sin(ud.yaw) * fwd
+            // Parabolic vertical: peaks at tRel=0.5 with height jumpHeight.
+            fish.position.y = ud.surfaceY + ud.jumpHeight * 4 * tRel * (1 - tRel)
+            // Pitch: nose-up at takeoff (+π/4), level at apex, nose-down at landing.
+            fish.rotation.z = (Math.PI / 4) * Math.cos(Math.PI * tRel)
+          }
+        } else {
+          // First-frame schedule: defer until the loop is actually running so
+          // a load doesn't trigger an immediate jump.
+          if (ud.nextJumpMs == null) {
+            ud.nextJumpMs = time + 6000 + ud.spawnJitterMs
+          }
+          if (isRaining) {
+            // Push nextJumpMs forward each frame so a long rainy stretch
+            // doesn't queue every pond to leap together when rain ends.
+            // spawnJitterMs varies per fish, so the post-rain jumps still
+            // spread across a few seconds.
+            ud.nextJumpMs = time + 6000 + ud.spawnJitterMs
+          } else if (time >= ud.nextJumpMs) {
+            const a = Math.random() * Math.PI * 2
+            const r = Math.sqrt(Math.random()) * ud.originRadius
+            ud.originX = Math.cos(a) * r
+            ud.originZ = Math.sin(a) * r
+            ud.yaw = Math.random() * Math.PI * 2
+            ud.state = 'jumping'
+            ud.jumpStartMs = time
+            fish.position.x = ud.originX
+            fish.position.z = ud.originZ
+            fish.position.y = ud.surfaceY
+            fish.rotation.y = ud.yaw
+            fish.rotation.z = Math.PI / 4
+            fish.visible = true
+            _spawnFishSplash(ud.ripplePoolRef, ud.originX, ud.originZ)
+          }
+        }
+      }
+    }
+  }
+}
+
+// Claim the first idle ripple slot for a fish splash. If the pool is fully in
+// use (e.g. heavy rain), the splash is dropped — pool size 4 vs fish jumps
+// twice per leap means this is a rare and visually invisible loss.
+function _spawnFishSplash (pool, x, z) {
+  if (!pool || !pool.length) return
+  for (const ripple of pool) {
+    if (!ripple.visible) {
+      ripple.position.x = x
+      ripple.position.z = z
+      ripple.userData.ageMs = 0
+      ripple.material.opacity = 0
+      ripple.visible = true
+      return
     }
   }
 }

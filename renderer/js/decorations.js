@@ -258,6 +258,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
   group.userData.fountainSprayTops = []
   group.userData.gnomeBobs = []
   group.userData.butterflies = []
+  group.userData.pondFish = []
 
   switch (def.type) {
     case 'fence': _buildFence(group, def); break
@@ -919,6 +920,61 @@ function _buildPond (g, def, rng) {
     _trackWindDecoration(g, pivot, 'pondLily', 1, rng)
     g.add(pivot)
   }
+
+  _buildPondFish(g, water, rng)
+}
+
+// Fish leaps periodically out of the pond. Hidden when idle so it doesn't
+// clip lily pads (pads sit at y=0.115; water surface at y≈0.08; jump apex
+// y≈0.4). Forward-axis is local +X (head end) so a yaw of 0 means the fish
+// arcs along world +X within pond-local space.
+function _buildPondFish (g, waterMesh, rng) {
+  const bodyGeo = _getSharedGeometry('pond:fish:body', () => new THREE.SphereGeometry(0.08, 6, 4))
+  const tailGeo = _getSharedGeometry('pond:fish:tail', () => new THREE.ConeGeometry(0.05, 0.10, 4))
+  const fishMat = _getSharedMaterial('pond:fish', () => new THREE.MeshLambertMaterial({ color: 0x4a6b7a }))
+
+  const fish = new THREE.Group()
+  const body = new THREE.Mesh(bodyGeo, fishMat)
+  body.scale.set(1.0, 0.55, 0.45)  // ellipsoid: long along +X, slim vertically
+  fish.add(body)
+
+  const tail = new THREE.Mesh(tailGeo, fishMat)
+  // Cone height runs along +Y by default (apex at +y/2). Rotate +π/2 around Z
+  // to point apex along -X. Cone center then sits midway between base (+X end)
+  // and apex (-X end); place center at -0.13 so base meets body's tail at -0.08.
+  tail.rotation.z = Math.PI / 2
+  tail.position.x = -0.13
+  fish.add(tail)
+
+  fish.visible = false
+
+  const waterHeight = waterMesh.geometry?.parameters?.height ?? 0.08
+  const surfaceY = waterMesh.position.y + waterHeight / 2
+  fish.position.y = surfaceY
+
+  // Reduce origin radius so a forward-arc landing stays inside the ripple
+  // bounds (jumpForward = 0.22 below).
+  const cfg = RIPPLE_CONFIG.pond
+  const originRadius = Math.max(0.1, cfg.radius * cfg.maxRatio - 0.22)
+
+  fish.userData.isPondFish = true
+  fish.userData.surfaceY = surfaceY
+  fish.userData.state = 'idle'
+  fish.userData.nextJumpMs = null
+  fish.userData.jumpStartMs = 0
+  fish.userData.jumpDurationMs = 700
+  fish.userData.jumpHeight = 0.32
+  fish.userData.jumpForward = 0.22
+  fish.userData.originX = 0
+  fish.userData.originZ = 0
+  fish.userData.yaw = 0
+  fish.userData.originRadius = originRadius
+  fish.userData.ripplePoolRef = waterMesh.userData.ripplePool
+  // Stagger first jump per pond so multiple ponds don't pop in lockstep.
+  fish.userData.spawnJitterMs = rng() * 4000
+
+  g.userData.pondFish.push(fish)
+  g.add(fish)
 }
 
 function _buildBridge (g, def) {
