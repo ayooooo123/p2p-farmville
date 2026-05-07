@@ -14,6 +14,7 @@ import { initCollections, rollForDrop, getCollectionData, renderCollectionsPanel
 import { initAchievements, updateStats, getAchievementState, isUnlocked, getUnlockedCount, getTotalPoints, getAllRibbons, renderAchievementsPanel } from './js/achievements.js'
 import { initExpansion, getCurrentTier, getCurrentGridSize, getNextExpansion, canAffordExpansion, purchaseExpansion, showExpansionPreview, clearPreview, renderExpansionPanel, EXPANSION_DEFINITIONS } from './js/expansion.js'
 import { initParticles, createParticleEffect, createFootstepDust, setParticleWind, updateParticles, getActiveEffectCount } from './js/particles.js'
+import { initAutumnLeaves, updateAutumnLeaves } from './js/autumn-leaves.js'
 import { FarmActions } from './js/farm-actions.js'
 import { showToast } from './js/toasts.js'
 import { QuestSystem } from './js/quests.js'
@@ -184,6 +185,7 @@ sceneData = initScene(canvas)
 terrainData = sceneData.terrainData
 cropBadgeManager = createWorldCropBadgeManager({ THREE, scene: sceneData.scene })
 initParticles(sceneData.scene)
+initAutumnLeaves(sceneData.scene)
 initCameraControls(canvas)
 
 // ── Initialize Inventory ─────────────────────────────────────────────────────
@@ -3766,6 +3768,13 @@ function gameLoop (time) {
   animateCropWind(time, frameEnv)
   animateBorderTreeWind(time, frameEnv)
   animateFarmTreeWind(time, frameEnv)
+  updateAutumnLeaves(dtMs, {
+    time,
+    season: terrainData && terrainData.getCurrentSeason ? terrainData.getCurrentSeason() : 'summer',
+    borderTrees: _borderTrees,
+    windX: frameEnv.windSinDrift * frameEnv.windParams.str * 1.6,
+    windZ: frameEnv.windCosDrift * frameEnv.windParams.str * 1.6
+  })
   updateCropTimers(time)
   updateTrees(dtMs)
   updateAnimals(dtMs)
