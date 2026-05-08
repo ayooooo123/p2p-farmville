@@ -5,7 +5,7 @@ import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed,
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
 import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildingEffects, updateCraftingQueue, startCrafting } from './js/buildings.js'
-import { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial } from './js/decorations.js'
+import { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial, getLampMothMaterial } from './js/decorations.js'
 import { VEHICLE_DEFINITIONS, createVehicleMesh, getVehicleSpeedMultiplier } from './js/vehicles.js'
 import { initInventory, addItem, removeItem, hasItem, getItemQty, sellItem, getInventory, renderInventoryPanel, setCapacityBonus, getItemCount, getMaxCapacity } from './js/inventory.js'
 import * as NeighborRenderer from './js/neighbor-renderer.js'
@@ -2918,6 +2918,19 @@ function updateDecorations (time, frameEnv) {
   const sinDrift = frameEnv.windSinDrift
   const cosDrift = frameEnv.windCosDrift
 
+  // Lamp-post moth opacity is global (driven by nightFactor only) so update the
+  // shared material once per frame rather than once per lamp. Range maps so
+  // peak nightFactor reaches the 0.85 cap. Wind drift bias is also global.
+  const lampMothMatGlobal = getLampMothMaterial()
+  const mothOpacity = Math.min(0.85, Math.max(0, (nightFactor - 0.10) / 0.90) * 0.85)
+  const mothActiveGlobal = mothOpacity > 0.001
+  if (lampMothMatGlobal && lampMothMatGlobal.opacity !== mothOpacity) {
+    lampMothMatGlobal.opacity = mothOpacity
+  }
+  const mothDriftStr = 0.10 * wp.str
+  const mothDriftX = sinDrift * mothDriftStr
+  const mothDriftZ = cosDrift * mothDriftStr
+
   // Doghouse eye glow — single shared material mutated once per frame (null
   // until the first doghouse is built). Per-decoration the eyes toggle
   // .visible below the dusk threshold, skipping GPU work in daylight; the
@@ -2961,6 +2974,22 @@ function updateDecorations (time, frameEnv) {
       if (lampLight) {
         lampLight.intensity = lampStrength * 1.2
         lampLight.distance = 8 + lampStrength * 1.6
+      }
+
+      const lampMothGroup = deco.mesh.userData.lampMothGroup
+      const lampMoths = deco.mesh.userData.lampMoths
+      if (lampMothGroup && lampMoths) {
+        if (lampMothGroup.visible !== mothActiveGlobal) lampMothGroup.visible = mothActiveGlobal
+        if (mothActiveGlobal) {
+          for (const moth of lampMoths) {
+            const ud = moth.userData
+            const angle = t * ud.orbitSpeed + ud.phase
+            const vAngle = t * ud.verticalSpeed + ud.phase * 1.7
+            moth.position.x = mothDriftX + Math.cos(angle) * ud.orbitRadius
+            moth.position.z = mothDriftZ + Math.sin(angle) * ud.orbitRadius
+            moth.position.y = Math.sin(vAngle) * ud.verticalAmp
+          }
+        }
       }
     }
 

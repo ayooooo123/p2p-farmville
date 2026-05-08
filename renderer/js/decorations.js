@@ -163,6 +163,29 @@ export function getDoghouseEyeMaterial () {
   return _sharedDoghouseEyeMaterial
 }
 
+// Shared across every lamp post — app.js mutates opacity once per frame based
+// on nightFactor. Lazy-initialised the first time a lamp post is built; the
+// exported getter returns null until then so the frame loop can early-out when
+// no lamps exist yet.
+let _sharedLampMothMaterial = null
+function _getLampMothMaterial () {
+  if (!_sharedLampMothMaterial) {
+    _sharedLampMothMaterial = _getSharedMaterial('lamp-post:moth', () => new THREE.MeshBasicMaterial({
+      color: 0xfff0c0,
+      transparent: true,
+      opacity: 0,
+      fog: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    }))
+  }
+  return _sharedLampMothMaterial
+}
+
+export function getLampMothMaterial () {
+  return _sharedLampMothMaterial
+}
+
 // ── Rain ripple pool ────────────────────────────────────────────────────────
 // Per-water-mesh pool of thin expanding ring meshes. During rainy/stormy
 // weather app.js re-uses slots to simulate raindrops striking the surface.
@@ -269,7 +292,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
     case 'fountain': _buildFountain(group, def, rng); break
     case 'scarecrow': _buildScarecrow(group, def, rng); break
     case 'mailbox': _buildMailbox(group, def, rng); break
-    case 'lamp': _buildLampPost(group, def); break
+    case 'lamp': _buildLampPost(group, def, rng); break
     case 'bench': _buildBench(group, def); break
     case 'gnome': _buildGnome(group, def, rng); break
     case 'windmill': _buildWindmill(group, def); break
@@ -674,7 +697,8 @@ function _buildMailbox (g, def, rng) {
   g.add(flag)
 }
 
-function _buildLampPost (g, def) {
+function _buildLampPost (g, def, rng) {
+  const lampRng = rng || Math.random
   const mat = _getSharedMaterial(`lamp-post:metal:${def.color}`, () => new THREE.MeshStandardMaterial({ color: def.color }))
   const poleGeo = _getSharedGeometry('lamp-post:pole', () => new THREE.CylinderGeometry(0.06, 0.08, 2.5, 6))
   const lampGeo = _getSharedGeometry('lamp-post:lamp-geo', () => new THREE.SphereGeometry(0.2, 8, 6))
@@ -719,10 +743,44 @@ function _buildLampPost (g, def) {
   ptLight.position.set(0, 2.8, 0)
   ptLight.userData.isLampLight = true
   g.add(ptLight)
+  // Moths fluttering around the lamp head at night. Wrapped in a dedicated
+  // mothGroup so we can toggle visibility without hiding the rest of the lamp.
+  // Geometry and material are shared across all lamps — opacity is a global
+  // night-driven value so a single shared material is correct.
+  const mothGroup = new THREE.Group()
+  mothGroup.position.y = 2.6
+  mothGroup.visible = false
+  const mothGeo = _getSharedGeometry('lamp-post:moth', () => new THREE.SphereGeometry(0.045, 5, 4))
+  const mothMat = _getLampMothMaterial()
+  const moths = []
+  for (let i = 0; i < 3; i++) {
+    const moth = new THREE.Mesh(mothGeo, mothMat)
+    const orbitRadius = 0.35 + lampRng() * 0.25
+    const orbitSpeed = (1.3 + lampRng() * 0.8) * (lampRng() < 0.5 ? -1 : 1)
+    const verticalAmp = 0.06 + lampRng() * 0.08
+    const verticalSpeed = 1.6 + lampRng() * 1.0
+    const phase = lampRng() * Math.PI * 2
+    moth.userData.orbitRadius = orbitRadius
+    moth.userData.orbitSpeed = orbitSpeed
+    moth.userData.verticalAmp = verticalAmp
+    moth.userData.verticalSpeed = verticalSpeed
+    moth.userData.phase = phase
+    // Place on orbit so first frame doesn't snap from origin.
+    moth.position.set(Math.cos(phase) * orbitRadius, 0, Math.sin(phase) * orbitRadius)
+    moth.castShadow = false
+    moth.receiveShadow = false
+    mothGroup.add(moth)
+    moths.push(moth)
+  }
+  g.add(mothGroup)
+
   // Store refs on group for fast access
   g.userData.lampGlowMesh = lamp
   g.userData.lampHaloMesh = halo
   g.userData.lampPointLight = ptLight
+  g.userData.lampMothGroup = mothGroup
+  g.userData.lampMoths = moths
+  g.userData.lampMothMaterial = mothMat
 }
 
 function _buildBench (g, def) {
@@ -1142,4 +1200,4 @@ export function createDecoData (decoType, x, z, variantSeed) {
   }
 }
 
-window.DecoSystem = { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial }
+window.DecoSystem = { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial, getLampMothMaterial }
