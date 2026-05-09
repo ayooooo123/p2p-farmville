@@ -260,6 +260,116 @@ function _allocateRipplePool (group, waterMesh, waterType, rng) {
   waterMesh.userData.rippleNextSpawnMs = null
 }
 
+// ── Dawn/dusk water mist pool ───────────────────────────────────────────────
+// Per-water-mesh InstancedMesh of soft puffs that rise from pond/fountain
+// surfaces only during the dawn (and weaker dusk) windows. app.js drives the
+// shared material's opacity once per frame from frameEnv.timeOfDay and walks
+// each pool advancing per-instance ages; outside the dawn/dusk windows the
+// mesh is hidden so the per-frame work falls to a single visibility check.
+// Spawn radii are kept comfortably inside each water surface so per-frame
+// wind drift + wobble + puff scale stay over the water even in stormy wind.
+// Pond water radius is 1.5, fountain water radius is 1.0 (see _buildPond /
+// _buildFountain). Max horizontal drift per puff at full life: drift
+// (0.06 * 2.6 ≈ 0.16) + wobble (0.04) ≈ 0.2; max puff effective radius
+// (sphere 0.18 * scale 1.32 ≈ 0.24). So pond cap radius+0.2+0.24 ≤ 1.5
+// → spawn radius ≤ 1.06; fountain cap → spawn radius ≤ 0.56.
+const MIST_CONFIG = {
+  pond:     { count: 8, radius: 1.0,  riseHeight: 0.55, baseY: 0.005 },
+  fountain: { count: 5, radius: 0.55, riseHeight: 0.42, baseY: 0.005 }
+  // 'well' / 'birdbath' intentionally skipped — too small to read top-down.
+}
+
+function _getMistPuffGeometry () {
+  // Low-poly sphere reads as a soft circle from the orthographic top-down
+  // camera. Faceting is hidden by the transparent MeshBasicMaterial.
+  return _getSharedGeometry('water:mist:puff',
+    () => new THREE.SphereGeometry(0.18, 8, 6))
+}
+
+let _sharedWaterMistMaterial = null
+function _getWaterMistMaterial () {
+  if (!_sharedWaterMistMaterial) {
+    _sharedWaterMistMaterial = _getSharedMaterial('water:mist', () => new THREE.MeshBasicMaterial({
+      color: 0xeae8e0,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: true
+    }))
+  }
+  return _sharedWaterMistMaterial
+}
+
+export function getWaterMistMaterial () {
+  return _sharedWaterMistMaterial
+}
+
+const _mistDummy = new THREE.Object3D()
+
+function _allocateMistPool (group, waterMesh, waterType, rng) {
+  const cfg = MIST_CONFIG[waterType]
+  if (!cfg) return
+  const geo = _getMistPuffGeometry()
+  const mat = _getWaterMistMaterial()
+
+  const waterHeight = waterMesh.geometry?.parameters?.height ?? 0.08
+  const baseY = waterMesh.position.y + waterHeight / 2 + cfg.baseY
+
+  const count = cfg.count
+  const mistMesh = new THREE.InstancedMesh(geo, mat, count)
+  mistMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  mistMesh.frustumCulled = false   // instances drift beyond initial bounds
+  mistMesh.renderOrder = 2         // composite above ripples (renderOrder 1)
+  mistMesh.raycast = () => {}
+  mistMesh.visible = false         // hidden until dawn/dusk
+
+  const ages       = new Float32Array(count)
+  const lifetimes  = new Float32Array(count)
+  const localX     = new Float32Array(count)
+  const localZ     = new Float32Array(count)
+  const baseScale  = new Float32Array(count)
+  const driftPhase = new Float32Array(count)
+
+  for (let i = 0; i < count; i++) {
+    lifetimes[i]  = 1500 + rng() * 1500
+    ages[i]       = rng() * lifetimes[i]      // stagger so puffs don't reset in lockstep
+    const angle   = rng() * Math.PI * 2
+    const radius  = Math.sqrt(rng()) * cfg.radius
+    localX[i]     = Math.cos(angle) * radius
+    localZ[i]     = Math.sin(angle) * radius
+    baseScale[i]  = 0.6 + rng() * 0.6
+    driftPhase[i] = rng() * Math.PI * 2
+
+    // Initialize matrices so the first render frame has valid transforms even
+    // before the first updateDecorations() tick has run.
+    const u = ages[i] / lifetimes[i]
+    const lifeShape = Math.sin(u * Math.PI)
+    const s = baseScale[i] * (0.55 + u * 0.55) * Math.max(0.001, lifeShape)
+    _mistDummy.position.set(localX[i], baseY + u * cfg.riseHeight, localZ[i])
+    _mistDummy.rotation.set(0, 0, 0)
+    _mistDummy.scale.set(s, s, s)
+    _mistDummy.updateMatrix()
+    mistMesh.setMatrixAt(i, _mistDummy.matrix)
+  }
+  mistMesh.instanceMatrix.needsUpdate = true
+
+  mistMesh.userData.isWaterMist = true
+  mistMesh.userData.mistAges = ages
+  mistMesh.userData.mistLifetimes = lifetimes
+  mistMesh.userData.mistLocalX = localX
+  mistMesh.userData.mistLocalZ = localZ
+  mistMesh.userData.mistBaseScale = baseScale
+  mistMesh.userData.mistDriftPhase = driftPhase
+  mistMesh.userData.mistRadius = cfg.radius
+  mistMesh.userData.mistRiseHeight = cfg.riseHeight
+  mistMesh.userData.mistBaseY = baseY
+  mistMesh.userData.mistRng = rng
+
+  group.userData.pondMistPools.push(mistMesh)
+  waterMesh.userData.mistPool = mistMesh
+  group.add(mistMesh)
+}
+
 /**
  * Create procedural 3D decoration mesh
  * @param {string} decoType - key in DECO_DEFINITIONS
@@ -282,6 +392,7 @@ export function createDecoMesh (decoType, variantSeed = 0) {
   group.userData.gnomeBobs = []
   group.userData.butterflies = []
   group.userData.pondFish = []
+  group.userData.pondMistPools = []
 
   switch (def.type) {
     case 'fence': _buildFence(group, def); break
@@ -323,6 +434,7 @@ function _trackWaterMesh (group, mesh, waterType, rng = Math.random) {
   mesh.userData.waterPhase = rng() * Math.PI * 2
   if (mesh.material) group.userData.waterMeshes.push(mesh)
   _allocateRipplePool(group, mesh, waterType, rng)
+  _allocateMistPool(group, mesh, waterType, rng)
 }
 
 function _trackWindmillRotor (group, rotor) {
@@ -1200,4 +1312,4 @@ export function createDecoData (decoType, x, z, variantSeed) {
   }
 }
 
-window.DecoSystem = { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial, getLampMothMaterial }
+window.DecoSystem = { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial, getLampMothMaterial, getWaterMistMaterial }

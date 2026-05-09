@@ -5,7 +5,7 @@ import { initMarket, showMarket, hideMarket, getSelectedSeed, clearSelectedSeed,
 import { TREE_DEFINITIONS, createTreeMesh, createTreeData, updateTreeGrowth, isTreeReady, harvestTree } from './js/trees.js'
 import { ANIMAL_DEFINITIONS, createAnimalMesh, createAnimalData, updateAnimalState, feedAnimal, collectAnimalProduct } from './js/animals.js'
 import { BUILDING_DEFINITIONS, createBuildingMesh, createBuildingData, getBuildingEffects, updateCraftingQueue, startCrafting } from './js/buildings.js'
-import { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial, getLampMothMaterial } from './js/decorations.js'
+import { DECO_DEFINITIONS, createDecoMesh, createDecoData, getDoghouseEyeMaterial, getLampMothMaterial, getWaterMistMaterial } from './js/decorations.js'
 import { VEHICLE_DEFINITIONS, createVehicleMesh, getVehicleSpeedMultiplier } from './js/vehicles.js'
 import { initInventory, addItem, removeItem, hasItem, getItemQty, sellItem, getInventory, renderInventoryPanel, setCapacityBonus, getItemCount, getMaxCapacity } from './js/inventory.js'
 import * as NeighborRenderer from './js/neighbor-renderer.js'
@@ -2903,6 +2903,32 @@ const _WATER_ANIM_PROFILES = {
 }
 let _lastDecorationAnimMs = 0
 
+// Scratch Object3D for composing instance matrices when updating water-mist
+// pools. Reused across all pools in all decorations to avoid per-frame GC.
+const _mistDummy = new THREE.Object3D()
+let _waterMistActivePrev = false
+
+// Soft pulse — strong at dawn (peak ~timeOfDay 0.04, fully gone by 0.18),
+// smaller bump at dusk (peak ~0.62, gone by 0.70). Returns 0 outside those
+// windows so the per-frame work can be skipped entirely.
+function _waterMistFactor (timeOfDay) {
+  if (timeOfDay < 0.18) {
+    const dawnPeak = 0.04
+    const x = timeOfDay < dawnPeak
+      ? timeOfDay / dawnPeak
+      : 1 - (timeOfDay - dawnPeak) / (0.18 - dawnPeak)
+    return Math.max(0, x)
+  }
+  if (timeOfDay >= 0.58 && timeOfDay < 0.70) {
+    const duskPeak = 0.62
+    const x = timeOfDay < duskPeak
+      ? (timeOfDay - 0.58) / (duskPeak - 0.58)
+      : 1 - (timeOfDay - duskPeak) / (0.70 - duskPeak)
+    return Math.max(0, x) * 0.55
+  }
+  return 0
+}
+
 function updateDecorations (time, frameEnv) {
   const t = time * 0.001 // seconds
   const wp = frameEnv.windParams
@@ -2942,6 +2968,26 @@ function updateDecorations (time, frameEnv) {
     const breath = 0.88 + 0.12 * Math.sin(t * 1.3)
     doghouseEyeMat.emissiveIntensity = baseI * nightFactor * breath
   }
+
+  // Water mist (pond/fountain) — driven once per frame by timeOfDay. The
+  // shared material's opacity is the global gate; below MIST_VIS_EPS the
+  // mist meshes are hidden and we skip the per-deco walk entirely. We track
+  // _waterMistActivePrev so the visibility flip on each pool only happens
+  // on the rising/falling edge of the dawn/dusk window.
+  const waterMistMat = getWaterMistMaterial()
+  const mistFactor = _waterMistFactor(frameEnv.timeOfDay)
+  const MIST_VIS_EPS = 0.005
+  const waterMistActive = mistFactor > MIST_VIS_EPS
+  if (waterMistMat) {
+    const targetOpacity = waterMistActive ? mistFactor * 0.45 : 0
+    if (waterMistMat.opacity !== targetOpacity) waterMistMat.opacity = targetOpacity
+  }
+  // Wind drift bias for puff lateral motion — small fraction of wind strength
+  // so mist visibly drifts in the prevailing wind direction without sliding
+  // off the water entirely.
+  const mistDriftStr = 0.06 * wp.str
+  const mistDriftX = sinDrift * mistDriftStr
+  const mistDriftZ = cosDrift * mistDriftStr
 
   for (const deco of farmState.decorations) {
     if (!deco.mesh) continue
@@ -3260,7 +3306,63 @@ function updateDecorations (time, frameEnv) {
         }
       }
     }
+
+    // Water mist (pond/fountain) — only walk pools when the dawn/dusk window
+    // is open. On the falling edge, hide each pool once and skip thereafter.
+    const mistPools = deco.mesh.userData.pondMistPools
+    if (mistPools && mistPools.length) {
+      if (waterMistActive) {
+        for (const mistMesh of mistPools) {
+          if (!mistMesh.visible) mistMesh.visible = true
+          const ages = mistMesh.userData.mistAges
+          const lifetimes = mistMesh.userData.mistLifetimes
+          const localX = mistMesh.userData.mistLocalX
+          const localZ = mistMesh.userData.mistLocalZ
+          const baseScale = mistMesh.userData.mistBaseScale
+          const driftPhase = mistMesh.userData.mistDriftPhase
+          const radius = mistMesh.userData.mistRadius
+          const riseHeight = mistMesh.userData.mistRiseHeight
+          const baseY = mistMesh.userData.mistBaseY
+          const mistRng = mistMesh.userData.mistRng
+          const count = mistMesh.count
+
+          for (let i = 0; i < count; i++) {
+            let age = ages[i] + dtMs
+            if (age >= lifetimes[i]) {
+              age = 0
+              lifetimes[i] = 1500 + mistRng() * 1500
+              const angle = mistRng() * Math.PI * 2
+              const r = Math.sqrt(mistRng()) * radius
+              localX[i] = Math.cos(angle) * r
+              localZ[i] = Math.sin(angle) * r
+              baseScale[i] = 0.6 + mistRng() * 0.6
+              driftPhase[i] = mistRng() * Math.PI * 2
+            }
+            ages[i] = age
+            const u = age / lifetimes[i]
+            const lifeShape = Math.sin(u * Math.PI)
+            const wob = Math.sin(t * 0.6 + driftPhase[i])
+            const px = localX[i] + mistDriftX * u + wob * 0.04
+            const pz = localZ[i] + mistDriftZ * u + Math.cos(t * 0.55 + driftPhase[i]) * 0.04
+            const py = baseY + u * riseHeight
+            const s = baseScale[i] * (0.55 + u * 0.55) * Math.max(0.001, lifeShape)
+            _mistDummy.position.set(px, py, pz)
+            _mistDummy.rotation.set(0, 0, 0)
+            _mistDummy.scale.set(s, s, s)
+            _mistDummy.updateMatrix()
+            mistMesh.setMatrixAt(i, _mistDummy.matrix)
+          }
+          mistMesh.instanceMatrix.needsUpdate = true
+        }
+      } else if (_waterMistActivePrev) {
+        // Falling edge — hide once so subsequent frames stay out of this branch.
+        for (const mistMesh of mistPools) {
+          if (mistMesh.visible) mistMesh.visible = false
+        }
+      }
+    }
   }
+  _waterMistActivePrev = waterMistActive
 }
 
 // Claim the first idle ripple slot for a fish splash. If the pool is fully in
